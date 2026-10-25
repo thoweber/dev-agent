@@ -56,5 +56,29 @@ class WorkspaceJailValidatorTest {
         assertThatThrownBy(() -> validator.validateForWrite(".git/config"))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Protected location");
+
+        assertThatThrownBy(() -> validator.validateForWrite(".git"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Protected location");
+    }
+
+    @Test
+    @DisplayName("Given valid file for write - when checked - then returns validated Path")
+    void testValidateForWriteSuccess() throws IOException {
+        Path validFile = Files.createFile(tempDir.resolve("valid.yaml"));
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
+
+        Path resolved = validator.validateForWrite("valid.yaml");
+
+        assertThat(resolved).isEqualTo(validFile.toRealPath());
+        assertThat(validator.getActiveWorkingRoot()).isEqualTo(tempDir);
+    }
+
+    @Test
+    @DisplayName("Given default constructor - when created - uses user.dir")
+    void testDefaultConstructor() {
+        WorkspaceJailValidator validator = new WorkspaceJailValidator();
+
+        assertThat(validator.getActiveWorkingRoot()).isEqualTo(Path.of(System.getProperty("user.dir")));
     }
 }

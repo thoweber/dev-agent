@@ -2,10 +2,14 @@ package org.quarkus.agent.cli;
 
 import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
+import org.quarkus.agent.DevAgentCommand;
+import org.quarkus.agent.workspace.WorkspaceJailValidator;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -21,10 +25,17 @@ import java.nio.file.Paths;
     description = "Inspects the workspace and initializes declarative .agents configuration",
     mixinStandardHelpOptions = true
 )
+@SuppressWarnings("java:S106")
 public class InitCommand implements Runnable {
 
     @Spec
     private CommandSpec spec;
+
+    @ParentCommand
+    private DevAgentCommand parentCommand;
+
+    @Inject
+    private WorkspaceJailValidator jailValidator;
 
     @Option(names = {"-d", "--dir", "--workspace"}, description = "Target workspace root directory", defaultValue = ".")
     private String dir = ".";
@@ -35,13 +46,27 @@ public class InitCommand implements Runnable {
     @Option(names = {"--force"}, description = "Force overwrite existing configuration files")
     private boolean force;
 
+    public InitCommand() {
+    }
+
+    public InitCommand(WorkspaceJailValidator jailValidator) {
+        this.jailValidator = jailValidator;
+    }
+
     @Override
     public void run() {
         ArchetypeType archetype = ArchetypeType.fromString(type);
-        Path targetRoot = Paths.get(dir).toAbsolutePath().normalize();
-        Path agentsDir = targetRoot.resolve(".agents");
-        Path rulesDir = agentsDir.resolve("rules");
-        Path yamlPath = agentsDir.resolve("dev-agent.yaml");
+        Path targetRoot = Paths.get(getDir()).toAbsolutePath().normalize();
+        Path rawYamlPath = targetRoot.resolve(".agents/dev-agent.yaml");
+        if (Files.isSymbolicLink(rawYamlPath)) {
+            throw new SecurityException("Refusing to write through symbolic link: " + rawYamlPath);
+        }
+
+        WorkspaceJailValidator effectiveJail = jailValidator != null ? jailValidator : new WorkspaceJailValidator(targetRoot);
+
+        Path agentsDir = effectiveJail.validateAndResolve(".agents");
+        Path rulesDir = effectiveJail.validateAndResolve(".agents/rules");
+        Path yamlPath = effectiveJail.validateForWrite(".agents/dev-agent.yaml");
 
         try {
             if (!Files.exists(agentsDir)) {
@@ -51,7 +76,13 @@ public class InitCommand implements Runnable {
                 Files.createDirectories(rulesDir);
             }
 
-            if (!Files.exists(yamlPath) || force) {
+            if (Files.exists(yamlPath) && !force) {
+                String existingYaml = Files.readString(yamlPath);
+                if (!existingYaml.contains("Archetype: " + archetype.getId())) {
+                    getErr().printf("[dev-agent] Workspace already initialized with different archetype. Use --force to overwrite.%n");
+                    return;
+                }
+            } else {
                 String yamlContent = generateYamlConfig(archetype);
                 Files.writeString(yamlPath, yamlContent);
             }
@@ -66,6 +97,20 @@ public class InitCommand implements Runnable {
 
     private PrintWriter getOut() {
         return spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
+    }
+
+    private PrintWriter getErr() {
+        return spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
+    }
+
+    public String getDir() {
+        if (dir != null && !dir.equals(".") && !dir.isBlank()) {
+            return dir;
+        }
+        if (parentCommand != null && parentCommand.getDir() != null) {
+            return parentCommand.getDir();
+        }
+        return dir != null ? dir : ".";
     }
 
     private String generateYamlConfig(ArchetypeType archetype) {
@@ -115,13 +160,11 @@ public class InitCommand implements Runnable {
                     * Return Response.created() or Response.ok() with explicit entity DTOs.
                     """);
             }
-            case REACTIVE_MESSAGING -> {
-                writeRuleIfMissing(rulesDir.resolve("01-reactive-messaging-invariants.md"), """
-                    # Rule: Reactive Messaging & Mutiny Streams
-                    * Never block Vert.x event loops. Use @Blocking only when invoking legacy blocking I/O.
-                    * Prefer Uni and Multi types for reactive asynchronous pipelines.
-                    """);
-            }
+            case REACTIVE_MESSAGING -> writeRuleIfMissing(rulesDir.resolve("01-reactive-messaging-invariants.md"), """
+                # Rule: Reactive Messaging & Mutiny Streams
+                * Never block Vert.x event loops. Use @Blocking only when invoking legacy blocking I/O.
+                * Prefer Uni and Multi types for reactive asynchronous pipelines.
+                """);
             case FULLSTACK_ANGULAR -> {
                 writeRuleIfMissing(rulesDir.resolve("01-angular-standalone-signals.md"), """
                     # Rule: Angular Standalone & Signals Reactivity
@@ -134,17 +177,18 @@ public class InitCommand implements Runnable {
                     * Never commit manual modifications directly inside generated client directories.
                     """);
             }
-            case MODULITH -> {
-                writeRuleIfMissing(rulesDir.resolve("01-modulith-package-boundaries.md"), """
-                    # Rule: Modulith Package Boundaries
-                    * Enforce hexagonal isolation between module packages.
-                    * Cross-module communication must proceed through published events or SPI interfaces.
-                    """);
-            }
+            case MODULITH -> writeRuleIfMissing(rulesDir.resolve("01-modulith-package-boundaries.md"), """
+                # Rule: Modulith Package Boundaries
+                * Enforce hexagonal isolation between module packages.
+                * Cross-module communication must proceed through published events or SPI interfaces.
+                """);
         }
     }
 
     private void writeRuleIfMissing(Path path, String content) throws IOException {
+        if (Files.isSymbolicLink(path)) {
+            throw new SecurityException("Refusing to write through symbolic link: " + path);
+        }
         if (!Files.exists(path) || force) {
             Files.writeString(path, content.stripIndent());
         }

@@ -32,6 +32,7 @@ import org.quarkus.agent.cli.MetricsCommand;
         MetricsCommand.class
     }
 )
+@SuppressWarnings("java:S106")
 public class DevAgentCommand implements Runnable {
 
     @Option(names = {"-d", "--dir", "--workspace"}, description = "Target repository workspace root", defaultValue = ".")
