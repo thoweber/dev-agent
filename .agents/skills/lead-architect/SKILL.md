@@ -1,0 +1,32 @@
+---
+name: lead-architect
+description: Enforces Hexagonal CLI architecture, Two-Axis SPI extensibility, zero-knowledge engine separation, GraalVM AOT native reflection compliance, and ArchUnit invariants for dev-agent.
+---
+
+# Lead Architect & Design Principles Skill (`lead-architect`)
+
+This skill governs the high-level architecture, Hexagonal boundaries, Two-Axis SPI extensibility, SOLID design principles, and native GraalVM Mandrel compliance across **dev-agent**.
+
+> [!IMPORTANT]
+> **Mandatory Architecture Governance:** The `lead-architect` skill **MUST** be activated during planning, feature design, SPI definition, and refactorings to ensure alignment with the foundational architectural invariants of `dev-agent`.
+
+---
+
+## 1. Core Architectural Invariants
+
+1. **Engine vs. Knowledge Separation:** The CLI engine binary is a zero-knowledge execution orchestrator. Hardcoding target domain paths, framework syntax, or repository conventions inside core classes is strictly forbidden.
+2. **Two-Axis Open-Closed Principle (OCP):**
+   * **Axis 1 (Build Tooling):** `BackendBuildSystem` and `FrontendBuildSystem` SPIs decouple build tools (Maven, npm, Gradle, pnpm).
+   * **Axis 2 (Framework Idioms):** `BackendFrameworkConvention` and `FrontendFrameworkConvention` SPIs decouple framework rules (Quarkus, Angular, Spring Boot, React).
+3. **Canonical Path Sandboxing:** All filesystem operations must pass through `WorkspaceJailValidator.validateAndResolve()`. Directory traversal outside `activeWorkingRoot` throws `SecurityException`.
+4. **Zero-JNI Native Safety:** Semantic discovery relies on pure-Java lexical BM25 indexing. Avoid C++ native library JNI bindings that break GraalVM native binary portability.
+5. **Non-Locking State Sockets:** Background tasks emit atomic `state.json` heartbeats in their worktree to prevent H2 file lock deadlocks.
+
+---
+
+## 2. ArchUnit Native Compliance Rules
+
+Every architectural modification must satisfy the following ArchUnit rules:
+1. **Tool CDI Scoping:** Methods annotated with `@Tool` must be declared in classes annotated with `@ApplicationScoped`.
+2. **Reflection Registration:** Classes and records residing in `..model..`, `..entity..`, `..remote..`, or `..gui..` must be annotated with `@RegisterForReflection`.
+3. **Complex Record Builder Standard:** Records with 4 or more fields must be annotated with `@Builder(toBuilder = true)`.

@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "intellij": {
+      "type": "sse",
+      "url": "http://127.0.0.1:64343/sse",
+      "headers": {
+        "IJ_MCP_SERVER_PROJECT_PATH": "/home/developer/projects/dev-agent"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "sonarcloud": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@sonar/mcp-server"
+      ],
+      "env": {
+        "SONAR_TOKEN": "${SONAR_TOKEN}",
+        "SONAR_HOST_URL": "https://sonarcloud.io"
+      }
+    }
+  }
+}

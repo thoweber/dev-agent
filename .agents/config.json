@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json.schemastore.org/dev-agent-config.json",
+  "project": {
+    "name": "dev-agent",
+    "version": "1.0.0-SNAPSHOT",
+    "javaVersion": "25",
+    "quarkusVersion": "3.40.1",
+    "groupId": "org.quarkus.agent",
+    "architectureStyle": "Quarkus Picocli Native CLI & Orchestrator"
+  },
+  "qualityGoalsAndSLA": {
+    "nativeColdBootSeconds": 0.05,
+    "jvmColdBootSeconds": 0.8,
+    "maxConcurrentWorkers": 2,
+    "maxTaskCostUsd": 2.00,
+    "maxTaskTokens": 250000,
+    "localFeedbackSlaSeconds": 15,
+    "targetBranchCoveragePercent": 80
+  },
+  "skills": {
+    "leadArchitect": ".agents/skills/lead-architect/SKILL.md",
+    "backendEngineer": ".agents/skills/backend-engineer/SKILL.md",
+    "langchain4jSpecialist": ".agents/skills/langchain4j-specialist/SKILL.md",
+    "testEngineer": ".agents/skills/test-engineer/SKILL.md",
+    "testManager": ".agents/skills/test-manager/SKILL.md",
+    "tddRunner": ".agents/skills/tdd-runner/SKILL.md",
+    "devopsEngineer": ".agents/skills/devops-engineer/SKILL.md",
+    "sonarRemediation": ".agents/skills/sonar-remediation/SKILL.md",
+    "techWriter": ".agents/skills/tech-writer/SKILL.md"
+  },
+  "mcpServers": {
+    "intellij": {
+      "type": "sse",
+      "url": "http://127.0.0.1:64343/sse",
+      "headers": {
+        "IJ_MCP_SERVER_PROJECT_PATH": "/home/developer/projects/dev-agent"
+      }
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "sonarcloud": {
+      "command": "npx",
+      "args": ["-y", "@sonar/mcp-server"],
+      "env": {
+        "SONAR_TOKEN": "${SONAR_TOKEN}",
+        "SONAR_HOST_URL": "https://sonarcloud.io"
+      }
+    }
+  }
+}
