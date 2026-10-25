@@ -77,18 +77,19 @@ class StatePersistenceIntegrationTest {
     org.quarkus.agent.workspace.WorkspaceContextResolver workspaceResolver;
 
     @Test
-    @Transactional
     @DisplayName("Given state change event - when fired - then updates H2 and projects Markdown journal")
     void testStateChangeEventProjectsMarkdown() throws Exception {
-        TaskRunEntity task = new TaskRunEntity();
-        task.projectId = "thoweber/dev-agent";
-        task.taskId = "TASK-PROJECTION-01";
-        task.userStory = "Verify dual representation";
-        task.status = TaskStatus.PLANNING;
-        task.currentPhase = "PLANNING";
-        task.createdAt = Instant.now();
-        task.updatedAt = Instant.now();
-        task.persist();
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+            TaskRunEntity task = new TaskRunEntity();
+            task.projectId = "thoweber/dev-agent";
+            task.taskId = "TASK-PROJECTION-01";
+            task.userStory = "Verify dual representation";
+            task.status = TaskStatus.PLANNING;
+            task.currentPhase = "PLANNING";
+            task.createdAt = Instant.now();
+            task.updatedAt = Instant.now();
+            task.persist();
+        });
 
         stateChangeEvent.fire(new org.quarkus.agent.model.TaskStateChangeEvent(
             "thoweber/dev-agent",
@@ -99,7 +100,14 @@ class StatePersistenceIntegrationTest {
             Instant.now()
         ));
 
-        TaskRunEntity updated = TaskRunEntity.findByProjectAndTask("thoweber/dev-agent", "TASK-PROJECTION-01");
+        TaskRunEntity updated = io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().call(() -> {
+            TaskRunEntity t = TaskRunEntity.findByProjectAndTask("thoweber/dev-agent", "TASK-PROJECTION-01");
+            if (t != null && t.steps != null) {
+                t.steps.size(); // initialize collection
+            }
+            return t;
+        });
+        assertThat(updated).isNotNull();
         assertThat(updated.status).isEqualTo(TaskStatus.RED_TEST);
         assertThat(updated.steps).isNotEmpty();
         assertThat(updated.steps.get(0).outputSummary)
