@@ -101,11 +101,39 @@ class HierarchicalMemoryStoreTest {
         memory.add(toolResult);
         memory.add(new UserMessage("Next step 1"));
         memory.add(new AiMessage("Response 1"));
-        memory.add(new UserMessage("Next step 2")); // Triggers eviction of tool request and dependent tool result!
+        memory.add(new UserMessage("Next step 2"));
+        memory.add(new AiMessage("Response 2")); // Triggers eviction of tool request and dependent tool result!
 
         List<ChatMessage> messages = memory.messages();
         // Tool result should not be orphaned
         assertThat(messages).noneMatch(m -> m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage);
+    }
+
+    @Test
+    @DisplayName("Given multiple tool execution results - does not self-evict during addition and drops orphaned results")
+    void testMultipleToolResultsAndOrphanRejection() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+
+        dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c1").name("t1").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest req2 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c2").name("t2").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest req3 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c3").name("t3").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest req4 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c4").name("t4").arguments("{}").build();
+
+        AiMessage aiWith4Tools = AiMessage.from(List.of(req1, req2, req3, req4));
+        memory.add(aiWith4Tools);
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req1, "r1"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req2, "r2"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req3, "r3"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req4, "r4"));
+
+        // All 4 results and the parent AiMessage should still be present (not wiped out by self-eviction)
+        assertThat(memory.messages()).hasSize(5);
+        assertThat(memory.messages().get(0)).isEqualTo(aiWith4Tools);
+
+        // Orphaned result without matching request in scratchpad must be dropped
+        dev.langchain4j.agent.tool.ToolExecutionRequest unknownReq = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c99").name("t99").arguments("{}").build();
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(unknownReq, "orphan"));
+        assertThat(memory.messages()).hasSize(5);
     }
 
     @Test

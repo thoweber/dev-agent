@@ -18,8 +18,8 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class ProjectIdResolver {
 
-    private static final Pattern SCP_PATTERN = Pattern.compile("^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:(.+)$");
-    private static final Pattern URL_PATTERN = Pattern.compile("^https?://[^/]+/(.+)$");
+    private static final Pattern SCP_PATTERN = Pattern.compile("^[a-zA-Z0-9._-]+@([a-zA-Z0-9._-]+):(.+)$");
+    private static final Pattern URL_PATTERN = Pattern.compile("^https?://([^/]+)/(.+)$");
 
     private final WorkspaceContextResolver workspaceResolver;
 
@@ -51,11 +51,11 @@ public class ProjectIdResolver {
         String clean = remoteUrl.trim();
         Matcher scpMatcher = SCP_PATTERN.matcher(clean);
         if (scpMatcher.matches()) {
-            clean = scpMatcher.group(1);
+            clean = scpMatcher.group(1) + "/" + scpMatcher.group(2);
         } else {
             Matcher urlMatcher = URL_PATTERN.matcher(clean);
             if (urlMatcher.matches()) {
-                clean = urlMatcher.group(1);
+                clean = urlMatcher.group(1) + "/" + urlMatcher.group(2);
             }
         }
         if (clean.endsWith(".git")) {

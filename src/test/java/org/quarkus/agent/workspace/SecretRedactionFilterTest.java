@@ -65,6 +65,16 @@ class SecretRedactionFilterTest {
             .doesNotContain("mySecretAuthToken456")
             .contains("\"password\": \"***REDACTED_CREDENTIAL***\"")
             .contains("\"authToken\": \"***REDACTED_CREDENTIAL***\"");
+
+        String shortPassword = "password=hunter2";
+        assertThat(filter.scrub(shortPassword))
+            .doesNotContain("hunter2")
+            .isEqualTo("password=***REDACTED_CREDENTIAL***");
+
+        String shortQuotedSecret = "secret: 'abc'";
+        assertThat(filter.scrub(shortQuotedSecret))
+            .doesNotContain("abc")
+            .isEqualTo("secret: '***REDACTED_CREDENTIAL***'");
     }
 
     @Test

@@ -14,7 +14,7 @@ public class SecretRedactionFilter {
     private static final String REDACTED_PLACEHOLDER = "***REDACTED_CREDENTIAL***";
 
     private static final Pattern KEY_VALUE_PATTERN = Pattern.compile(
-        "(?i)([\"']?(?:password|secret|auth[_-]?token|api[_-]?key)[\"']?\\s*[:=]\\s*[\"']?)([^\\s\"',;]{8,})([\"']?)"
+        "(?i)([\"']?(?:password|secret|auth[_-]?token|api[_-]?key)[\"']?\\s*[:=]\\s*[\"']?)([^\\s\"',;]+)([\"']?)"
     );
 
     private static final List<Pattern> SECRET_PATTERNS = List.of(

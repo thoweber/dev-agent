@@ -86,6 +86,40 @@ class CrashRecoveryDetectorTest {
 
     @Test
     @Transactional
+    @DisplayName("Given active task and older crashed task - when findResumableTask called - skips active and recovers older crashed task")
+    void testActiveTaskDoesNotMaskOlderCrashedTask() {
+        StepAuditEntity.deleteAll();
+        TaskRunEntity.deleteAll();
+
+        // Older crashed task
+        TaskRunEntity crashedTask = new TaskRunEntity();
+        crashedTask.projectId = "concurrent-project";
+        crashedTask.taskId = "TASK-OLDER-CRASHED";
+        crashedTask.status = TaskStatus.PLANNING;
+        crashedTask.currentPhase = "PLANNING";
+        crashedTask.pid = 999999999L; // Dead PID
+        crashedTask.createdAt = Instant.now().minusSeconds(120);
+        crashedTask.updatedAt = Instant.now().minusSeconds(60);
+        crashedTask.persist();
+
+        // Newer active running task
+        TaskRunEntity activeTask = new TaskRunEntity();
+        activeTask.projectId = "concurrent-project";
+        activeTask.taskId = "TASK-NEWER-ACTIVE";
+        activeTask.status = TaskStatus.GREEN_PATCH;
+        activeTask.currentPhase = "GREEN_PATCH";
+        activeTask.pid = ProcessHandle.current().pid(); // Active PID
+        activeTask.createdAt = Instant.now().minusSeconds(30);
+        activeTask.updatedAt = Instant.now();
+        activeTask.persist();
+
+        Optional<TaskRunEntity> result = crashDetector.findResumableTask("concurrent-project");
+        assertThat(result).isPresent();
+        assertThat(result.get().taskId).isEqualTo("TASK-OLDER-CRASHED");
+    }
+
+    @Test
+    @Transactional
     @DisplayName("Given crashed task with null pid - when findResumableTask called - returns task")
     void testCrashedTaskWithNullPid() {
         StepAuditEntity.deleteAll();

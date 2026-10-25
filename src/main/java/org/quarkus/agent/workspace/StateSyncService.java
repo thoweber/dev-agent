@@ -2,7 +2,11 @@ package org.quarkus.agent.workspace;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
+import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 import org.quarkus.agent.entity.StepAuditEntity;
@@ -11,6 +15,7 @@ import org.quarkus.agent.model.TaskStateChangeEvent;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
@@ -26,6 +31,9 @@ public class StateSyncService {
 
     private final WorkspaceContextResolver workspaceResolver;
     private final SecretRedactionFilter secretFilter;
+
+    @Inject
+    Instance<TransactionSynchronizationRegistry> registryInstance;
 
     @Inject
     public StateSyncService(WorkspaceContextResolver workspaceResolver, SecretRedactionFilter secretFilter) {
@@ -52,7 +60,7 @@ public class StateSyncService {
             StepAuditEntity step = new StepAuditEntity();
             step.taskRun = entity;
             step.toolName = event.phaseName();
-            step.outputSummary = event.stepSummary();
+            step.outputSummary = secretFilter.scrub(event.stepSummary());
             step.exitCode = 0;
             step.durationMs = 0L;
             step.createdAt = event.timestamp();
@@ -65,10 +73,41 @@ public class StateSyncService {
 
         entity.persist();
 
+        scheduleMarkdownProjection(entity);
+    }
+
+    private void scheduleMarkdownProjection(TaskRunEntity entity) {
+        if (registryInstance != null && registryInstance.isResolvable()) {
+            try {
+                TransactionSynchronizationRegistry registry = registryInstance.get();
+                if (registry.getTransactionStatus() == Status.STATUS_ACTIVE) {
+                    registry.registerInterposedSynchronization(new Synchronization() {
+                        @Override
+                        public void beforeCompletion() {
+                            // No-op
+                        }
+
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == Status.STATUS_COMMITTED) {
+                                projectToMarkdown(entity);
+                            }
+                        }
+                    });
+                    return;
+                }
+            } catch (Exception e) {
+                LOG.warnf(e, "Failed to register transaction synchronization: %s", e.getMessage());
+            }
+        }
         projectToMarkdown(entity);
     }
 
     public void projectToMarkdown(TaskRunEntity entity) {
+        if (entity.taskId == null || entity.taskId.contains("..") || entity.taskId.contains("/") || entity.taskId.contains("\\")) {
+            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + entity.taskId);
+        }
+
         Path targetRunsDir = workspaceResolver.resolveAgentsDir().resolve("runs");
 
         String markdown = String.format("""
@@ -116,16 +155,30 @@ public class StateSyncService {
 
         try {
             Files.createDirectories(targetRunsDir);
+            Path realRunsDir = targetRunsDir.toRealPath();
             Path normalizedRunsDir = targetRunsDir.toAbsolutePath().normalize();
             Path journalFile = normalizedRunsDir.resolve(entity.taskId + ".md").normalize();
-            if (!journalFile.startsWith(normalizedRunsDir) || entity.taskId.contains("..") || entity.taskId.contains("/") || entity.taskId.contains("\\")) {
+
+            if (Files.isSymbolicLink(journalFile)) {
+                throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for task journals: " + journalFile);
+            }
+
+            if (Files.exists(journalFile, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(journalFile) || !journalFile.toRealPath().startsWith(realRunsDir)) {
+                    throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for task journals: " + journalFile);
+                }
+            }
+
+            if (!journalFile.startsWith(normalizedRunsDir)) {
                 throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + entity.taskId);
             }
+
             Files.writeString(
                 journalFile,
                 secretFilter.scrub(markdown),
                 StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
             );
         } catch (IOException e) {
             LOG.warnf(e, "Failed to project Markdown state journal: %s", e.getMessage());

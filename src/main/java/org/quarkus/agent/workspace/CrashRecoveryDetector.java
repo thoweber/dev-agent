@@ -29,20 +29,18 @@ public class CrashRecoveryDetector {
     }
 
     public Optional<TaskRunEntity> findResumableTask(String projectId) {
-        TaskRunEntity latest = TaskRunEntity.find(
+        java.util.List<TaskRunEntity> candidates = TaskRunEntity.list(
             "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
             projectId, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED
-        ).firstResult();
+        );
 
-        if (latest == null) {
-            return Optional.empty();
+        for (TaskRunEntity candidate : candidates) {
+            // If candidate has no PID, or the registered PID is dead on the host OS, it is resumable
+            if (candidate.pid == null || ProcessHandle.of(candidate.pid).isEmpty()) {
+                return Optional.of(candidate);
+            }
         }
 
-        // If PID is registered and still active on the host OS, task is running in another process
-        if (latest.pid != null && ProcessHandle.of(latest.pid).isPresent()) {
-            return Optional.empty();
-        }
-
-        return Optional.of(latest);
+        return Optional.empty();
     }
 }

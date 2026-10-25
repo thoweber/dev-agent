@@ -161,4 +161,34 @@ class StateSyncServiceTest {
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Jailbreak attempt");
     }
+
+    @Test
+    @DisplayName("Given journal file is a symbolic link - when projectToMarkdown called - throws SecurityException and protects target")
+    void testProjectToMarkdownRejectsSymbolicLink() throws IOException {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        SecretRedactionFilter secretFilter = new SecretRedactionFilter();
+        StateSyncService service = new StateSyncService(workspace, secretFilter);
+
+        Path runsDir = workspace.resolveAgentsDir().resolve("runs");
+        Files.createDirectories(runsDir);
+
+        Path outsideTarget = tempDir.resolve("outside-target.txt");
+        Files.writeString(outsideTarget, "original-content");
+
+        Path symlinkJournal = runsDir.resolve("TASK-SYMLINK.md");
+        Files.createSymbolicLink(symlinkJournal, outsideTarget);
+
+        TaskRunEntity entity = new TaskRunEntity();
+        entity.taskId = "TASK-SYMLINK";
+        entity.projectId = "org/repo";
+        entity.status = TaskStatus.PLANNING;
+        entity.currentPhase = "PLANNING";
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.projectToMarkdown(entity))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden");
+
+        // Verify outside target was not overwritten
+        assertThat(Files.readString(outsideTarget)).isEqualTo("original-content");
+    }
 }

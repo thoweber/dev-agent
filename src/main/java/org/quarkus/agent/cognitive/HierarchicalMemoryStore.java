@@ -1,5 +1,6 @@
 package org.quarkus.agent.cognitive;
 
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -17,7 +18,7 @@ import java.util.List;
  * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
  * Tier 1 (Pinned Invariants) and Tier 2 (Pinned Task Spec) are preserved across sliding iterations.
  * Tier 3 (Sliding Scratchpad) maintains a bounded window of recent compiler/test interactions,
- * evicting tool execution requests and their corresponding results atomically.
+ * evicting tool execution requests and their corresponding results atomically as a single unit.
  */
 @ApplicationScoped
 public class HierarchicalMemoryStore implements ChatMemory {
@@ -25,7 +26,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     private SystemMessage pinnedInvariants;
     private UserMessage pinnedTaskSpec;
     private final List<ChatMessage> slidingScratchpad = new LinkedList<>();
-    private static final int MAX_SCRATCHPAD_MESSAGES = 4;
+    private static final int MAX_SCRATCHPAD_TURNS = 4;
 
     @Override
     public Object id() {
@@ -51,18 +52,54 @@ public class HierarchicalMemoryStore implements ChatMemory {
             this.pinnedInvariants = systemMessage;
             return;
         }
+
+        // Drop orphaned tool execution results whose request is not present
+        if (message instanceof ToolExecutionResultMessage toolResult && !hasMatchingRequest(toolResult)) {
+            return;
+        }
+
         slidingScratchpad.add(message);
         trimScratchpad();
     }
 
-    private void trimScratchpad() {
-        while (slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES) {
-            ChatMessage removed = slidingScratchpad.removeFirst();
-            if (removed instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-                // Evict corresponding ToolExecutionResultMessage entries together with request
-                while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
-                    slidingScratchpad.removeFirst();
+    private boolean hasMatchingRequest(ToolExecutionResultMessage result) {
+        for (ChatMessage msg : slidingScratchpad) {
+            if (msg instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
+                    if (req.id() != null && req.id().equals(result.id())) {
+                        return true;
+                    }
                 }
+            }
+        }
+        return false;
+    }
+
+    private void trimScratchpad() {
+        while (countTurns() > MAX_SCRATCHPAD_TURNS) {
+            evictOldestTurn();
+        }
+    }
+
+    private int countTurns() {
+        int count = 0;
+        for (ChatMessage msg : slidingScratchpad) {
+            if (!(msg instanceof ToolExecutionResultMessage)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void evictOldestTurn() {
+        if (slidingScratchpad.isEmpty()) {
+            return;
+        }
+        ChatMessage removed = slidingScratchpad.removeFirst();
+        if (removed instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+            // Evict all corresponding ToolExecutionResultMessage entries associated with this AiMessage
+            while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
+                slidingScratchpad.removeFirst();
             }
         }
     }

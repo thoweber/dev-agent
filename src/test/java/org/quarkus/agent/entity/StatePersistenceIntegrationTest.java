@@ -95,12 +95,16 @@ class StatePersistenceIntegrationTest {
             "TASK-PROJECTION-01",
             TaskStatus.RED_TEST,
             "RED_TEST",
-            "Added failing test",
+            "Added failing test with password=hunter2",
             Instant.now()
         ));
 
         TaskRunEntity updated = TaskRunEntity.findByProjectAndTask("thoweber/dev-agent", "TASK-PROJECTION-01");
         assertThat(updated.status).isEqualTo(TaskStatus.RED_TEST);
+        assertThat(updated.steps).isNotEmpty();
+        assertThat(updated.steps.get(0).outputSummary)
+            .doesNotContain("hunter2")
+            .contains("***REDACTED_CREDENTIAL***");
 
         java.nio.file.Path journalPath = workspaceResolver.resolveAgentsDir()
             .resolve("runs/TASK-PROJECTION-01.md");
