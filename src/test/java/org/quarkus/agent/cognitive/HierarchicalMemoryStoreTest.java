@@ -152,4 +152,69 @@ class HierarchicalMemoryStoreTest {
         memory.clear();
         assertThat(memory.messages()).isEmpty();
     }
+
+    @Test
+    @DisplayName("Given conversation turns - when scratchpad trimmed - evicts user message and ai response together atomically")
+    void testAtomicUserAndAiTurnEviction() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+
+        memory.add(new UserMessage("Question 1"));
+        memory.add(new AiMessage("Answer 1"));
+        memory.add(new UserMessage("Question 2"));
+        memory.add(new AiMessage("Answer 2"));
+        memory.add(new UserMessage("Question 3"));
+        memory.add(new AiMessage("Answer 3"));
+        memory.add(new UserMessage("Question 4"));
+        memory.add(new AiMessage("Answer 4"));
+
+        // When 5th turn is added, turn 1 (Question 1 + Answer 1) must be evicted atomically together
+        memory.add(new UserMessage("Question 5"));
+
+        List<ChatMessage> messages = memory.messages();
+        // Scratchpad must NOT begin with Answer 1 (AiMessage)
+        assertThat(messages.get(0)).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) messages.get(0)).singleText()).isEqualTo("Question 4");
+    }
+
+    @Test
+    @DisplayName("Given secondary SystemMessage via add() - preserves in Tier 1 and keeps scratchpad free of SystemMessages")
+    void testSystemMessageQuarantinedToTier1() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.pinInvariants("Primary Invariants");
+        memory.pinTaskSpecification("Task Story", "{}");
+        memory.add(new dev.langchain4j.data.message.SystemMessage("Secondary Invariants"));
+        memory.add(new UserMessage("Working turn"));
+
+        List<ChatMessage> messages = memory.messages();
+        // Tier 1 contains Primary & Secondary invariants, Tier 2 contains Task Story, Scratchpad contains UserMessage
+        assertThat(messages).hasSize(4);
+        assertThat(messages.get(0)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(messages.get(1)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(messages.get(2)).isInstanceOf(UserMessage.class);
+        assertThat(messages.get(3)).isInstanceOf(UserMessage.class);
+
+        // When scratchpad is cleared, Tier 1 system messages must remain intact
+        memory.clearScratchpad();
+        assertThat(memory.messages()).hasSize(3);
+        assertThat(memory.messages().get(0)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(memory.messages().get(1)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(memory.messages().get(2)).isInstanceOf(UserMessage.class);
+    }
+
+    @Test
+    @DisplayName("Given turn structure validator - validates alternating turns and absence of dangling tool calls")
+    void testTurnStructureInvariants() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.pinInvariants("Rules");
+        memory.pinTaskSpecification("Spec", "{}");
+
+        memory.add(new UserMessage("Do X"));
+        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-x").name("toolX").arguments("{}").build();
+        memory.add(AiMessage.from(req));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Done"));
+        memory.add(new AiMessage("X is finished"));
+
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
 }

@@ -23,7 +23,7 @@ import java.util.List;
 @ApplicationScoped
 public class HierarchicalMemoryStore implements ChatMemory {
 
-    private SystemMessage pinnedInvariants;
+    private final List<SystemMessage> pinnedInvariants = new ArrayList<>();
     private UserMessage pinnedTaskSpec;
     private final List<ChatMessage> slidingScratchpad = new LinkedList<>();
     private static final int MAX_SCRATCHPAD_TURNS = 4;
@@ -35,7 +35,8 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     public void pinInvariants(String invariants) {
         if (invariants != null && !invariants.isBlank()) {
-            this.pinnedInvariants = new SystemMessage(invariants);
+            this.pinnedInvariants.clear();
+            this.pinnedInvariants.add(new SystemMessage(invariants));
         }
     }
 
@@ -48,8 +49,8 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     @Override
     public void add(ChatMessage message) {
-        if (message instanceof SystemMessage systemMessage && pinnedInvariants == null) {
-            this.pinnedInvariants = systemMessage;
+        if (message instanceof SystemMessage systemMessage) {
+            this.pinnedInvariants.add(systemMessage);
             return;
         }
 
@@ -95,21 +96,65 @@ public class HierarchicalMemoryStore implements ChatMemory {
         if (slidingScratchpad.isEmpty()) {
             return;
         }
-        ChatMessage removed = slidingScratchpad.removeFirst();
-        if (removed instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-            // Evict all corresponding ToolExecutionResultMessage entries associated with this AiMessage
-            while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
-                slidingScratchpad.removeFirst();
+        ChatMessage first = slidingScratchpad.getFirst();
+        if (first instanceof UserMessage) {
+            slidingScratchpad.removeFirst();
+            while (!slidingScratchpad.isEmpty() && !(slidingScratchpad.getFirst() instanceof UserMessage)) {
+                ChatMessage next = slidingScratchpad.removeFirst();
+                if (next instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                    while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
+                        slidingScratchpad.removeFirst();
+                    }
+                }
+            }
+        } else if (first instanceof AiMessage ai) {
+            slidingScratchpad.removeFirst();
+            if (ai.hasToolExecutionRequests()) {
+                while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
+                    slidingScratchpad.removeFirst();
+                }
+            }
+        } else {
+            slidingScratchpad.removeFirst();
+        }
+    }
+
+    public boolean assertTurnStructureInvariants() {
+        for (ChatMessage msg : slidingScratchpad) {
+            if (msg instanceof SystemMessage) {
+                return false;
             }
         }
+        if (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
+            return false;
+        }
+        for (int i = 0; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof ToolExecutionResultMessage toolResult) {
+                boolean found = false;
+                for (int j = 0; j < i; j++) {
+                    if (slidingScratchpad.get(j) instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                        for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
+                            if (req.id() != null && req.id().equals(toolResult.id())) {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (found) {
+                        break;
+                    }
+                }
+                if (!found) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     @Override
     public List<ChatMessage> messages() {
-        List<ChatMessage> assembled = new ArrayList<>();
-        if (pinnedInvariants != null) {
-            assembled.add(pinnedInvariants);
-        }
+        List<ChatMessage> assembled = new ArrayList<>(pinnedInvariants);
         if (pinnedTaskSpec != null) {
             assembled.add(pinnedTaskSpec);
         }
@@ -119,7 +164,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     @Override
     public void clear() {
-        pinnedInvariants = null;
+        pinnedInvariants.clear();
         pinnedTaskSpec = null;
         slidingScratchpad.clear();
     }

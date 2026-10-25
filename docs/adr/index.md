@@ -14,3 +14,4 @@ This directory records the key architectural decisions for **dev-agent**.
 | [ADR-008](file:///home/developer/projects/dev-agent/docs/adr/ADR-008-context-aware-secret-redaction.md) | Context-Aware Secret Redaction Quarantine | Accepted | 2026-10-25 |
 | [ADR-009](file:///home/developer/projects/dev-agent/docs/adr/ADR-009-cache-and-circuit-breaker.md) | Deterministic Caffeine Cache & Normalized Loop Breaker | Accepted | 2026-10-25 |
 | [ADR-010](file:///home/developer/projects/dev-agent/docs/adr/ADR-010-embedded-vertx-review-gui.md) | Embedded Vert.x Local Web Diff Review Engine | Accepted | 2026-10-25 |
+| [ADR-011](file:///home/developer/projects/dev-agent/docs/adr/ADR-011-hierarchical-memory-invariants.md) | 3-Tier Hierarchical Memory Turn Invariants & Atomic Tool Eviction | Accepted | 2026-10-26 |

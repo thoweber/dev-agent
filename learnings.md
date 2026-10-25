@@ -42,18 +42,18 @@
 
 The composite priority score ($W = 2 \times \text{Severity} + 1 \times \text{Presence}$, scale 1-10) yields the following execution order:
 
-| Priority | Task ID | Core Problem & Remediation Target | Impact Area | Proposed Remediation Vehicle |
-|:---:|:---:|:---|:---|:---|
-| **P1** | **REM-01** | **Physical Symlink & Canonical Jail Enforcement** | Security (CWE-59) | Update `WorkspaceJailValidator` + `AGENTS.md` Rule 4; create ArchUnit test checking all file write calls. |
-| **P2** | **REM-02** | **Universal Credential Scrubbing Quarantine** | Security (CWE-312) | Update `AGENTS.md` Rule 7; add Panache `@PrePersist` / entity interceptor to guarantee automatic sanitization before DB writes. |
-| **P3** | **REM-03** | **Regex Sanitization Bounds & Length Flexibility** | Security (CWE-312) | Codify regex guidelines; add comprehensive test suite for single-digit & short credentials. |
-| **P4** | **REM-04** | **3-Tier Hierarchical Memory Turn Invariants** | Cognitive / LLM Stability | Codify LangChain4j ChatMemory invariant pattern in ADR-0004 & LangChain4j skill. |
-| **P5** | **REM-05** | **Transactional Event Projection via JTA Synchronization** | Data Integrity | Amend ADR-0002 (State Projection); standardize `@Observes(during = AFTER_SUCCESS)` or JTA registry hooks. |
-| **P6** | **REM-06** | **Global Project ID Host Isolation** | Multi-Tenancy Isolation | Document Project Coordinate specification in ADR-0005; update `ProjectIdResolver` contract. |
-| **P7** | **REM-07** | **Exhaustive Crash Recovery Iteration** | High Availability | Enhance `CrashRecoveryDetector` contract to evaluate complete active candidate queues. |
-| **P8** | **REM-08** | **Subprocess Lifetime & Timeout Governance** | System Resource Hygiene | Create centralized `ProcessExecutionHelper` that enforces mandatory `destroyForcibly()` timeouts. |
-| **P9** | **REM-09** | **Quarkus & JaCoCo Dual-Instrumentation Build Setup** | Build & CI Infrastructure | Document build harness rules in `devops-engineer` skill and Maven profile configuration. |
-| **P10** | **REM-10** | **Test Transaction Scope Protocol (`QuarkusTransaction` vs `@Transactional`)** | Test Framework Strategy | Update `test-engineer` skill and `AGENTS.md` testing protocol to avoid `@Transactional` on test methods with event projection. |
+| Priority | Task ID | Core Problem & Remediation Target | Impact Area | Status | Proposed Remediation Vehicle |
+|:---:|:---:|:---|:---|:---:|:---|
+| **P1** | **REM-01** | **Physical Symlink & Canonical Jail Enforcement** | Security (CWE-59) | **COMPLETED** | Strongly-typed `RepoPath` value object & canonical jail checks (commit `5cd1641`) |
+| **P2** | **REM-02** | **Universal Credential Scrubbing Quarantine** | Security (CWE-312) | **COMPLETED** | Strongly-typed `SanitizedOutput` domain value object for sinks (commit `db18aed`) |
+| **P3** | **REM-03** | **Regex Sanitization Bounds & Length Flexibility** | Security (CWE-312) | **COMPLETED** | Bounded regexes, word boundaries, quoted space handling (commit `d281d77`) |
+| **P4** | **REM-04** | **3-Tier Hierarchical Memory Turn Invariants** | Cognitive / LLM Stability | **PROPOSED** | Atomic turn eviction, Tier 1 system consolidation, ADR-011 |
+| **P5** | **REM-05** | **Transactional Event Projection via JTA Synchronization** | Data Integrity | Pending | Amend ADR-0002 (State Projection); standardize `@Observes(during = AFTER_SUCCESS)` or JTA registry hooks. |
+| **P6** | **REM-06** | **Global Project ID Host Isolation** | Multi-Tenancy Isolation | Pending | Document Project Coordinate specification in ADR-0005; update `ProjectIdResolver` contract. |
+| **P7** | **REM-07** | **Exhaustive Crash Recovery Iteration** | High Availability | Pending | Enhance `CrashRecoveryDetector` contract to evaluate complete active candidate queues. |
+| **P8** | **REM-08** | **Subprocess Lifetime & Timeout Governance** | System Resource Hygiene | Pending | Create centralized `ProcessExecutionHelper` that enforces mandatory `destroyForcibly()` timeouts. |
+| **P9** | **REM-09** | **Quarkus & JaCoCo Dual-Instrumentation Build Setup** | Build & CI Infrastructure | Pending | Document build harness rules in `devops-engineer` skill and Maven profile configuration. |
+| **P10** | **REM-10** | **Test Transaction Scope Protocol (`QuarkusTransaction` vs `@Transactional`)** | Test Framework Strategy | Pending | Update `test-engineer` skill and `AGENTS.md` testing protocol to avoid `@Transactional` on test methods with event projection. |
 
 ---
 
