@@ -16,15 +16,24 @@ Execute the following commands to inspect remote quality gate status and active 
    ```bash
    curl -s "https://sonarcloud.io/api/issues/search?projectKeys=thoweber_dev-agent&pullRequest=<PR_ID>&resolved=false"
    ```
-3. **GitHub PR Review Comments:**
+3. **GitHub PR Inline Review Comments:**
    ```bash
    gh api "repos/{owner}/{repo}/pulls/<PR_ID>/comments"
+   ```
+4. **GitHub PR Top-Level Issue Comments (Reviews & Summaries):**
+   ```bash
+   gh api "repos/{owner}/{repo}/issues/<PR_ID>/comments"
    ```
 
 ---
 
-## Step 2: 3-Way Review Comment Classification
+## Step 2: Review Comment Classification & Multi-Agent Safety Guardrails
 
+### Autonomous Safety Invariants
+* **Human-Override Precedence**: Human developer instructions and review comments take absolute precedence over bot feedback. If a bot recommendation conflicts with a human requirement or architectural guideline, always adhere to the human requirement.
+* **Bot-Turn Detection & Loop Breaker**: Limit automated responses to 1 reply per comment thread. Never enter iterative bot-to-bot conversational ping-pong loops.
+
+### 3-Way Comment Classification
 Triage every CodeRabbit comment into one of three action states:
 
 1. **`ACCEPT_AND_FIX`**:
@@ -43,23 +52,26 @@ Triage every CodeRabbit comment into one of three action states:
 ## Step 3: Targeted TDD Remediation Loop
 
 1. **Duplication Reduction First**: Replace repetitive tests with `@ParameterizedTest` (`java:S5976`) to keep line duplication $<3\%$.
-2. **Coverage Enforcement**: Add 1-to-1 boundary tests for uncovered branches and accessors until JaCoCo line coverage reaches $\ge 80\%$.
+2. **Coverage Enforcement**: Add 1-to-1 boundary tests for uncovered branches and accessors until JaCoCo line coverage reaches $\ge 80\%$ and condition/branch coverage reaches $\ge 80\%$.
 3. **Terminal Output Sanitization**: Route CLI output through `spec.commandLine().getOut()` and annotate CLI classes with `@SuppressWarnings("java:S106")`.
 
 ---
 
 ## Step 4: Local Verification Gate
 
-Before pushing any commit, verify that all local checks pass:
+Before pushing any commit, verify that all local checks pass in accordance with `AGENTS.md` Rule 2:
 
 ```bash
-# 1. Compile & Fast Unit Tests:
-./mvnw clean test
+# 1. Fast Unit Tests (< 10s):
+./mvnw test -Dtest=*Test
 
-# 2. ArchUnit Native Compliance & Path Jail:
+# 2. ArchUnit Native Compliance & Path Jail Verification (< 15s):
 ./mvnw test -Dtest=AgentArchitectureTest,WorkspaceJailValidatorTest
 
-# 3. Format Verification:
+# 3. Full Clean Build & Verification (< 30s):
+./mvnw clean verify
+
+# 4. Auto-Format Code:
 ./mvnw spotless:apply
 ```
 
@@ -73,4 +85,19 @@ Before pushing any commit, verify that all local checks pass:
    git push origin feature/<TASK-ID>-<slug>
    ```
 3. Reply to CodeRabbit comments on GitHub and resolve threads.
-4. Wait 120 seconds, then poll SonarCloud Quality Gate until `status: OK`.
+4. Bounded SonarCloud Quality Gate polling:
+   ```bash
+   # Poll SonarCloud with max 5 attempts (30s sleep) and fail-fast error detection:
+   for i in {1..5}; do
+     sleep 30
+     STATUS=$(curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=thoweber_dev-agent&pullRequest=<PR_ID>" | jq -r '.projectStatus.status')
+     echo "SonarCloud status (attempt $i/5): $STATUS"
+     if [ "$STATUS" = "OK" ]; then
+       echo "Quality Gate PASSED!"
+       break
+     elif [ "$STATUS" = "ERROR" ] || [ "$STATUS" = "WARN" ]; then
+       echo "Quality Gate FAILED with status: $STATUS"
+       exit 1
+     fi
+   done
+   ```

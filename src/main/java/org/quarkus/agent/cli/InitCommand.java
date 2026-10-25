@@ -4,7 +4,6 @@ import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import org.quarkus.agent.workspace.WorkspaceContextResolver;
 import org.quarkus.agent.workspace.WorkspaceJailValidator;
 
 import java.io.IOException;
@@ -30,11 +29,11 @@ public class InitCommand extends BaseAgentCommand {
     @Override
     public void run() {
         ArchetypeType archetype = ArchetypeType.fromString(type);
-        WorkspaceContextResolver workspace = getWorkspaceContextResolver();
-        WorkspaceJailValidator jail = workspace.getJailValidator();
+        Path targetRoot = getWorkspaceRoot();
+        WorkspaceJailValidator jail = new WorkspaceJailValidator(targetRoot);
 
-        Path agentsDir = workspace.resolveAgentsDir();
-        Path rulesDir = workspace.resolveRulesDir();
+        Path agentsDir = jail.validateAndResolve(".agents");
+        Path rulesDir = jail.validateAndResolve(".agents/rules");
         Path yamlPath = jail.validateForWrite(".agents/dev-agent.yaml");
 
         try {

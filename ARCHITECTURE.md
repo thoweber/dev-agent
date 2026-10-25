@@ -369,13 +369,13 @@ Backend Implementation (Quarkus REST/Panache)
 To support uninterrupted developer workflows, the Dev-Agent decouples execution from the user's active workspace and prevents multi-process database deadlocks.
 
 ```
-Main Workspace (Branch: main)             Isolated Worktree (Branch: feat/US-042)
+Main Workspace (Branch: main)             Isolated Worktree (Branch: feature/US-042-user-auth)
 ┌───────────────────────────────┐         ┌──────────────────────────────────────┐
 │ Developer edits in IDE        │         │ Background Worker (PID: 49120)       │
 │                               │         │                                      │
 │ Runs: dev-agent status        │         │ 1. Executes Full-Stack TDD Loop      │
 │ Reads: state.json (0ms lock)  │ ◄────── │ 2. Emits state.json Heartbeat        │
-│ No DB lock collision!         │         │ 3. Commits to feat/US-042            │
+│ No DB lock collision!         │         │ 3. Commits to feature/US-042-user-auth│
 └───────────────────────────────┘         └──────────────────────────────────────┘
 ```
 

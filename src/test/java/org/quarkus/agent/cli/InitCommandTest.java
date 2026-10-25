@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.quarkus.agent.DevAgentCommand;
 import picocli.CommandLine;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -150,5 +151,21 @@ class InitCommandTest {
         int exitCode = cmd.execute("--dir=" + tempDir.toString(), "--type=unknown-archetype");
 
         assertThat(exitCode).isNotZero();
+    }
+
+    @Test
+    @DisplayName("Given subdirectory within existing repo - when init executed with --dir - scaffolds strictly within subdirectory")
+    void testInitSubdirectoryWithinRepo() throws IOException {
+        Files.createDirectories(tempDir.resolve(".git"));
+        Path subDir = Files.createDirectories(tempDir.resolve("sub-module"));
+
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+
+        int exitCode = cmd.execute("--dir=" + subDir.toString());
+
+        assertThat(exitCode).isZero();
+        assertThat(subDir.resolve(".agents/dev-agent.yaml")).isRegularFile();
+        assertThat(tempDir.resolve(".agents")).doesNotExist();
     }
 }
