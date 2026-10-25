@@ -86,6 +86,39 @@ class SecretRedactionFilterTest {
     }
 
     @Test
+    @DisplayName("Given multi-word secrets in quotes - when scrub called - then redacts entire secret phrase")
+    void testRedactionOfMultiWordQuotedSecrets() {
+        String doubleQuoted = "password=\"super secret phrase with spaces\"";
+        assertThat(filter.scrub(doubleQuoted))
+            .doesNotContain("super secret phrase with spaces")
+            .isEqualTo("password=\"***REDACTED_CREDENTIAL***\"");
+
+        String singleQuoted = "authToken: 'very long confidential token with spaces'";
+        assertThat(filter.scrub(singleQuoted))
+            .doesNotContain("very long confidential token with spaces")
+            .isEqualTo("authToken: '***REDACTED_CREDENTIAL***'");
+    }
+
+    @Test
+    @DisplayName("Given diverse provider tokens with varying lengths and prefixes - when scrub called - then masks tokens")
+    void testProviderTokenFlexibility() {
+        String awsSts = "export AWS_SESSION_TOKEN=ASIAIOSFODNN7EXAMPLE";
+        assertThat(filter.scrub(awsSts))
+            .doesNotContain("ASIAIOSFODNN7EXAMPLE")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String githubOAuth = "curl -H 'Authorization: token gho_123456789012345678901234567890123456'";
+        assertThat(filter.scrub(githubOAuth))
+            .doesNotContain("gho_123456789012345678901234567890123456")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String anthropicKey = "anthropic_key: sk-ant-api03-abcdef1234567890_ghijklmnop-1234567890";
+        assertThat(filter.scrub(anthropicKey))
+            .doesNotContain("sk-ant-api03-abcdef1234567890_ghijklmnop-1234567890")
+            .contains("***REDACTED_CREDENTIAL***");
+    }
+
+    @Test
     @DisplayName("Given regular Java and TypeScript source code - when scrub called - then leaves content untouched")
     void testSourceCodePreserved() {
         String javaSource = """
