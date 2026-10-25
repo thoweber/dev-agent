@@ -4,10 +4,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 
 /**
  * Auto-detects workspace boundaries, repository root, build systems, and frontend subsystems.
+ * Serves as the single authoritative component for workspace path resolution.
  */
 @ApplicationScoped
 @RequiredArgsConstructor
@@ -17,6 +19,23 @@ public class WorkspaceContextResolver {
 
     public WorkspaceContextResolver() {
         this(Path.of(System.getProperty("user.dir")));
+    }
+
+    /**
+     * Resolves the effective workspace root from CLI arguments and optional parent command option.
+     *
+     * @param cliDir direct command option string
+     * @param parentDir inherited parent command option string
+     * @return canonical Path to the effective workspace root
+     */
+    public static Path resolveEffectiveRoot(String cliDir, String parentDir) {
+        if (cliDir != null && !cliDir.equals(".") && !cliDir.isBlank()) {
+            return Paths.get(cliDir).toAbsolutePath().normalize();
+        }
+        if (parentDir != null && !parentDir.equals(".") && !parentDir.isBlank()) {
+            return Paths.get(parentDir).toAbsolutePath().normalize();
+        }
+        return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
     }
 
     /**
@@ -61,6 +80,34 @@ public class WorkspaceContextResolver {
      */
     public Path resolveAgentTargetDir() {
         return resolveRepoRoot().resolve("target-agent");
+    }
+
+    /**
+     * Resolves the .agents metadata directory.
+     */
+    public Path resolveAgentsDir() {
+        return resolveRepoRoot().resolve(".agents");
+    }
+
+    /**
+     * Resolves the .agents/rules directory.
+     */
+    public Path resolveRulesDir() {
+        return resolveAgentsDir().resolve("rules");
+    }
+
+    /**
+     * Resolves the .agents/dev-agent.yaml declarative config path.
+     */
+    public Path resolveConfigFile() {
+        return resolveAgentsDir().resolve("dev-agent.yaml");
+    }
+
+    /**
+     * Creates a jail validator anchored to this workspace's repository root.
+     */
+    public WorkspaceJailValidator getJailValidator() {
+        return new WorkspaceJailValidator(resolveRepoRoot());
     }
 
     public Path getWorkingDir() {

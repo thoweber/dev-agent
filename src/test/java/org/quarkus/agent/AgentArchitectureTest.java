@@ -29,5 +29,7 @@ public class AgentArchitectureTest {
             .that().resideInAnyPackage("..model..", "..entity..", "..remote..", "..gui..")
             .and().areTopLevelClasses()
             .and().areNotInterfaces()
+            .and().haveSimpleNameNotEndingWith("Test")
+            .and().haveSimpleNameNotEndingWith("IT")
             .should().beAnnotatedWith(RegisterForReflection.class);
 }

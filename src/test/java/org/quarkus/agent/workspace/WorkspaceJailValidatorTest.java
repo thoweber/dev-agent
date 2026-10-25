@@ -56,5 +56,43 @@ class WorkspaceJailValidatorTest {
         assertThatThrownBy(() -> validator.validateForWrite(".git/config"))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Protected location");
+
+        assertThatThrownBy(() -> validator.validateForWrite(".git"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Protected location");
+    }
+
+    @Test
+    @DisplayName("Given valid file for write - when checked - then returns validated Path")
+    void testValidateForWriteSuccess() throws IOException {
+        Path validFile = Files.createFile(tempDir.resolve("valid.yaml"));
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
+
+        Path resolved = validator.validateForWrite("valid.yaml");
+
+        assertThat(resolved).isEqualTo(validFile.toRealPath());
+        assertThat(validator.getActiveWorkingRoot()).isEqualTo(tempDir);
+    }
+
+    @Test
+    @DisplayName("Given symbolic link target - when validateForWrite checked - then throws SecurityException")
+    void testValidateForWriteRejectsSymbolicLink() throws IOException {
+        Path targetFile = Files.createFile(tempDir.resolve("target.txt"));
+        Path symlink = tempDir.resolve("symlink.txt");
+        Files.createSymbolicLink(symlink, targetFile);
+
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
+
+        assertThatThrownBy(() -> validator.validateForWrite("symlink.txt"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Refusing to write through symbolic link");
+    }
+
+    @Test
+    @DisplayName("Given default constructor - when created - uses user.dir")
+    void testDefaultConstructor() {
+        WorkspaceJailValidator validator = new WorkspaceJailValidator();
+
+        assertThat(validator.getActiveWorkingRoot()).isEqualTo(Path.of(System.getProperty("user.dir")));
     }
 }
