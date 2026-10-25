@@ -35,15 +35,17 @@ class DevAgentCommandTest {
 
         assertThat(exitCode).isZero();
         String output = sw.toString();
-        assertThat(output).contains("dev-agent");
-        assertThat(output).contains("init");
-        assertThat(output).contains("plan");
-        assertThat(output).contains("feature");
-        assertThat(output).contains("status");
-        assertThat(output).contains("logs");
-        assertThat(output).contains("resume");
-        assertThat(output).contains("abort");
-        assertThat(output).contains("metrics");
+        assertThat(output).contains(
+            "dev-agent",
+            "init",
+            "plan",
+            "feature",
+            "status",
+            "logs",
+            "resume",
+            "abort",
+            "metrics"
+        );
     }
 
     @Test

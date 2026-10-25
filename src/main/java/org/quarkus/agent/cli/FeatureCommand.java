@@ -3,12 +3,8 @@ package org.quarkus.agent.cli;
 import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
 import picocli.CommandLine.Command;
-import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
-import picocli.CommandLine.ParentCommand;
-import picocli.CommandLine.Spec;
-import org.quarkus.agent.DevAgentCommand;
 
 import java.io.PrintWriter;
 
@@ -19,20 +15,10 @@ import java.io.PrintWriter;
     description = "Executes autonomous full-stack TDD implementation inside an isolated worktree",
     mixinStandardHelpOptions = true
 )
-@SuppressWarnings("java:S106")
-public class FeatureCommand implements Runnable {
-
-    @Spec
-    private CommandSpec spec;
-
-    @ParentCommand
-    private DevAgentCommand parentCommand;
+public class FeatureCommand extends BaseAgentCommand {
 
     @Parameters(index = "0", description = "The feature story or task instruction", arity = "0..1")
     private String instruction;
-
-    @Option(names = {"-d", "--dir", "--workspace"}, description = "Target workspace root directory", defaultValue = ".")
-    private String dir = ".";
 
     @Option(names = {"--gui"}, description = "Launch local Vert.x web review server on localhost:9999")
     private boolean gui;
@@ -56,22 +42,8 @@ public class FeatureCommand implements Runnable {
         out.println("[dev-agent] Initiating full-stack TDD execution: " + instruction);
     }
 
-    private PrintWriter getOut() {
-        return spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
-    }
-
     public String getInstruction() {
         return instruction;
-    }
-
-    public String getDir() {
-        if (dir != null && !dir.equals(".") && !dir.isBlank()) {
-            return dir;
-        }
-        if (parentCommand != null && parentCommand.getDir() != null) {
-            return parentCommand.getDir();
-        }
-        return dir != null ? dir : ".";
     }
 
     public boolean isGui() {

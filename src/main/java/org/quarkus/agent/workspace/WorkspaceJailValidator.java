@@ -3,12 +3,14 @@ package org.quarkus.agent.workspace;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 
 /**
  * Sandboxes all filesystem operations strictly within the active execution root.
- * Prevents directory traversal attacks and protects Git internal metadata and global settings.
+ * Prevents directory traversal attacks, protects Git internal metadata and global settings,
+ * and rejects writing through symbolic links.
  */
 @ApplicationScoped
 @RequiredArgsConstructor
@@ -33,7 +35,7 @@ public class WorkspaceJailValidator {
         Path normalizedRoot;
         try {
             normalizedRoot = activeWorkingRoot.toRealPath();
-        } catch (IOException e) {
+        } catch (IOException _) {
             normalizedRoot = activeWorkingRoot.toAbsolutePath().normalize();
         }
 
@@ -44,7 +46,7 @@ public class WorkspaceJailValidator {
                 throw new SecurityException("Jailbreak attempt: Path traverses outside boundary: " + untrustedPath);
             }
             return realResolved;
-        } catch (IOException e) {
+        } catch (IOException _) {
             // File does not exist yet; validate normalized parent chain
             Path resolved = normalizedRoot.resolve(untrustedPath).normalize();
             if (!resolved.startsWith(normalizedRoot)) {
@@ -56,13 +58,23 @@ public class WorkspaceJailValidator {
 
     /**
      * Enforces that a target path is permitted for modification.
-     * Prohibits writes into internal .git structures, user global config, or critical metadata.
+     * Prohibits writes into internal .git structures, user global config, critical metadata,
+     * or through symbolic links.
      *
      * @param untrustedPath untrusted path string
      * @return validated Path
      */
     public Path validateForWrite(String untrustedPath) {
+        Path rawPath = activeWorkingRoot.toAbsolutePath().normalize().resolve(untrustedPath);
+        if (Files.isSymbolicLink(rawPath)) {
+            throw new SecurityException("Refusing to write through symbolic link: " + rawPath);
+        }
+
         Path resolved = validateAndResolve(untrustedPath);
+        if (Files.isSymbolicLink(resolved)) {
+            throw new SecurityException("Refusing to write through symbolic link: " + resolved);
+        }
+
         Path normalizedRoot = activeWorkingRoot.toAbsolutePath().normalize();
         Path relative = normalizedRoot.relativize(resolved.toAbsolutePath().normalize());
 

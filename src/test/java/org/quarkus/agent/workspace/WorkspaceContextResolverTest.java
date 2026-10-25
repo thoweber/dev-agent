@@ -123,4 +123,35 @@ class WorkspaceContextResolverTest {
 
         assertThat(resolver.getWorkingDir()).isEqualTo(Path.of(System.getProperty("user.dir")));
     }
+
+    @Test
+    @DisplayName("Given resolveEffectiveRoot - when called with various inputs - resolves correct root")
+    void testResolveEffectiveRoot() {
+        Path customDir = tempDir.resolve("custom");
+        Path parentDir = tempDir.resolve("parent");
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot(customDir.toString(), parentDir.toString()))
+            .isEqualTo(customDir.toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot(".", parentDir.toString()))
+            .isEqualTo(parentDir.toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot(null, parentDir.toString()))
+            .isEqualTo(parentDir.toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot(".", "."))
+            .isEqualTo(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
+    }
+
+    @Test
+    @DisplayName("Given workspace - when resolving metadata paths - returns expected locations")
+    void testResolveMetadataPaths() {
+        WorkspaceContextResolver resolver = new WorkspaceContextResolver(tempDir);
+
+        Path root = tempDir.toAbsolutePath().normalize();
+        assertThat(resolver.resolveAgentsDir()).isEqualTo(root.resolve(".agents"));
+        assertThat(resolver.resolveRulesDir()).isEqualTo(root.resolve(".agents/rules"));
+        assertThat(resolver.resolveConfigFile()).isEqualTo(root.resolve(".agents/dev-agent.yaml"));
+        assertThat(resolver.getJailValidator().getActiveWorkingRoot()).isEqualTo(root);
+    }
 }

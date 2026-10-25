@@ -42,6 +42,7 @@ public class DevAgentCommand implements Runnable {
     private boolean verbose;
 
     @Override
+    @SuppressWarnings("java:S106")
     public void run() {
         System.out.println("dev-agent CLI 1.0.0-SNAPSHOT. Run with --help for available commands.");
     }
