@@ -382,7 +382,7 @@ Main Workspace (Branch: main)             Isolated Worktree (Branch: feat/US-042
 ### Git Worktree Lifecycle Engine (`GitWorktreeService`)
 * **Worktree Allocation**: Detached runs create an isolated working directory under `.git/dev-agent-worktrees/<task-id>/` checked out to branch `feat/<task-id>`.
 * **Automatic Working-Tree Hydration**: If the developer has uncommitted changes in their IDE, the agent creates an ephemeral stash (`git stash create`) and applies it inside the newly allocated worktree, capturing in-progress thoughts without altering the primary workspace index.
-* **Dependency Cache Sharing**: The agent uses global package manager caches (`~/.npm` via `--cache`) rather than directory symlinks, preventing permission crashes on Windows/WSL2 and eliminating mutation leaks into the host tree.
+* **Dependency Isolation & Zero-Symlink Module Resolution**: Symlinks between worktrees and primary `node_modules` are strictly skipped to prevent mutation leaks, IDE watcher recursion, and Windows privilege issues. The agent injects `NODE_PATH=<root>/node_modules` and prepends `<root>/node_modules/.bin` to `PATH`, while slicing all tool caches to `target-agent/` (e.g. `VITE_CACHE_DIR=target-agent/.vite-cache`, `--cacheDirectory target-agent/.jest-cache`). The primary workspace `node_modules` remains strictly read-only.
 
 ### Non-Locking Ephemeral State Sockets (`state.json`)
 To avoid H2 MVStore database lock crashes (`Database may be already in use`) when running status queries while a background worker is compiling:

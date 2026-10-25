@@ -14,12 +14,30 @@ import picocli.CommandLine.Option;
 )
 public class StatusCommand implements Runnable {
 
+    @Option(names = {"-d", "--dir", "--workspace"}, description = "Target workspace root directory", defaultValue = ".")
+    private String dir = ".";
+
     @Option(names = {"--all"}, description = "Show all historical and active task statuses")
     private boolean all;
+
+    @Option(names = {"--json"}, description = "Output status formatted as JSON")
+    private boolean json;
 
     @Override
     public void run() {
         System.out.println("[dev-agent] Checking active task sockets...");
         System.out.println("[dev-agent] No active background tasks detected.");
+    }
+
+    public String getDir() {
+        return dir;
+    }
+
+    public boolean isAll() {
+        return all;
+    }
+
+    public boolean isJson() {
+        return json;
     }
 }

@@ -18,6 +18,9 @@ public class LogsCommand implements Runnable {
     @Parameters(index = "0", description = "The task ID to stream logs for", arity = "0..1")
     private String taskId;
 
+    @Option(names = {"-d", "--dir", "--workspace"}, description = "Target workspace root directory", defaultValue = ".")
+    private String dir = ".";
+
     @Option(names = {"-f", "--follow"}, description = "Follow live log output")
     private boolean follow;
 
@@ -28,5 +31,17 @@ public class LogsCommand implements Runnable {
             return;
         }
         System.out.println("[dev-agent] Streaming logs for task: " + taskId);
+    }
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public String getDir() {
+        return dir;
+    }
+
+    public boolean isFollow() {
+        return follow;
     }
 }
