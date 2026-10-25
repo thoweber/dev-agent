@@ -13,8 +13,16 @@ import java.util.Optional;
 @ApplicationScoped
 public class CrashRecoveryDetector {
 
+    private final ProjectIdResolver projectResolver;
+
     @Inject
-    ProjectIdResolver projectResolver;
+    public CrashRecoveryDetector(ProjectIdResolver projectResolver) {
+        this.projectResolver = projectResolver;
+    }
+
+    public CrashRecoveryDetector() {
+        this(new ProjectIdResolver());
+    }
 
     public Optional<TaskRunEntity> findResumableTask() {
         return findResumableTask(projectResolver.resolveProjectId());

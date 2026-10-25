@@ -36,4 +36,21 @@ class ProjectIdResolverTest {
         String plainHttps = "https://github.com/my-org/my-project";
         assertThat(resolver.normalizeRemote(plainHttps)).isEqualTo("my-org/my-project");
     }
+
+    @Test
+    @DisplayName("Given null or blank remote - returns unknown")
+    void testNormalizeNullAndBlank() {
+        ProjectIdResolver resolver = new ProjectIdResolver();
+        assertThat(resolver.normalizeRemote(null)).isEqualTo("unknown");
+        assertThat(resolver.normalizeRemote("   ")).isEqualTo("unknown");
+    }
+
+    @Test
+    @DisplayName("Given resolver initialized with workspace - resolves project id")
+    void testResolveProjectIdWithWorkspace() {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        ProjectIdResolver resolver = new ProjectIdResolver(workspace);
+
+        assertThat(resolver.resolveProjectId()).isNotNull().hasSize(64);
+    }
 }

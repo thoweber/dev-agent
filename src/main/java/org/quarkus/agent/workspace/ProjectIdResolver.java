@@ -21,11 +21,19 @@ public class ProjectIdResolver {
     private static final Pattern SCP_PATTERN = Pattern.compile("^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:(.+)$");
     private static final Pattern URL_PATTERN = Pattern.compile("^https?://[^/]+/(.+)$");
 
+    private final WorkspaceContextResolver workspaceResolver;
+
     @Inject
-    WorkspaceContextResolver workspaceResolver;
+    public ProjectIdResolver(WorkspaceContextResolver workspaceResolver) {
+        this.workspaceResolver = workspaceResolver;
+    }
+
+    public ProjectIdResolver() {
+        this(new WorkspaceContextResolver());
+    }
 
     public String resolveProjectId() {
-        return resolveForPath(workspaceResolver.getProjectRoot());
+        return resolveForPath(workspaceResolver.resolveRepoRoot());
     }
 
     public String resolveForPath(Path rootPath) {
@@ -56,26 +64,37 @@ public class ProjectIdResolver {
         return clean;
     }
 
+    @SuppressWarnings("java:S4036")
     private String probeGitRemote(Path rootPath) {
         try {
             Process process = new ProcessBuilder("git", "config", "--get", "remote.origin.url")
                 .directory(rootPath.toFile())
                 .start();
             boolean finished = process.waitFor(2, TimeUnit.SECONDS);
-            if (finished && process.exitValue() == 0) {
+            if (!finished) {
+                process.destroyForcibly();
+            } else if (process.exitValue() == 0) {
                 return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
             }
-        } catch (Exception e) {
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        } catch (IOException _) {
             // Git command failed or directory not a git repo
         }
         return null;
     }
 
     private String computeSha256Fallback(Path rootPath) {
+        Path targetPath;
         try {
-            Path real = rootPath.toRealPath();
+            targetPath = rootPath.toRealPath();
+        } catch (IOException _) {
+            targetPath = rootPath.toAbsolutePath().normalize();
+        }
+
+        try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(real.toString().getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(targetPath.toString().getBytes(StandardCharsets.UTF_8));
             StringBuilder hexString = new StringBuilder();
             for (byte b : hash) {
                 String hex = Integer.toHexString(0xff & b);
@@ -85,8 +104,8 @@ public class ProjectIdResolver {
                 hexString.append(hex);
             }
             return hexString.toString();
-        } catch (IOException | NoSuchAlgorithmException e) {
-            return "default-project";
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm must be supported by the JVM runtime", e);
         }
     }
 }

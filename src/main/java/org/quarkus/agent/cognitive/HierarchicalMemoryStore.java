@@ -1,7 +1,9 @@
 package org.quarkus.agent.cognitive;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -13,8 +15,9 @@ import java.util.List;
 
 /**
  * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
- * Tier 1 (Pinned Invariants) and Tier 2 (Pinned Task Spec) are never evicted during self-healing loops.
- * Tier 3 (Sliding Scratchpad) maintains a bounded window of recent compiler/test interactions.
+ * Tier 1 (Pinned Invariants) and Tier 2 (Pinned Task Spec) are preserved across sliding iterations.
+ * Tier 3 (Sliding Scratchpad) maintains a bounded window of recent compiler/test interactions,
+ * evicting tool execution requests and their corresponding results atomically.
  */
 @ApplicationScoped
 public class HierarchicalMemoryStore implements ChatMemory {
@@ -22,7 +25,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     private SystemMessage pinnedInvariants;
     private UserMessage pinnedTaskSpec;
     private final List<ChatMessage> slidingScratchpad = new LinkedList<>();
-    private final int maxScratchpadMessages = 4;
+    private static final int MAX_SCRATCHPAD_MESSAGES = 4;
 
     @Override
     public Object id() {
@@ -44,13 +47,23 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     @Override
     public void add(ChatMessage message) {
-        if (message instanceof SystemMessage systemMessage) {
+        if (message instanceof SystemMessage systemMessage && pinnedInvariants == null) {
             this.pinnedInvariants = systemMessage;
             return;
         }
         slidingScratchpad.add(message);
-        while (slidingScratchpad.size() > maxScratchpadMessages) {
-            slidingScratchpad.remove(0);
+        trimScratchpad();
+    }
+
+    private void trimScratchpad() {
+        while (slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES) {
+            ChatMessage removed = slidingScratchpad.removeFirst();
+            if (removed instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                // Evict corresponding ToolExecutionResultMessage entries together with request
+                while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
+                    slidingScratchpad.removeFirst();
+                }
+            }
         }
     }
 
@@ -69,6 +82,12 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     @Override
     public void clear() {
+        pinnedInvariants = null;
+        pinnedTaskSpec = null;
+        slidingScratchpad.clear();
+    }
+
+    public void clearScratchpad() {
         slidingScratchpad.clear();
     }
 }

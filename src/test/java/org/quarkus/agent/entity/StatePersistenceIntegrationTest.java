@@ -3,6 +3,7 @@ package org.quarkus.agent.entity;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.quarkus.agent.workspace.ProjectIdResolver;
@@ -17,11 +18,19 @@ class StatePersistenceIntegrationTest {
     @Inject
     ProjectIdResolver projectResolver;
 
+    @BeforeEach
+    @Transactional
+    void setUp() {
+        StepAuditEntity.deleteAll();
+        TaskRunEntity.deleteAll();
+    }
+
     @Test
     @Transactional
     @DisplayName("Given tasks across multiple projects - when queried by project_id - then isolates data without cross-talk")
     void testMultiTenantIsolation() {
         // Clean up previous runs if any
+        StepAuditEntity.deleteAll();
         TaskRunEntity.deleteAll();
 
         // Seed Project A task
@@ -93,13 +102,14 @@ class StatePersistenceIntegrationTest {
         TaskRunEntity updated = TaskRunEntity.findByProjectAndTask("thoweber/dev-agent", "TASK-PROJECTION-01");
         assertThat(updated.status).isEqualTo(TaskStatus.RED_TEST);
 
-        java.nio.file.Path journalPath = workspaceResolver.getProjectRoot()
-            .resolve(".agents/runs/TASK-PROJECTION-01.md");
+        java.nio.file.Path journalPath = workspaceResolver.resolveAgentsDir()
+            .resolve("runs/TASK-PROJECTION-01.md");
         assertThat(journalPath).isRegularFile();
         String content = java.nio.file.Files.readString(journalPath);
         assertThat(content).contains("TASK-PROJECTION-01")
             .contains("RED_TEST")
-            .contains("Verify dual representation");
+            .contains("Verify dual representation")
+            .contains("Added failing test");
 
         // Clean up generated test run journal
         java.nio.file.Files.deleteIfExists(journalPath);

@@ -26,6 +26,53 @@ class SecretRedactionFilterTest {
         assertThat(filter.scrub(logWithBearer))
             .doesNotContain("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.t-IDc")
             .contains("***REDACTED_CREDENTIAL***");
+
+        String logWithBasic = "Authorization: Basic dXNlcjpwYXNzd29yZDEyMzQ1Njc=";
+        assertThat(filter.scrub(logWithBasic))
+            .doesNotContain("dXNlcjpwYXNzd29yZDEyMzQ1Njc=")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String logWithOpenAi = "Key: sk-123456789012345678901234567890123456789012345678";
+        assertThat(filter.scrub(logWithOpenAi))
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String logWithNpm = "Token: npm_123456789012345678901234567890123456";
+        assertThat(filter.scrub(logWithNpm))
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String logWithAws = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";
+        assertThat(filter.scrub(logWithAws))
+            .doesNotContain("AKIAIOSFODNN7EXAMPLE")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String logWithOpenAiProj = "sk-proj-abc1234567890_def-GHIJKLMN-1234567890";
+        assertThat(filter.scrub(logWithOpenAiProj))
+            .doesNotContain("sk-proj-abc1234567890_def-GHIJKLMN-1234567890")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String pemKey = """
+            -----BEGIN RSA PRIVATE KEY-----
+            MIIEowIBAAKCAQEA0Y1+
+            -----END RSA PRIVATE KEY-----
+            """;
+        assertThat(filter.scrub(pemKey))
+            .doesNotContain("MIIEowIBAAKCAQEA0Y1+")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String jsonConfig = "{\"password\": \"superSecretPassword123\", \"authToken\": \"mySecretAuthToken456\"}";
+        assertThat(filter.scrub(jsonConfig))
+            .doesNotContain("superSecretPassword123")
+            .doesNotContain("mySecretAuthToken456")
+            .contains("\"password\": \"***REDACTED_CREDENTIAL***\"")
+            .contains("\"authToken\": \"***REDACTED_CREDENTIAL***\"");
+    }
+
+    @Test
+    @DisplayName("Given null or blank input - when scrub called - returns input unchanged")
+    void testNullAndBlankInput() {
+        assertThat(filter.scrub(null)).isNull();
+        assertThat(filter.scrub("")).isEmpty();
+        assertThat(filter.scrub("   ")).isEqualTo("   ");
     }
 
     @Test
