@@ -1,0 +1,107 @@
+package org.quarkus.agent.entity;
+
+import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.quarkus.agent.workspace.ProjectIdResolver;
+
+import java.time.Instant;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@QuarkusTest
+class StatePersistenceIntegrationTest {
+
+    @Inject
+    ProjectIdResolver projectResolver;
+
+    @Test
+    @Transactional
+    @DisplayName("Given tasks across multiple projects - when queried by project_id - then isolates data without cross-talk")
+    void testMultiTenantIsolation() {
+        // Clean up previous runs if any
+        TaskRunEntity.deleteAll();
+
+        // Seed Project A task
+        TaskRunEntity taskA = new TaskRunEntity();
+        taskA.projectId = "thoweber/omnidepot";
+        taskA.taskId = "TASK-001";
+        taskA.status = TaskStatus.PLANNING;
+        taskA.currentPhase = "PLANNING";
+        taskA.createdAt = Instant.now();
+        taskA.updatedAt = Instant.now();
+        taskA.persist();
+
+        // Seed Project B task
+        TaskRunEntity taskB = new TaskRunEntity();
+        taskB.projectId = "thoweber/store-front";
+        taskB.taskId = "TASK-001"; // Same taskId, different projectId
+        taskB.status = TaskStatus.GREEN_PATCH;
+        taskB.currentPhase = "GREEN_PATCH";
+        taskB.createdAt = Instant.now();
+        taskB.updatedAt = Instant.now();
+        taskB.persist();
+
+        // Verify Project A query
+        TaskRunEntity retrievedA = TaskRunEntity.findByProjectAndTask("thoweber/omnidepot", "TASK-001");
+        assertThat(retrievedA).isNotNull();
+        assertThat(retrievedA.projectId).isEqualTo("thoweber/omnidepot");
+        assertThat(retrievedA.status).isEqualTo(TaskStatus.PLANNING);
+
+        // Verify Project B query
+        TaskRunEntity retrievedB = TaskRunEntity.findByProjectAndTask("thoweber/store-front", "TASK-001");
+        assertThat(retrievedB).isNotNull();
+        assertThat(retrievedB.projectId).isEqualTo("thoweber/store-front");
+        assertThat(retrievedB.status).isEqualTo(TaskStatus.GREEN_PATCH);
+
+        // Verify count per project
+        long countA = TaskRunEntity.count("projectId", "thoweber/omnidepot");
+        assertThat(countA).isEqualTo(1);
+    }
+
+    @Inject
+    jakarta.enterprise.event.Event<org.quarkus.agent.model.TaskStateChangeEvent> stateChangeEvent;
+
+    @Inject
+    org.quarkus.agent.workspace.WorkspaceContextResolver workspaceResolver;
+
+    @Test
+    @Transactional
+    @DisplayName("Given state change event - when fired - then updates H2 and projects Markdown journal")
+    void testStateChangeEventProjectsMarkdown() throws Exception {
+        TaskRunEntity task = new TaskRunEntity();
+        task.projectId = "thoweber/dev-agent";
+        task.taskId = "TASK-PROJECTION-01";
+        task.userStory = "Verify dual representation";
+        task.status = TaskStatus.PLANNING;
+        task.currentPhase = "PLANNING";
+        task.createdAt = Instant.now();
+        task.updatedAt = Instant.now();
+        task.persist();
+
+        stateChangeEvent.fire(new org.quarkus.agent.model.TaskStateChangeEvent(
+            "thoweber/dev-agent",
+            "TASK-PROJECTION-01",
+            TaskStatus.RED_TEST,
+            "RED_TEST",
+            "Added failing test",
+            Instant.now()
+        ));
+
+        TaskRunEntity updated = TaskRunEntity.findByProjectAndTask("thoweber/dev-agent", "TASK-PROJECTION-01");
+        assertThat(updated.status).isEqualTo(TaskStatus.RED_TEST);
+
+        java.nio.file.Path journalPath = workspaceResolver.getProjectRoot()
+            .resolve(".agents/runs/TASK-PROJECTION-01.md");
+        assertThat(journalPath).isRegularFile();
+        String content = java.nio.file.Files.readString(journalPath);
+        assertThat(content).contains("TASK-PROJECTION-01")
+            .contains("RED_TEST")
+            .contains("Verify dual representation");
+
+        // Clean up generated test run journal
+        java.nio.file.Files.deleteIfExists(journalPath);
+    }
+}

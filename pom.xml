@@ -108,10 +108,14 @@
             <artifactId>quarkus-cache</artifactId>
         </dependency>
 
-        <!-- Relational State (Embedded H2) -->
+        <!-- Relational State (Embedded H2 & Hibernate Panache) -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jdbc-h2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
 
         <!-- Eclipse Vert.x Reactive Core -->

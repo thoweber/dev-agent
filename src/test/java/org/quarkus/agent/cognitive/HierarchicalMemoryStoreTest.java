@@ -1,0 +1,40 @@
+package org.quarkus.agent.cognitive;
+
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class HierarchicalMemoryStoreTest {
+
+    @Test
+    @DisplayName("Given 3-tier memory store - when messages added beyond capacity - then evicts scratchpad but preserves pinned tiers")
+    void testHierarchicalEvictionStrategy() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.pinInvariants("Rules: Quarkus Arc CDI Scoping Invariants");
+        memory.pinTaskSpecification("US-042: Add OAuth2 Endpoint", "{\"steps\":[\"step1\"]}");
+
+        // Add 10 successive tool/scratchpad conversation turns
+        for (int i = 1; i <= 10; i++) {
+            memory.add(new UserMessage("Tool execution failure " + i));
+            memory.add(new AiMessage("Fix attempt " + i));
+        }
+
+        List<ChatMessage> messages = memory.messages();
+
+        // Max messages: 1 System (Invariants) + 1 User (Task Spec) + 4 Scratchpad turns = 6 messages
+        assertThat(messages).hasSize(6);
+
+        // Verify Tier 1 and Tier 2 remain strictly at indices 0 and 1
+        assertThat(((dev.langchain4j.data.message.SystemMessage) messages.get(0)).text()).contains("Quarkus Arc CDI Scoping Invariants");
+        assertThat(((dev.langchain4j.data.message.UserMessage) messages.get(1)).singleText()).contains("US-042: Add OAuth2 Endpoint");
+
+        // Verify the newest scratchpad messages are preserved (Turn 10)
+        assertThat(((dev.langchain4j.data.message.AiMessage) messages.get(5)).text()).contains("Fix attempt 10");
+    }
+}

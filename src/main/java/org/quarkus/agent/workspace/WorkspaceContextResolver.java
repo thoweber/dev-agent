@@ -113,4 +113,8 @@ public class WorkspaceContextResolver {
     public Path getWorkingDir() {
         return workingDir;
     }
+
+    public Path getProjectRoot() {
+        return resolveRepoRoot();
+    }
 }
