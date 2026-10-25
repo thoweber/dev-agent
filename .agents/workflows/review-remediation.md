@@ -77,14 +77,14 @@ Before pushing any commit, verify that all local checks pass in accordance with 
 
 ---
 
-## Step 5: Remote Delivery & Thread Resolution
+## Step 5: Remote Delivery, Quality Gate Polling & Review Completion Detection
 
 1. Stage and commit with conventional messages: `fix(cli): ...`, `test(cli): ...`, `docs(adr): ...`.
 2. Push to the active feature branch:
    ```bash
    git push origin feature/<TASK-ID>-<slug>
    ```
-3. Reply to CodeRabbit comments on GitHub and resolve threads.
+3. Reply to existing CodeRabbit comments on GitHub and resolve threads.
 4. Bounded SonarCloud Quality Gate polling:
    ```bash
    # Poll SonarCloud with max 5 attempts (30s sleep) and fail-fast error detection:
@@ -101,3 +101,49 @@ Before pushing any commit, verify that all local checks pass in accordance with 
      fi
    done
    ```
+5. Bounded CodeRabbit Review Completion Polling:
+   After pushing a new commit, CodeRabbit automatically triggers a background review on GitHub. To determine when CodeRabbit has finished its review, use one of the two canonical detection methods:
+
+   **Method A: Commit Status API (Recommended)**  
+   CodeRabbit registers a commit status check on `<HEAD_SHA>` with context `"CodeRabbit"`.
+   * **In-Progress**: `state: "pending"`, `description: "Review in progress"`
+   * **Completed**: `state: "success"`, `description: "Review completed"`
+
+   ```bash
+   HEAD_SHA=$(git rev-parse HEAD)
+   echo "Polling CodeRabbit commit status on ${HEAD_SHA:0:7}..."
+   for i in {1..10}; do
+     STATUS_JSON=$(gh api "repos/{owner}/{repo}/commits/${HEAD_SHA}/statuses" \
+       --jq '[.[] | select(.context == "CodeRabbit")][0]')
+     STATE=$(echo "$STATUS_JSON" | jq -r '.state // empty')
+     DESC=$(echo "$STATUS_JSON" | jq -r '.description // empty')
+
+     echo "CodeRabbit status (attempt $i/10): state=${STATE:-pending}, desc='${DESC:-Review in progress}'"
+
+     if [ "$STATE" = "success" ]; then
+       echo "CodeRabbit review completed successfully!"
+       break
+     fi
+     sleep 30
+   done
+   ```
+
+   **Method B: Top-Level PR Comment Marker Inspection**  
+   CodeRabbit maintains a top-level summary comment in `/issues/<PR_ID>/comments`.
+   * **In-Progress**: The comment body contains `<!-- This is an auto-generated comment: review in progress by coderabbit.ai -->` and `Currently processing new changes in this PR`.
+   * **Completed**: The in-progress marker is removed and replaced with `<!-- recent_review_start -->` and the review summary.
+
+   ```bash
+   IN_PROGRESS=$(gh api "repos/{owner}/{repo}/issues/<PR_ID>/comments" \
+     --jq '[.[] | select(.user.login == "coderabbitai[bot]")][-1].body' | grep -c "review in progress" || true)
+
+   if [ "$IN_PROGRESS" -eq 0 ]; then
+     echo "CodeRabbit has finished processing the PR summary comment."
+   fi
+   ```
+
+6. Autonomous Loop Termination or Re-Ingestion:  
+   Once CodeRabbit's review completes:
+   * Query `gh api "repos/{owner}/{repo}/pulls/<PR_ID>/comments"` to inspect for any new review comments on the latest commit.
+   * If new actionable comments exist, re-enter **Step 2 (Classification)**.
+   * If no new actionable comments exist (or the recent review section notes *"No actionable comments were generated in the recent review"*), the remediation workflow terminates with **100% Quality Gate & Review Approval**.
