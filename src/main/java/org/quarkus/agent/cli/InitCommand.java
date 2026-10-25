@@ -4,6 +4,7 @@ import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import org.quarkus.agent.workspace.RepoPath;
 import org.quarkus.agent.workspace.WorkspaceJailValidator;
 
 import java.io.IOException;
@@ -34,7 +35,7 @@ public class InitCommand extends BaseAgentCommand {
 
         Path agentsDir = jail.validateAndResolve(".agents");
         Path rulesDir = jail.validateAndResolve(".agents/rules");
-        Path yamlPath = jail.validateForWrite(".agents/dev-agent.yaml");
+        RepoPath yamlPath = jail.validateForWrite(".agents/dev-agent.yaml");
 
         try {
             if (!Files.exists(agentsDir)) {
@@ -44,15 +45,15 @@ public class InitCommand extends BaseAgentCommand {
                 Files.createDirectories(rulesDir);
             }
 
-            if (Files.exists(yamlPath) && !force) {
-                String existingYaml = Files.readString(yamlPath);
+            if (Files.exists(yamlPath.toPath()) && !force) {
+                String existingYaml = Files.readString(yamlPath.toPath());
                 if (!existingYaml.contains("Archetype: " + archetype.getId())) {
                     getErr().printf("[dev-agent] Workspace already initialized with different archetype. Use --force to overwrite.%n");
                     return;
                 }
             } else {
                 String yamlContent = generateYamlConfig(archetype);
-                Files.writeString(yamlPath, yamlContent);
+                Files.writeString(yamlPath.toPath(), yamlContent);
             }
 
             scaffoldArchetypeRules(rulesDir, archetype, jail);

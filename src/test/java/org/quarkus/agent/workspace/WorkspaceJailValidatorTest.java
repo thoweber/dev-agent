@@ -63,14 +63,14 @@ class WorkspaceJailValidatorTest {
     }
 
     @Test
-    @DisplayName("Given valid file for write - when checked - then returns validated Path")
+    @DisplayName("Given valid file for write - when checked - then returns validated RepoPath")
     void testValidateForWriteSuccess() throws IOException {
         Path validFile = Files.createFile(tempDir.resolve("valid.yaml"));
         WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
 
-        Path resolved = validator.validateForWrite("valid.yaml");
+        RepoPath resolved = validator.validateForWrite("valid.yaml");
 
-        assertThat(resolved).isEqualTo(validFile.toRealPath());
+        assertThat(resolved.toPath()).isEqualTo(validFile.toRealPath());
         assertThat(validator.getActiveWorkingRoot()).isEqualTo(tempDir);
     }
 

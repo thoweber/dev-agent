@@ -15,7 +15,6 @@ import org.quarkus.agent.model.TaskStateChangeEvent;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
@@ -155,26 +154,11 @@ public class StateSyncService {
 
         try {
             Files.createDirectories(targetRunsDir);
-            Path realRunsDir = targetRunsDir.toRealPath();
-            Path normalizedRunsDir = targetRunsDir.toAbsolutePath().normalize();
-            Path journalFile = normalizedRunsDir.resolve(entity.taskId + ".md").normalize();
-
-            if (Files.isSymbolicLink(journalFile)) {
-                throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for task journals: " + journalFile);
-            }
-
-            if (Files.exists(journalFile, LinkOption.NOFOLLOW_LINKS)) {
-                if (Files.isSymbolicLink(journalFile) || !journalFile.toRealPath().startsWith(realRunsDir)) {
-                    throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for task journals: " + journalFile);
-                }
-            }
-
-            if (!journalFile.startsWith(normalizedRunsDir)) {
-                throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + entity.taskId);
-            }
+            RepoPath runsDir = RepoPath.of(targetRunsDir, workspaceResolver.resolveRepoRoot());
+            RepoPath journalFile = runsDir.resolve(entity.taskId + ".md");
 
             Files.writeString(
-                journalFile,
+                journalFile.toPath(),
                 secretFilter.scrub(markdown),
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING,

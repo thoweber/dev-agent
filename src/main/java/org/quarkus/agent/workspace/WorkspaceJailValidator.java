@@ -62,28 +62,16 @@ public class WorkspaceJailValidator {
      * or through symbolic links.
      *
      * @param untrustedPath untrusted path string
-     * @return validated Path
+     * @return validated RepoPath
      */
-    public Path validateForWrite(String untrustedPath) {
+    public RepoPath validateForWrite(String untrustedPath) {
         Path rawPath = activeWorkingRoot.toAbsolutePath().normalize().resolve(untrustedPath);
         if (Files.isSymbolicLink(rawPath)) {
             throw new SecurityException("Refusing to write through symbolic link: " + rawPath);
         }
 
         Path resolved = validateAndResolve(untrustedPath);
-        if (Files.isSymbolicLink(resolved)) {
-            throw new SecurityException("Refusing to write through symbolic link: " + resolved);
-        }
-
-        Path normalizedRoot = activeWorkingRoot.toAbsolutePath().normalize();
-        Path relative = normalizedRoot.relativize(resolved.toAbsolutePath().normalize());
-
-        String pathStr = relative.toString().replace('\\', '/');
-        if (pathStr.equals(".git") || pathStr.startsWith(".git/")) {
-            throw new SecurityException("Protected location: modification of .git directory is forbidden: " + untrustedPath);
-        }
-
-        return resolved;
+        return RepoPath.of(resolved, activeWorkingRoot);
     }
 
     public Path getActiveWorkingRoot() {
