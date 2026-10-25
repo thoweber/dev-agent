@@ -29,6 +29,7 @@ public abstract class BaseAgentCommand implements Runnable {
         return spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
     }
 
+    @SuppressWarnings("java:S106")
     protected PrintWriter getErr() {
         return spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
     }

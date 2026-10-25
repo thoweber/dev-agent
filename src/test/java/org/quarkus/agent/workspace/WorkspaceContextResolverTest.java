@@ -79,8 +79,7 @@ class WorkspaceContextResolverTest {
         WorkspaceContextResolver resolver = new WorkspaceContextResolver(tempDir);
         Optional<Path> frontend = resolver.resolveFrontendRoot();
 
-        assertThat(frontend).isPresent();
-        assertThat(frontend.get()).isEqualTo(frontendDir);
+        assertThat(frontend).contains(frontendDir);
     }
 
     @Test
@@ -93,8 +92,7 @@ class WorkspaceContextResolverTest {
         WorkspaceContextResolver resolver = new WorkspaceContextResolver(tempDir);
         Optional<Path> frontend = resolver.resolveFrontendRoot();
 
-        assertThat(frontend).isPresent();
-        assertThat(frontend.get()).isEqualTo(uiDir);
+        assertThat(frontend).contains(uiDir);
     }
 
     @Test
