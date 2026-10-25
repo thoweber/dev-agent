@@ -10,6 +10,7 @@ Aggressive regex secret scrubbers often corrupt legitimate test assertions (e.g.
 Quarantine secret redaction to specific output boundaries:
 1. **Never apply** redaction to raw source code, test files, or compiler inputs.
 2. **Strictly apply** redaction to tool execution outputs before writing to H2 `StepAuditEntity`, telemetry logs, exported Markdown runbooks, and remote API request payloads.
+3. **Strongly-Typed Value Object (`SanitizedOutput`):** Wrap credential-scrubbed text in the `SanitizedOutput` domain value object. Persistence sinks and audit entities (`StepAuditEntity`) consume `SanitizedOutput` to make writing unredacted strings a compile-time impossibility.
 
 ## Consequences
 ### Positive

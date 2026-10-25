@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import org.quarkus.agent.workspace.SanitizedOutput;
 
 /**
  * Audit record of individual tool executions and code patches.
@@ -47,4 +48,12 @@ public class StepAuditEntity extends PanacheEntityBase {
 
     @Column(name = "created_at", nullable = false)
     public Instant createdAt;
+
+    public void setSanitizedInput(SanitizedOutput input) {
+        this.sanitizedInput = input != null ? input.value() : null;
+    }
+
+    public void setOutputSummary(SanitizedOutput summary) {
+        this.outputSummary = summary != null ? summary.value() : null;
+    }
 }

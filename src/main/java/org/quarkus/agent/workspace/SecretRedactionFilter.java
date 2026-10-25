@@ -30,6 +30,10 @@ public class SecretRedactionFilter {
         Pattern.compile("-----BEGIN [A-Z0-9 _-]+ PRIVATE KEY-----[\\s\\S]+?-----END [A-Z0-9 _-]+ PRIVATE KEY-----")
     );
 
+    public SanitizedOutput sanitize(String input) {
+        return SanitizedOutput.of(input, this);
+    }
+
     public String scrub(String input) {
         if (input == null || input.isBlank()) {
             return input;

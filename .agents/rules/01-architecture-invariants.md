@@ -33,4 +33,4 @@
 ## 7. Context-Aware Secret Redaction Quarantine (ADR-008)
 * Secret scrubbing is strictly quarantined:
   * **Never applied** to raw Java/TypeScript source code or test files.
-  * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity`, HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+  * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity` (via strongly-typed `SanitizedOutput`), HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.

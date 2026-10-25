@@ -59,7 +59,7 @@ public class StateSyncService {
             StepAuditEntity step = new StepAuditEntity();
             step.taskRun = entity;
             step.toolName = event.phaseName();
-            step.outputSummary = secretFilter.scrub(event.stepSummary());
+            step.setOutputSummary(secretFilter.sanitize(event.stepSummary()));
             step.exitCode = 0;
             step.durationMs = 0L;
             step.createdAt = event.timestamp();
@@ -159,7 +159,7 @@ public class StateSyncService {
 
             Files.writeString(
                 journalFile.toPath(),
-                secretFilter.scrub(markdown),
+                secretFilter.sanitize(markdown).value(),
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING,
                 StandardOpenOption.WRITE
