@@ -28,6 +28,8 @@ Remote CI/CD runs are too slow for autonomous iteration. Execute these fast loca
   `./mvnw clean verify`
 * **Auto-Format Code:**  
   `./mvnw spotless:apply`
+* **SonarCloud Quality Gate Analysis:**  
+  `./mvnw sonar:sonar -Dsonar.qualitygate.wait=true`
 
 ---
 

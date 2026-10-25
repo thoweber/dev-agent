@@ -103,6 +103,9 @@ Fast feedback commands for autonomous agents and contributors:
 
 # Auto-Format Code
 ./mvnw spotless:apply
+
+# SonarCloud Quality Gate Analysis
+./mvnw sonar:sonar -Dsonar.qualitygate.wait=true
 ```
 
 ---

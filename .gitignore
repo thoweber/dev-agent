@@ -10,6 +10,8 @@ build-agent/
 # Dev-Agent Worktrees and Runbook Telemetry
 .git/dev-agent-worktrees/
 .agents/runs/
+.sonar/
+**/.sonar/
 
 # Environment Credentials and Local Secret Overrides
 .env

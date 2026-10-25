@@ -31,6 +31,13 @@
         <lombok.version>1.18.46</lombok.version>
         <jspecify.version>1.0.1</jspecify.version>
         <spotless-plugin.version>3.9.0</spotless-plugin.version>
+
+        <!-- SonarCloud Configuration -->
+        <sonar.version>5.8.0.7211</sonar.version>
+        <sonar.organization>thoweber</sonar.organization>
+        <sonar.projectKey>thoweber_dev-agent</sonar.projectKey>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
     <dependencyManagement>
@@ -228,6 +235,11 @@
                         <removeUnusedImports />
                     </java>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>${sonar.version}</version>
             </plugin>
         </plugins>
     </build>
