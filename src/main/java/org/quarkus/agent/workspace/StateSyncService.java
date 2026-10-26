@@ -9,8 +9,9 @@ import jakarta.transaction.Synchronization;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
-import org.quarkus.agent.entity.StepAuditEntity;
-import org.quarkus.agent.entity.TaskRunEntity;
+import org.quarkus.agent.entity.TaskPersistenceService;
+import org.quarkus.agent.model.StepAudit;
+import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStateChangeEvent;
 
 import java.io.IOException;
@@ -18,10 +19,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 
 /**
  * Service that synchronizes database transitions to human-readable Markdown run journals.
+ * Consumes decoupled domain models and delegates entity operations to TaskPersistenceService.
  */
 @ApplicationScoped
 public class StateSyncService {
@@ -30,52 +31,39 @@ public class StateSyncService {
 
     private final WorkspaceContextResolver workspaceResolver;
     private final SecretRedactionFilter secretFilter;
+    private final TaskPersistenceService persistenceService;
 
     @Inject
     Instance<TransactionSynchronizationRegistry> registryInstance;
 
     @Inject
-    public StateSyncService(WorkspaceContextResolver workspaceResolver, SecretRedactionFilter secretFilter) {
+    public StateSyncService(
+        WorkspaceContextResolver workspaceResolver,
+        SecretRedactionFilter secretFilter,
+        TaskPersistenceService persistenceService
+    ) {
         this.workspaceResolver = workspaceResolver;
         this.secretFilter = secretFilter;
+        this.persistenceService = persistenceService;
     }
 
     public StateSyncService() {
-        this(new WorkspaceContextResolver(), new SecretRedactionFilter());
+        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService());
     }
 
     @Transactional
     public void onStateTransition(@Observes TaskStateChangeEvent event) {
-        TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(event.projectId(), event.taskId());
-        if (entity == null) {
-            return;
+        SanitizedOutput sanitizedSummary = event.stepSummary() != null && !event.stepSummary().isBlank()
+            ? secretFilter.sanitize(event.stepSummary())
+            : null;
+
+        TaskRun taskRun = persistenceService.recordStateChange(event, sanitizedSummary);
+        if (taskRun != null) {
+            scheduleMarkdownProjection(taskRun);
         }
-
-        entity.status = event.newStatus();
-        entity.currentPhase = event.phaseName();
-        entity.updatedAt = event.timestamp();
-
-        if (event.stepSummary() != null && !event.stepSummary().isBlank()) {
-            StepAuditEntity step = new StepAuditEntity();
-            step.taskRun = entity;
-            step.toolName = event.phaseName();
-            step.setOutputSummary(secretFilter.sanitize(event.stepSummary()));
-            step.exitCode = 0;
-            step.durationMs = 0L;
-            step.createdAt = event.timestamp();
-            step.persist();
-            if (entity.steps == null) {
-                entity.steps = new ArrayList<>();
-            }
-            entity.steps.add(step);
-        }
-
-        entity.persist();
-
-        scheduleMarkdownProjection(entity);
     }
 
-    private void scheduleMarkdownProjection(TaskRunEntity entity) {
+    private void scheduleMarkdownProjection(TaskRun taskRun) {
         if (registryInstance != null && registryInstance.isResolvable()) {
             try {
                 TransactionSynchronizationRegistry registry = registryInstance.get();
@@ -89,7 +77,7 @@ public class StateSyncService {
                         @Override
                         public void afterCompletion(int status) {
                             if (status == Status.STATUS_COMMITTED) {
-                                projectToMarkdown(entity);
+                                projectToMarkdown(taskRun);
                             }
                         }
                     });
@@ -99,12 +87,12 @@ public class StateSyncService {
                 LOG.warnf(e, "Failed to register transaction synchronization: %s", e.getMessage());
             }
         }
-        projectToMarkdown(entity);
+        projectToMarkdown(taskRun);
     }
 
-    public void projectToMarkdown(TaskRunEntity entity) {
-        if (entity.taskId == null || entity.taskId.contains("..") || entity.taskId.contains("/") || entity.taskId.contains("\\")) {
-            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + entity.taskId);
+    public void projectToMarkdown(TaskRun taskRun) {
+        if (taskRun.taskId() == null || taskRun.taskId().contains("..") || taskRun.taskId().contains("/") || taskRun.taskId().contains("\\")) {
+            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + taskRun.taskId());
         }
 
         Path targetRunsDir = workspaceResolver.resolveAgentsDir().resolve("runs");
@@ -136,26 +124,26 @@ public class StateSyncService {
             ## Step Execution History
             %s
             """,
-            entity.taskId,
-            entity.projectId,
-            entity.status,
-            entity.currentPhase,
-            entity.branchName != null ? entity.branchName : "unassigned",
-            entity.baseCommit != null ? entity.baseCommit : "HEAD",
-            entity.checkpointStash != null ? entity.checkpointStash : "none",
-            entity.pid != null ? entity.pid : 0L,
-            entity.retryCount,
-            entity.updatedAt != null ? DateTimeFormatter.ISO_INSTANT.format(entity.updatedAt) : "unknown",
-            entity.taskId,
-            entity.userStory != null ? entity.userStory : "None specified",
-            entity.approvedPlanJson != null ? entity.approvedPlanJson : "{}",
-            renderStepsHistory(entity)
+            taskRun.taskId(),
+            taskRun.projectId(),
+            taskRun.status(),
+            taskRun.currentPhase(),
+            taskRun.branch() != null ? taskRun.branch() : "unassigned",
+            taskRun.baseCommit() != null ? taskRun.baseCommit() : "HEAD",
+            taskRun.checkpointStash() != null ? taskRun.checkpointStash() : "none",
+            taskRun.pid() != null ? taskRun.pid() : 0L,
+            taskRun.retryCount(),
+            taskRun.updatedAt() != null ? DateTimeFormatter.ISO_INSTANT.format(taskRun.updatedAt()) : "unknown",
+            taskRun.taskId(),
+            taskRun.userStory() != null ? taskRun.userStory() : "None specified",
+            taskRun.approvedPlanJson() != null ? taskRun.approvedPlanJson() : "{}",
+            renderStepsHistory(taskRun)
         );
 
         try {
             Files.createDirectories(targetRunsDir);
             RepoPath runsDir = RepoPath.of(targetRunsDir, workspaceResolver.resolveRepoRoot());
-            RepoPath journalFile = runsDir.resolve(entity.taskId + ".md");
+            RepoPath journalFile = runsDir.resolve(taskRun.taskId() + ".md");
 
             Files.writeString(
                 journalFile.toPath(),
@@ -169,17 +157,17 @@ public class StateSyncService {
         }
     }
 
-    private String renderStepsHistory(TaskRunEntity entity) {
-        if (entity.steps == null || entity.steps.isEmpty()) {
+    private String renderStepsHistory(TaskRun taskRun) {
+        if (taskRun.steps() == null || taskRun.steps().isEmpty()) {
             return "- No steps executed yet.";
         }
         StringBuilder sb = new StringBuilder();
-        for (StepAuditEntity step : entity.steps) {
+        for (StepAudit step : taskRun.steps()) {
             sb.append(String.format("- [%s] **%s** (%dms): %s%n",
-                step.exitCode == 0 ? "x" : " ",
-                step.toolName,
-                step.durationMs,
-                step.outputSummary != null ? step.outputSummary : ""
+                step.exitCode() == 0 ? "x" : " ",
+                step.toolName(),
+                step.durationMs(),
+                step.outputSummary() != null ? step.outputSummary() : ""
             ));
         }
         return sb.toString();

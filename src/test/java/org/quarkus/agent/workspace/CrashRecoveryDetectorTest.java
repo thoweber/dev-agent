@@ -6,9 +6,9 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.quarkus.agent.entity.StepAuditEntity;
-import org.quarkus.agent.entity.TaskRunEntity;
-import org.quarkus.agent.entity.TaskStatus;
+import org.quarkus.agent.entity.TaskPersistenceService;
+import org.quarkus.agent.model.TaskRun;
+import org.quarkus.agent.model.TaskStatus;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -21,45 +21,45 @@ class CrashRecoveryDetectorTest {
     @Inject
     CrashRecoveryDetector crashDetector;
 
+    @Inject
+    TaskPersistenceService persistenceService;
+
     @BeforeEach
     @Transactional
     void setUp() {
-        StepAuditEntity.deleteAll();
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        persistenceService.deleteAll();
     }
 
     @Test
     @Transactional
     @DisplayName("Given crashed task with dead PID - when findResumableTask called - then identifies task for recovery")
     void testDetectCrashedTask() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        persistenceService.deleteAll();
 
-        TaskRunEntity crashedTask = new TaskRunEntity();
-        crashedTask.projectId = "test-project-crash";
-        crashedTask.taskId = "TASK-CRASH-01";
-        crashedTask.status = TaskStatus.RED_TEST;
-        crashedTask.currentPhase = "RED_TEST";
-        crashedTask.pid = 999999999L; // Non-existent dead PID
-        crashedTask.createdAt = Instant.now();
-        crashedTask.updatedAt = Instant.now();
-        crashedTask.persist();
+        TaskRun crashedTask = TaskRun.builder()
+            .projectId("test-project-crash")
+            .taskId("TASK-CRASH-01")
+            .status(TaskStatus.RED_TEST)
+            .currentPhase("RED_TEST")
+            .pid(999999999L) // Non-existent dead PID
+            .createdAt(Instant.now())
+            .updatedAt(Instant.now())
+            .build();
+        persistenceService.saveTask(crashedTask);
 
-        Optional<TaskRunEntity> result = crashDetector.findResumableTask("test-project-crash");
+        Optional<TaskRun> result = crashDetector.findResumableTask("test-project-crash");
 
         assertThat(result).isPresent();
-        assertThat(result.get().taskId).isEqualTo("TASK-CRASH-01");
-        assertThat(result.get().status).isEqualTo(TaskStatus.RED_TEST);
+        assertThat(result.get().taskId()).isEqualTo("TASK-CRASH-01");
+        assertThat(result.get().status()).isEqualTo(TaskStatus.RED_TEST);
     }
 
     @Test
     @Transactional
     @DisplayName("Given no tasks exist - when findResumableTask called - returns empty")
     void testNoTasksFound() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
-        Optional<TaskRunEntity> result = crashDetector.findResumableTask("non-existent-project");
+        persistenceService.deleteAll();
+        Optional<TaskRun> result = crashDetector.findResumableTask("non-existent-project");
         assertThat(result).isEmpty();
     }
 
@@ -67,20 +67,20 @@ class CrashRecoveryDetectorTest {
     @Transactional
     @DisplayName("Given active task with current process PID - when findResumableTask called - returns empty")
     void testActiveTaskWithRunningPid() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        persistenceService.deleteAll();
 
-        TaskRunEntity activeTask = new TaskRunEntity();
-        activeTask.projectId = "active-project";
-        activeTask.taskId = "TASK-ACTIVE-01";
-        activeTask.status = TaskStatus.GREEN_PATCH;
-        activeTask.currentPhase = "GREEN_PATCH";
-        activeTask.pid = ProcessHandle.current().pid(); // Active running PID
-        activeTask.createdAt = Instant.now();
-        activeTask.updatedAt = Instant.now();
-        activeTask.persist();
+        TaskRun activeTask = TaskRun.builder()
+            .projectId("active-project")
+            .taskId("TASK-ACTIVE-01")
+            .status(TaskStatus.GREEN_PATCH)
+            .currentPhase("GREEN_PATCH")
+            .pid(ProcessHandle.current().pid()) // Active running PID
+            .createdAt(Instant.now())
+            .updatedAt(Instant.now())
+            .build();
+        persistenceService.saveTask(activeTask);
 
-        Optional<TaskRunEntity> result = crashDetector.findResumableTask("active-project");
+        Optional<TaskRun> result = crashDetector.findResumableTask("active-project");
         assertThat(result).isEmpty();
     }
 
@@ -88,65 +88,65 @@ class CrashRecoveryDetectorTest {
     @Transactional
     @DisplayName("Given active task and older crashed task - when findResumableTask called - skips active and recovers older crashed task")
     void testActiveTaskDoesNotMaskOlderCrashedTask() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        persistenceService.deleteAll();
 
         // Older crashed task
-        TaskRunEntity crashedTask = new TaskRunEntity();
-        crashedTask.projectId = "concurrent-project";
-        crashedTask.taskId = "TASK-OLDER-CRASHED";
-        crashedTask.status = TaskStatus.PLANNING;
-        crashedTask.currentPhase = "PLANNING";
-        crashedTask.pid = 999999999L; // Dead PID
-        crashedTask.createdAt = Instant.now().minusSeconds(120);
-        crashedTask.updatedAt = Instant.now().minusSeconds(60);
-        crashedTask.persist();
+        TaskRun crashedTask = TaskRun.builder()
+            .projectId("concurrent-project")
+            .taskId("TASK-OLDER-CRASHED")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .pid(999999999L) // Dead PID
+            .createdAt(Instant.now().minusSeconds(120))
+            .updatedAt(Instant.now().minusSeconds(60))
+            .build();
+        persistenceService.saveTask(crashedTask);
 
         // Newer active running task
-        TaskRunEntity activeTask = new TaskRunEntity();
-        activeTask.projectId = "concurrent-project";
-        activeTask.taskId = "TASK-NEWER-ACTIVE";
-        activeTask.status = TaskStatus.GREEN_PATCH;
-        activeTask.currentPhase = "GREEN_PATCH";
-        activeTask.pid = ProcessHandle.current().pid(); // Active PID
-        activeTask.createdAt = Instant.now().minusSeconds(30);
-        activeTask.updatedAt = Instant.now();
-        activeTask.persist();
+        TaskRun activeTask = TaskRun.builder()
+            .projectId("concurrent-project")
+            .taskId("TASK-NEWER-ACTIVE")
+            .status(TaskStatus.GREEN_PATCH)
+            .currentPhase("GREEN_PATCH")
+            .pid(ProcessHandle.current().pid()) // Active PID
+            .createdAt(Instant.now().minusSeconds(30))
+            .updatedAt(Instant.now())
+            .build();
+        persistenceService.saveTask(activeTask);
 
-        Optional<TaskRunEntity> result = crashDetector.findResumableTask("concurrent-project");
+        Optional<TaskRun> result = crashDetector.findResumableTask("concurrent-project");
         assertThat(result).isPresent();
-        assertThat(result.get().taskId).isEqualTo("TASK-OLDER-CRASHED");
+        assertThat(result.get().taskId()).isEqualTo("TASK-OLDER-CRASHED");
     }
 
     @Test
     @Transactional
     @DisplayName("Given crashed task with null pid - when findResumableTask called - returns task")
     void testCrashedTaskWithNullPid() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        persistenceService.deleteAll();
 
-        TaskRunEntity task = new TaskRunEntity();
-        task.projectId = "null-pid-project";
-        task.taskId = "TASK-NULL-PID";
-        task.status = TaskStatus.VERIFYING;
-        task.currentPhase = "VERIFYING";
-        task.pid = null;
-        task.createdAt = Instant.now();
-        task.updatedAt = Instant.now();
-        task.persist();
+        TaskRun task = TaskRun.builder()
+            .projectId("null-pid-project")
+            .taskId("TASK-NULL-PID")
+            .status(TaskStatus.VERIFYING)
+            .currentPhase("VERIFYING")
+            .pid(null)
+            .createdAt(Instant.now())
+            .updatedAt(Instant.now())
+            .build();
+        persistenceService.saveTask(task);
 
-        Optional<TaskRunEntity> result = crashDetector.findResumableTask("null-pid-project");
+        Optional<TaskRun> result = crashDetector.findResumableTask("null-pid-project");
         assertThat(result).isPresent();
-        assertThat(result.get().taskId).isEqualTo("TASK-NULL-PID");
+        assertThat(result.get().taskId()).isEqualTo("TASK-NULL-PID");
     }
 
     @Test
     @Transactional
     @DisplayName("Given default findResumableTask called - resolves via projectResolver")
     void testDefaultFindResumableTask() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
-        Optional<TaskRunEntity> result = crashDetector.findResumableTask();
+        persistenceService.deleteAll();
+        Optional<TaskRun> result = crashDetector.findResumableTask();
         assertThat(result).isEmpty();
     }
 }

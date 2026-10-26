@@ -1,4 +1,4 @@
-package org.quarkus.agent.entity;
+package org.quarkus.agent.model;
 
 import io.quarkus.runtime.annotations.RegisterForReflection;
 

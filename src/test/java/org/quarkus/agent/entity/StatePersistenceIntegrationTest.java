@@ -6,6 +6,7 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.quarkus.agent.model.TaskStatus;
 import org.quarkus.agent.workspace.ProjectIdResolver;
 
 import java.time.Instant;
@@ -125,5 +126,64 @@ class StatePersistenceIntegrationTest {
 
         // Clean up generated test run journal
         java.nio.file.Files.deleteIfExists(journalPath);
+    }
+
+    @Inject
+    TaskPersistenceService persistenceService;
+
+    @Test
+    @DisplayName("Given TaskPersistenceService - maps TaskRunEntity and StepAuditEntity to domain models")
+    void testTaskPersistenceServiceDomainMapping() {
+        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+            StepAuditEntity.deleteAll();
+            TaskRunEntity.deleteAll();
+
+            TaskRunEntity task = new TaskRunEntity();
+            task.projectId = "map-org/map-repo";
+            task.taskId = "TASK-MAP-01";
+            task.status = TaskStatus.PLANNING;
+            task.currentPhase = "PLANNING";
+            task.branchName = "feature/test";
+            task.baseCommit = "sha123";
+            task.pid = 42L;
+            task.createdAt = Instant.now();
+            task.updatedAt = Instant.now();
+            task.persist();
+
+            StepAuditEntity step = new StepAuditEntity();
+            step.taskRun = task;
+            step.toolName = "compile";
+            step.durationMs = 100L;
+            step.exitCode = 0;
+            step.createdAt = Instant.now();
+            step.setOutputSummary(new org.quarkus.agent.workspace.SanitizedOutput("Success"));
+            step.persist();
+
+            task.steps.add(step);
+            task.persist();
+        });
+
+        org.quarkus.agent.model.TaskRun domain = persistenceService.findByProjectAndTask("map-org/map-repo", "TASK-MAP-01").orElse(null);
+        assertThat(domain).isNotNull();
+        assertThat(domain.projectId()).isEqualTo("map-org/map-repo");
+        assertThat(domain.taskId()).isEqualTo("TASK-MAP-01");
+        assertThat(domain.branch()).isEqualTo("feature/test");
+        assertThat(domain.steps()).hasSize(1);
+        assertThat(domain.steps().get(0).toolName()).isEqualTo("compile");
+        assertThat(domain.steps().get(0).outputSummary()).isEqualTo("Success");
+    }
+
+    @Test
+    @DisplayName("Given StepAuditEntity - when setOutputSummary called with SanitizedOutput - populates output safely")
+    void testStepAuditEntityConsumesSanitizedOutput() {
+        StepAuditEntity entity = new StepAuditEntity();
+        org.quarkus.agent.workspace.SanitizedOutput input = new org.quarkus.agent.workspace.SanitizedOutput("git push");
+        org.quarkus.agent.workspace.SanitizedOutput summary = new org.quarkus.agent.workspace.SanitizedOutput("Error: ***REDACTED_CREDENTIAL***");
+
+        entity.setSanitizedInput(input);
+        entity.setOutputSummary(summary);
+
+        assertThat(entity.sanitizedInput).isEqualTo("git push");
+        assertThat(entity.outputSummary).isEqualTo("Error: ***REDACTED_CREDENTIAL***");
     }
 }

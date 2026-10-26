@@ -3,9 +3,9 @@ package org.quarkus.agent.workspace;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.quarkus.agent.entity.StepAuditEntity;
-import org.quarkus.agent.entity.TaskRunEntity;
-import org.quarkus.agent.entity.TaskStatus;
+import org.quarkus.agent.model.StepAudit;
+import org.quarkus.agent.model.TaskRun;
+import org.quarkus.agent.model.TaskStatus;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StateSyncServiceTest {
 
@@ -22,41 +23,43 @@ class StateSyncServiceTest {
     Path tempDir;
 
     @Test
-    @DisplayName("Given valid TaskRunEntity with full metadata - when projectToMarkdown called - then writes journal with all fields")
+    @DisplayName("Given valid TaskRun with full metadata - when projectToMarkdown called - then writes journal with all fields")
     void testProjectToMarkdownComplete() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
-        StateSyncService service = new StateSyncService(workspace, secretFilter);
+        StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRunEntity entity = new TaskRunEntity();
-        entity.taskId = "TASK-001";
-        entity.projectId = "org/repo";
-        entity.status = TaskStatus.GREEN_PATCH;
-        entity.currentPhase = "GREEN_PATCH";
-        entity.branchName = "feature/TASK-001-desc";
-        entity.baseCommit = "abc1234";
-        entity.checkpointStash = "stash@{0}";
-        entity.pid = 12345L;
-        entity.retryCount = 2;
-        entity.userStory = "User story text";
-        entity.approvedPlanJson = "{\"steps\":[\"step1\"]}";
-        entity.updatedAt = Instant.parse("2026-10-25T12:00:00Z");
+        StepAudit step1 = StepAudit.builder()
+            .toolName("mvn_test")
+            .exitCode(0)
+            .durationMs(500L)
+            .outputSummary("Tests passed")
+            .build();
 
-        StepAuditEntity step1 = new StepAuditEntity();
-        step1.toolName = "mvn_test";
-        step1.exitCode = 0;
-        step1.durationMs = 500L;
-        step1.outputSummary = "Tests passed";
+        StepAudit step2 = StepAudit.builder()
+            .toolName("git_commit")
+            .exitCode(1)
+            .durationMs(120L)
+            .outputSummary(null)
+            .build();
 
-        StepAuditEntity step2 = new StepAuditEntity();
-        step2.toolName = "git_commit";
-        step2.exitCode = 1;
-        step2.durationMs = 120L;
-        step2.outputSummary = null;
+        TaskRun taskRun = TaskRun.builder()
+            .taskId("TASK-001")
+            .projectId("org/repo")
+            .status(TaskStatus.GREEN_PATCH)
+            .currentPhase("GREEN_PATCH")
+            .branch("feature/TASK-001-desc")
+            .baseCommit("abc1234")
+            .checkpointStash("stash@{0}")
+            .pid(12345L)
+            .retryCount(2)
+            .userStory("User story text")
+            .approvedPlanJson("{\"steps\":[\"step1\"]}")
+            .updatedAt(Instant.parse("2026-10-25T12:00:00Z"))
+            .steps(List.of(step1, step2))
+            .build();
 
-        entity.steps = List.of(step1, step2);
-
-        service.projectToMarkdown(entity);
+        service.projectToMarkdown(taskRun);
 
         Path journalFile = workspace.resolveAgentsDir().resolve("runs/TASK-001.md");
         assertThat(journalFile).isRegularFile();
@@ -78,28 +81,20 @@ class StateSyncServiceTest {
     }
 
     @Test
-    @DisplayName("Given TaskRunEntity with null optional fields - when projectToMarkdown called - then uses sensible fallbacks")
+    @DisplayName("Given TaskRun with null optional fields - when projectToMarkdown called - then uses sensible fallbacks")
     void testProjectToMarkdownDefaults() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
-        StateSyncService service = new StateSyncService(workspace, secretFilter);
+        StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRunEntity entity = new TaskRunEntity();
-        entity.taskId = "TASK-002";
-        entity.projectId = "org/repo";
-        entity.status = TaskStatus.PLANNING;
-        entity.currentPhase = "PLANNING";
-        entity.branchName = null;
-        entity.baseCommit = null;
-        entity.checkpointStash = null;
-        entity.pid = null;
-        entity.retryCount = 0;
-        entity.userStory = null;
-        entity.approvedPlanJson = null;
-        entity.updatedAt = null;
-        entity.steps = null;
+        TaskRun taskRun = TaskRun.builder()
+            .taskId("TASK-002")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .build();
 
-        service.projectToMarkdown(entity);
+        service.projectToMarkdown(taskRun);
 
         Path journalFile = workspace.resolveAgentsDir().resolve("runs/TASK-002.md");
         assertThat(journalFile).isRegularFile();
@@ -115,8 +110,8 @@ class StateSyncServiceTest {
             .contains("{}")
             .contains("- No steps executed yet.");
 
-        entity.steps = Collections.emptyList();
-        service.projectToMarkdown(entity);
+        TaskRun emptyStepsTask = taskRun.toBuilder().steps(Collections.emptyList()).build();
+        service.projectToMarkdown(emptyStepsTask);
         markdown = Files.readString(journalFile);
         assertThat(markdown).contains("- No steps executed yet.");
     }
@@ -126,16 +121,17 @@ class StateSyncServiceTest {
     void testProjectToMarkdownScrubsSecrets() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
-        StateSyncService service = new StateSyncService(workspace, secretFilter);
+        StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRunEntity entity = new TaskRunEntity();
-        entity.taskId = "TASK-003";
-        entity.projectId = "org/repo";
-        entity.status = TaskStatus.PLANNING;
-        entity.currentPhase = "PLANNING";
-        entity.userStory = "Connecting to API with key AIzaSy123456789012345678901234567890";
+        TaskRun taskRun = TaskRun.builder()
+            .taskId("TASK-003")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .userStory("Connecting to API with key AIzaSy123456789012345678901234567890")
+            .build();
 
-        service.projectToMarkdown(entity);
+        service.projectToMarkdown(taskRun);
 
         Path journalFile = workspace.resolveAgentsDir().resolve("runs/TASK-003.md");
         String markdown = Files.readString(journalFile);
@@ -149,15 +145,16 @@ class StateSyncServiceTest {
     void testProjectToMarkdownRejectsPathTraversal() {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
-        StateSyncService service = new StateSyncService(workspace, secretFilter);
+        StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRunEntity entity = new TaskRunEntity();
-        entity.taskId = "../../evil-task";
-        entity.projectId = "org/repo";
-        entity.status = TaskStatus.PLANNING;
-        entity.currentPhase = "PLANNING";
+        TaskRun taskRun = TaskRun.builder()
+            .taskId("../../evil-task")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .build();
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.projectToMarkdown(entity))
+        assertThatThrownBy(() -> service.projectToMarkdown(taskRun))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Jailbreak attempt");
     }
@@ -167,7 +164,7 @@ class StateSyncServiceTest {
     void testProjectToMarkdownRejectsSymbolicLink() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
-        StateSyncService service = new StateSyncService(workspace, secretFilter);
+        StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
         Path runsDir = workspace.resolveAgentsDir().resolve("runs");
         Files.createDirectories(runsDir);
@@ -178,13 +175,14 @@ class StateSyncServiceTest {
         Path symlinkJournal = runsDir.resolve("TASK-SYMLINK.md");
         Files.createSymbolicLink(symlinkJournal, outsideTarget);
 
-        TaskRunEntity entity = new TaskRunEntity();
-        entity.taskId = "TASK-SYMLINK";
-        entity.projectId = "org/repo";
-        entity.status = TaskStatus.PLANNING;
-        entity.currentPhase = "PLANNING";
+        TaskRun taskRun = TaskRun.builder()
+            .taskId("TASK-SYMLINK")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .build();
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.projectToMarkdown(entity))
+        assertThatThrownBy(() -> service.projectToMarkdown(taskRun))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Symbolic links are forbidden");
 

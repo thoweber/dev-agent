@@ -2,9 +2,10 @@ package org.quarkus.agent.workspace;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.quarkus.agent.entity.TaskRunEntity;
-import org.quarkus.agent.entity.TaskStatus;
+import org.quarkus.agent.entity.TaskPersistenceService;
+import org.quarkus.agent.model.TaskRun;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -14,29 +15,28 @@ import java.util.Optional;
 public class CrashRecoveryDetector {
 
     private final ProjectIdResolver projectResolver;
+    private final TaskPersistenceService persistenceService;
 
     @Inject
-    public CrashRecoveryDetector(ProjectIdResolver projectResolver) {
+    public CrashRecoveryDetector(ProjectIdResolver projectResolver, TaskPersistenceService persistenceService) {
         this.projectResolver = projectResolver;
+        this.persistenceService = persistenceService;
     }
 
     public CrashRecoveryDetector() {
-        this(new ProjectIdResolver());
+        this(new ProjectIdResolver(), new TaskPersistenceService());
     }
 
-    public Optional<TaskRunEntity> findResumableTask() {
+    public Optional<TaskRun> findResumableTask() {
         return findResumableTask(projectResolver.resolveProjectId());
     }
 
-    public Optional<TaskRunEntity> findResumableTask(String projectId) {
-        java.util.List<TaskRunEntity> candidates = TaskRunEntity.list(
-            "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
-            projectId, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED
-        );
+    public Optional<TaskRun> findResumableTask(String projectId) {
+        List<TaskRun> candidates = persistenceService.findActiveCandidates(projectId);
 
-        for (TaskRunEntity candidate : candidates) {
+        for (TaskRun candidate : candidates) {
             // If candidate has no PID, or the registered PID is dead on the host OS, it is resumable
-            if (candidate.pid == null || ProcessHandle.of(candidate.pid).isEmpty()) {
+            if (candidate.pid() == null || ProcessHandle.of(candidate.pid()).isEmpty()) {
                 return Optional.of(candidate);
             }
         }

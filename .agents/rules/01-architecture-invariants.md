@@ -34,3 +34,8 @@
 * Secret scrubbing is strictly quarantined:
   * **Never applied** to raw Java/TypeScript source code or test files.
   * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity` (via strongly-typed `SanitizedOutput`), HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+
+## 8. Panache Entity Encapsulation & Domain Decoupling (ADR-012)
+* Panache entities (`@Entity`) are strictly quarantined within `org.quarkus.agent.entity` and must never be accessed by classes outside this package.
+* Classes outside `org.quarkus.agent.entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
+* Enforced via ArchUnit `entitiesMustNotBeAccessedOutsideTheirPackage`.

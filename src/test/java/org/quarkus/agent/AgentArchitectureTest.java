@@ -32,4 +32,10 @@ public class AgentArchitectureTest {
             .and().haveSimpleNameNotEndingWith("Test")
             .and().haveSimpleNameNotEndingWith("IT")
             .should().beAnnotatedWith(RegisterForReflection.class);
+
+    @ArchTest
+    public static final ArchRule entitiesMustNotBeAccessedOutsideTheirPackage =
+        classes()
+            .that().areAnnotatedWith(jakarta.persistence.Entity.class)
+            .should().onlyBeAccessed().byClassesThat().resideInAPackage("org.quarkus.agent.entity..");
 }

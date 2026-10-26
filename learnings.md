@@ -47,8 +47,8 @@ The composite priority score ($W = 2 \times \text{Severity} + 1 \times \text{Pre
 | **P1** | **REM-01** | **Physical Symlink & Canonical Jail Enforcement** | Security (CWE-59) | **COMPLETED** | Strongly-typed `RepoPath` value object & canonical jail checks (commit `5cd1641`) |
 | **P2** | **REM-02** | **Universal Credential Scrubbing Quarantine** | Security (CWE-312) | **COMPLETED** | Strongly-typed `SanitizedOutput` domain value object for sinks (commit `db18aed`) |
 | **P3** | **REM-03** | **Regex Sanitization Bounds & Length Flexibility** | Security (CWE-312) | **COMPLETED** | Bounded regexes, word boundaries, quoted space handling (commit `d281d77`) |
-| **P4** | **REM-04** | **3-Tier Hierarchical Memory Turn Invariants** | Cognitive / LLM Stability | **PROPOSED** | Atomic turn eviction, Tier 1 system consolidation, ADR-011 |
-| **P5** | **REM-05** | **Transactional Event Projection via JTA Synchronization** | Data Integrity | Pending | Amend ADR-0002 (State Projection); standardize `@Observes(during = AFTER_SUCCESS)` or JTA registry hooks. |
+| **P4** | **REM-04** | **3-Tier Hierarchical Memory Turn Invariants** | Cognitive / LLM Stability | **COMPLETED** | Atomic turn eviction, Tier 1 system consolidation, ADR-011 (commit `20c4912`) |
+| **P5** | **REM-05** | **Transactional Event Projection via JTA Synchronization** | Data Integrity | **PROPOSED** | JTA post-commit hook, snapshot isolation, ADR-012 |
 | **P6** | **REM-06** | **Global Project ID Host Isolation** | Multi-Tenancy Isolation | Pending | Document Project Coordinate specification in ADR-0005; update `ProjectIdResolver` contract. |
 | **P7** | **REM-07** | **Exhaustive Crash Recovery Iteration** | High Availability | Pending | Enhance `CrashRecoveryDetector` contract to evaluate complete active candidate queues. |
 | **P8** | **REM-08** | **Subprocess Lifetime & Timeout Governance** | System Resource Hygiene | Pending | Create centralized `ProcessExecutionHelper` that enforces mandatory `destroyForcibly()` timeouts. |

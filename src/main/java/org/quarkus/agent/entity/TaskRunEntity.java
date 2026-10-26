@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.quarkus.agent.model.TaskStatus;
 
 /**
  * Panache entity representing the lifecycle and persistence of an engineering task run.
