@@ -14,7 +14,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @QuarkusTest
-class StatePersistenceIntegrationTest {
+class StatePersistenceIT {
 
     @Inject
     ProjectIdResolver projectResolver;

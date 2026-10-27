@@ -21,7 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @QuarkusTest
-class CrashRecoveryDetectorTest {
+class CrashRecoveryDetectorIT {
 
     @Inject
     CrashRecoveryDetector crashDetector;
