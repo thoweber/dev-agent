@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
@@ -65,12 +66,17 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     private boolean hasMatchingRequest(ToolExecutionResultMessage result) {
         for (ChatMessage msg : slidingScratchpad) {
-            if (msg instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-                for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
-                    if (req.id() != null && req.id().equals(result.id())) {
-                        return true;
-                    }
-                }
+            if (msg instanceof AiMessage ai && ai.hasToolExecutionRequests() && hasMatchingId(ai, result.id())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasMatchingId(AiMessage ai, String resultId) {
+        for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
+            if (Objects.equals(req.id(), resultId)) {
+                return true;
             }
         }
         return false;
@@ -96,60 +102,68 @@ public class HierarchicalMemoryStore implements ChatMemory {
         if (slidingScratchpad.isEmpty()) {
             return;
         }
-        ChatMessage first = slidingScratchpad.getFirst();
+        ChatMessage first = slidingScratchpad.removeFirst();
         if (first instanceof UserMessage) {
-            slidingScratchpad.removeFirst();
-            while (!slidingScratchpad.isEmpty() && !(slidingScratchpad.getFirst() instanceof UserMessage)) {
-                ChatMessage next = slidingScratchpad.removeFirst();
-                if (next instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-                    while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
-                        slidingScratchpad.removeFirst();
-                    }
-                }
+            evictUntilNextUserMessage();
+        } else if (first instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+            purgeLeadingToolResults();
+        }
+    }
+
+    private void evictUntilNextUserMessage() {
+        while (!slidingScratchpad.isEmpty() && !(slidingScratchpad.getFirst() instanceof UserMessage)) {
+            ChatMessage next = slidingScratchpad.removeFirst();
+            if (next instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                purgeLeadingToolResults();
             }
-        } else if (first instanceof AiMessage ai) {
-            slidingScratchpad.removeFirst();
-            if (ai.hasToolExecutionRequests()) {
-                while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
-                    slidingScratchpad.removeFirst();
-                }
-            }
-        } else {
+        }
+    }
+
+    private void purgeLeadingToolResults() {
+        while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
             slidingScratchpad.removeFirst();
         }
     }
 
     public boolean assertTurnStructureInvariants() {
+        if (containsSystemMessage() || startsWithToolExecutionResult()) {
+            return false;
+        }
+        return allToolResultsHaveMatchingRequests();
+    }
+
+    private boolean containsSystemMessage() {
         for (ChatMessage msg : slidingScratchpad) {
             if (msg instanceof SystemMessage) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean startsWithToolExecutionResult() {
+        return !slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage;
+    }
+
+    private boolean allToolResultsHaveMatchingRequests() {
+        for (int i = 0; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof ToolExecutionResultMessage toolResult
+                && !hasPrecedingRequest(toolResult.id(), i)) {
                 return false;
             }
         }
-        if (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
-            return false;
-        }
-        for (int i = 0; i < slidingScratchpad.size(); i++) {
-            if (slidingScratchpad.get(i) instanceof ToolExecutionResultMessage toolResult) {
-                boolean found = false;
-                for (int j = 0; j < i; j++) {
-                    if (slidingScratchpad.get(j) instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-                        for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
-                            if (req.id() != null && req.id().equals(toolResult.id())) {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (found) {
-                        break;
-                    }
-                }
-                if (!found) {
-                    return false;
-                }
+        return true;
+    }
+
+    private boolean hasPrecedingRequest(String toolResultId, int currentIndex) {
+        for (int j = 0; j < currentIndex; j++) {
+            if (slidingScratchpad.get(j) instanceof AiMessage ai
+                && ai.hasToolExecutionRequests()
+                && hasMatchingId(ai, toolResultId)) {
+                return true;
             }
         }
-        return true;
+        return false;
     }
 
     @Override

@@ -17,12 +17,13 @@ class ProjectIdTest {
         ProjectId id1 = ProjectId.fromCoordinate(coordinate);
         ProjectId id2 = ProjectId.fromCoordinate(coordinate);
 
-        assertThat(id1).isNotNull();
-        assertThat(id1).isEqualTo(id2);
+        assertThat(id1)
+            .isNotNull()
+            .isEqualTo(id2)
+            .hasToString(id1.idString());
         assertThat(id1.value()).isNotNull();
         assertThat(id1.value().version()).isEqualTo(3);
         assertThat(id1.idString()).hasSize(36).isEqualTo(id2.idString());
-        assertThat(id1.toString()).isEqualTo(id1.idString());
     }
 
     @Test
@@ -32,8 +33,9 @@ class ProjectIdTest {
         ProjectId gitlabId = ProjectId.fromCoordinate("gitlab.com/org/repo");
         ProjectId internalId = ProjectId.fromCoordinate("git.internal.corp/org/repo");
 
-        assertThat(githubId).isNotEqualTo(gitlabId);
-        assertThat(githubId).isNotEqualTo(internalId);
+        assertThat(githubId)
+            .isNotEqualTo(gitlabId)
+            .isNotEqualTo(internalId);
         assertThat(gitlabId).isNotEqualTo(internalId);
     }
 

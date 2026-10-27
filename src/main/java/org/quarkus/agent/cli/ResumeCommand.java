@@ -28,6 +28,10 @@ import java.util.concurrent.Callable;
 )
 public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> {
 
+    private static final String RESUMING_TASK_PREFIX = "[dev-agent] Resuming task: ";
+    private static final String RESUMPTION_ABORTED = "[dev-agent] Resumption aborted.";
+    private static final String CANNOT_RESUME_PREFIX = "[dev-agent] Cannot resume ";
+
     private final CrashRecoveryDetector crashDetector;
     private final ProjectIdResolver projectResolver;
     private final TaskPersistenceService persistenceService;
@@ -76,30 +80,37 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
         }
 
         if (candidates.size() == 1) {
-            TaskRun task = candidates.getFirst();
-            String phase = task.currentPhase() != null ? task.currentPhase() : task.status().name();
-            out.println("[dev-agent] Found interrupted task " + task.taskId() + " in phase [" + phase + "].");
+            return promptSingleCandidate(out, candidates.getFirst());
+        }
 
-            if (!isInteractive()) {
-                out.println("[dev-agent] Non-interactive environment detected. Run 'dev-agent resume " + task.taskId() + "' to resume.");
-                return 0;
-            }
+        return promptMultiCandidates(out, candidates);
+    }
 
-            out.print("Resume this task? [y/N]: ");
-            out.flush();
-            try {
-                String line = getIn().readLine();
-                if (line != null && line.trim().equalsIgnoreCase("y")) {
-                    out.println("[dev-agent] Resuming task: " + task.taskId());
-                } else {
-                    out.println("[dev-agent] Resumption aborted.");
-                }
-            } catch (IOException _) {
-                out.println("[dev-agent] Resumption aborted.");
-            }
+    private Integer promptSingleCandidate(PrintWriter out, TaskRun task) {
+        String phase = task.currentPhase() != null ? task.currentPhase() : task.status().name();
+        out.println("[dev-agent] Found interrupted task " + task.taskId() + " in phase [" + phase + "].");
+
+        if (!isInteractive()) {
+            out.println("[dev-agent] Non-interactive environment detected. Run 'dev-agent resume " + task.taskId() + "' to resume.");
             return 0;
         }
 
+        out.print("Resume this task? [y/N]: ");
+        out.flush();
+        try {
+            String line = getIn().readLine();
+            if (line != null && line.trim().equalsIgnoreCase("y")) {
+                out.println(RESUMING_TASK_PREFIX + task.taskId());
+                return 0;
+            }
+        } catch (IOException _) {
+            // Fall through to aborted
+        }
+        out.println(RESUMPTION_ABORTED);
+        return 1;
+    }
+
+    private Integer promptMultiCandidates(PrintWriter out, List<TaskRun> candidates) {
         out.println("[dev-agent] Found " + candidates.size() + " interrupted tasks:");
         for (int i = 0; i < candidates.size(); i++) {
             TaskRun t = candidates.get(i);
@@ -118,17 +129,17 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             if (line != null && !line.trim().equalsIgnoreCase("q")) {
                 int idx = Integer.parseInt(line.trim()) - 1;
                 if (idx >= 0 && idx < candidates.size()) {
-                    out.println("[dev-agent] Resuming task: " + candidates.get(idx).taskId());
-                } else {
-                    out.println("[dev-agent] Invalid selection.");
+                    out.println(RESUMING_TASK_PREFIX + candidates.get(idx).taskId());
+                    return 0;
                 }
-            } else {
-                out.println("[dev-agent] Resumption aborted.");
+                out.println("[dev-agent] Invalid selection.");
+                return 1;
             }
         } catch (Exception _) {
-            out.println("[dev-agent] Resumption aborted.");
+            // Fall through to aborted
         }
-        return 0;
+        out.println(RESUMPTION_ABORTED);
+        return 1;
     }
 
     private Integer handleExplicitResume(PrintWriter out, PrintWriter err, String targetTaskId) {
@@ -140,24 +151,27 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             return 1;
         }
 
-        TaskRun task = taskOpt.get();
+        String validationError = validateTaskEligibility(taskOpt.get(), targetTaskId);
+        if (validationError != null) {
+            err.println(CANNOT_RESUME_PREFIX + targetTaskId + ": " + validationError);
+            return 1;
+        }
+
+        out.println(RESUMING_TASK_PREFIX + targetTaskId);
+        return 0;
+    }
+
+    private String validateTaskEligibility(TaskRun task, String targetTaskId) {
         if (task.status() != null && task.status().isTerminal()) {
-            err.println("[dev-agent] Cannot resume " + targetTaskId + ": Task has already completed with status " + task.status());
-            return 1;
+            return "Task has already completed with status " + task.status();
         }
-
         if (task.pid() != null && ProcessHandle.of(task.pid()).isPresent()) {
-            err.println("[dev-agent] Cannot resume " + targetTaskId + ": Process (PID " + task.pid() + ") is still actively running.");
-            return 1;
+            return "Process (PID " + task.pid() + ") is still actively running.";
         }
-
         Path worktreeDir = workspaceResolver.resolveWorktreeDir(targetTaskId);
         if (!Files.isDirectory(worktreeDir)) {
-            err.println("[dev-agent] Cannot resume " + targetTaskId + ": Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.");
-            return 1;
+            return "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.";
         }
-
-        out.println("[dev-agent] Resuming task: " + targetTaskId);
-        return 0;
+        return null;
     }
 }

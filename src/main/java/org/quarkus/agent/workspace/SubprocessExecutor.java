@@ -32,13 +32,7 @@ public class SubprocessExecutor {
         Duration timeout,
         Map<String, String> extraEnv
     ) {
-        ProcessBuilder pb = new ProcessBuilder(command);
-        if (workingDir != null) {
-            pb.directory(workingDir.toFile());
-        }
-        if (extraEnv != null && !extraEnv.isEmpty()) {
-            pb.environment().putAll(extraEnv);
-        }
+        ProcessBuilder pb = createProcessBuilder(command, workingDir, extraEnv);
 
         try (
             BoundedOverflowBuffer stdoutBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY);
@@ -48,55 +42,17 @@ public class SubprocessExecutor {
             try {
                 process = pb.start();
             } catch (IOException e) {
-                return ProcessResult.builder()
-                    .exitCode(-1)
-                    .stdOut("")
-                    .stdErr(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
-                    .timedOut(false)
-                    .truncated(false)
-                    .build();
+                return failureResult(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
 
             Thread stdoutDrainer = Thread.ofVirtual().start(() -> drain(process.getInputStream(), stdoutBuffer.outputStream()));
             Thread stderrDrainer = Thread.ofVirtual().start(() -> drain(process.getErrorStream(), stderrBuffer.outputStream()));
 
-            boolean finished = false;
-            boolean timedOut = false;
+            boolean timedOut = waitForProcess(process, timeout);
+            joinDrainers(stdoutDrainer, stderrDrainer);
 
-            try {
-                finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-            } catch (InterruptedException _) {
-                process.destroyForcibly();
-                Thread.currentThread().interrupt();
-                timedOut = true;
-            }
-
-            if (!finished) {
-                timedOut = true;
-                process.destroyForcibly();
-                try {
-                    process.waitFor(1, TimeUnit.SECONDS);
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-
-            try {
-                stdoutDrainer.join(Duration.ofSeconds(1));
-                stderrDrainer.join(Duration.ofSeconds(1));
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-            }
-
-            String out = "";
-            String err = "";
-            try {
-                out = stdoutBuffer.asString(StandardCharsets.UTF_8);
-                err = stderrBuffer.asString(StandardCharsets.UTF_8);
-            } catch (IOException _) {
-                // Buffers closed or read failed
-            }
-
+            String out = readOutputSafely(stdoutBuffer);
+            String err = readOutputSafely(stderrBuffer);
             int exitCode = timedOut ? -1 : process.exitValue();
             boolean truncated = stdoutBuffer.isTruncated() || stderrBuffer.isTruncated();
 
@@ -109,14 +65,68 @@ public class SubprocessExecutor {
                 .build();
 
         } catch (IOException _) {
-            return ProcessResult.builder()
-                .exitCode(-1)
-                .stdOut("")
-                .stdErr("Failed to allocate process output buffers")
-                .timedOut(false)
-                .truncated(false)
-                .build();
+            return failureResult("Failed to allocate process output buffers");
         }
+    }
+
+    private ProcessBuilder createProcessBuilder(List<String> command, Path workingDir, Map<String, String> extraEnv) {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        if (workingDir != null) {
+            pb.directory(workingDir.toFile());
+        }
+        if (extraEnv != null && !extraEnv.isEmpty()) {
+            pb.environment().putAll(extraEnv);
+        }
+        return pb;
+    }
+
+    private boolean waitForProcess(Process process, Duration timeout) {
+        boolean finished = false;
+        try {
+            finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException _) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            return true;
+        }
+
+        if (!finished) {
+            process.destroyForcibly();
+            try {
+                process.waitFor(1, TimeUnit.SECONDS);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void joinDrainers(Thread stdoutDrainer, Thread stderrDrainer) {
+        try {
+            stdoutDrainer.join(Duration.ofSeconds(1));
+            stderrDrainer.join(Duration.ofSeconds(1));
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private String readOutputSafely(BoundedOverflowBuffer buffer) {
+        try {
+            return buffer.asString(StandardCharsets.UTF_8);
+        } catch (IOException _) {
+            return "";
+        }
+    }
+
+    private ProcessResult failureResult(String error) {
+        return ProcessResult.builder()
+            .exitCode(-1)
+            .stdOut("")
+            .stdErr(error)
+            .timedOut(false)
+            .truncated(false)
+            .build();
     }
 
     private void drain(InputStream source, OutputStream sink) {

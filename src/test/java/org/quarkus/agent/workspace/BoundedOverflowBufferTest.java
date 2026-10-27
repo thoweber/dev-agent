@@ -79,4 +79,70 @@ class BoundedOverflowBufferTest {
             assertThat(content).isEqualTo("X".repeat(200));
         }
     }
+
+    @Test
+    @DisplayName("Given single byte writes - buffers properly across memory and disk boundary")
+    void testSingleByteWritesAndBoundaries() throws IOException {
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 10)) {
+            OutputStream out = buffer.outputStream();
+            for (int i = 0; i < 5; i++) {
+                out.write('a' + i);
+            }
+            assertThat(buffer.isOverflowedToDisk()).isFalse();
+            assertThat(buffer.getTotalBytesWritten()).isEqualTo(5);
+
+            // Write 6th byte -> overflows to disk
+            out.write('f');
+            assertThat(buffer.isOverflowedToDisk()).isTrue();
+            assertThat(buffer.getTotalBytesWritten()).isEqualTo(6);
+
+            // Write up to max capacity
+            for (int i = 6; i < 10; i++) {
+                out.write('a' + i);
+            }
+            assertThat(buffer.isTruncated()).isFalse();
+            assertThat(buffer.getTotalBytesWritten()).isEqualTo(10);
+
+            // Additional byte exceeds capacity and sets truncated flag
+            out.write('z');
+            assertThat(buffer.isTruncated()).isTrue();
+            assertThat(buffer.asString()).isEqualTo("abcdefghij");
+        }
+    }
+
+    @Test
+    @DisplayName("Given boundary arguments - write handles nulls, zeros, and closes cleanly")
+    void testBoundaryArgumentsAndLifecycle() throws IOException {
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(1024, 4096)) {
+            OutputStream out = buffer.outputStream();
+            assertThat(buffer.getTotalBytesWritten()).isZero();
+
+            // Null array throws NPE
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(null, 0, 0))
+                .isInstanceOf(NullPointerException.class);
+
+            // Zero length write is no-op
+            out.write(new byte[10], 0, 0);
+            assertThat(buffer.getTotalBytesWritten()).isZero();
+
+            out.write("default-buffer-test".getBytes(StandardCharsets.UTF_8));
+            out.close();
+
+            assertThat(buffer.asString()).isEqualTo("default-buffer-test");
+            buffer.close(); // idempotent close
+        }
+    }
+
+    @Test
+    @DisplayName("Given invalid constructor thresholds - throws IllegalArgumentException")
+    void testConstructorValidations() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(0, 100))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(100, 0))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(200, 100))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

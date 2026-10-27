@@ -2,6 +2,7 @@ package org.quarkus.agent.workspace;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -9,6 +10,11 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Two-tier bounded buffer resource that buffers in memory up to a threshold (e.g. 1 MB),
@@ -104,47 +110,26 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         }
     }
 
-    private synchronized void handleWriteByte(int b) throws IOException {
-        if (totalBytesWritten >= maxCapacity) {
-            truncated = true;
-            return;
+    private Path createSecureTempFile() throws IOException {
+        try {
+            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
+                EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            );
+            return Files.createTempFile("dev-agent-proc-", ".tmp", attr);
+        } catch (UnsupportedOperationException _) {
+            Path temp = Files.createTempFile("dev-agent-proc-", ".tmp");
+            File file = temp.toFile();
+            file.setReadable(false, false);
+            file.setReadable(true, true);
+            file.setWritable(false, false);
+            file.setWritable(true, true);
+            return temp;
         }
-        checkOverflow(1);
-        if (fileOutputStream != null) {
-            fileOutputStream.write(b);
-        } else {
-            memoryBuffer.write(b);
-        }
-        totalBytesWritten++;
-    }
-
-    private synchronized void handleWriteBytes(byte[] b, int off, int len) throws IOException {
-        if (b == null) {
-            throw new NullPointerException("Buffer must not be null");
-        }
-        if (len <= 0) {
-            return;
-        }
-        if (totalBytesWritten >= maxCapacity) {
-            truncated = true;
-            return;
-        }
-        int toWrite = Math.min(len, maxCapacity - totalBytesWritten);
-        if (toWrite < len) {
-            truncated = true;
-        }
-        checkOverflow(toWrite);
-        if (fileOutputStream != null) {
-            fileOutputStream.write(b, off, toWrite);
-        } else {
-            memoryBuffer.write(b, off, toWrite);
-        }
-        totalBytesWritten += toWrite;
     }
 
     private void checkOverflow(int incoming) throws IOException {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
-            diskTempFile = Files.createTempFile("dev-agent-proc-", ".tmp");
+            diskTempFile = createSecureTempFile();
             fileOutputStream = Files.newOutputStream(diskTempFile);
             if (memoryBuffer != null) {
                 memoryBuffer.writeTo(fileOutputStream);
@@ -160,12 +145,46 @@ public class BoundedOverflowBuffer implements AutoCloseable {
 
         @Override
         public void write(int b) throws IOException {
-            handleWriteByte(b);
+            synchronized (BoundedOverflowBuffer.this) {
+                if (totalBytesWritten >= maxCapacity) {
+                    truncated = true;
+                    return;
+                }
+                checkOverflow(1);
+                if (fileOutputStream != null) {
+                    fileOutputStream.write(b);
+                } else {
+                    memoryBuffer.write(b);
+                }
+                totalBytesWritten++;
+            }
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
-            handleWriteBytes(b, off, len);
+            if (b == null) {
+                throw new NullPointerException("Buffer must not be null");
+            }
+            if (len <= 0) {
+                return;
+            }
+            synchronized (BoundedOverflowBuffer.this) {
+                if (totalBytesWritten >= maxCapacity) {
+                    truncated = true;
+                    return;
+                }
+                int toWrite = Math.min(len, maxCapacity - totalBytesWritten);
+                if (toWrite < len) {
+                    truncated = true;
+                }
+                checkOverflow(toWrite);
+                if (fileOutputStream != null) {
+                    fileOutputStream.write(b, off, toWrite);
+                } else {
+                    memoryBuffer.write(b, off, toWrite);
+                }
+                totalBytesWritten += toWrite;
+            }
         }
 
         @Override

@@ -32,6 +32,7 @@ public abstract class BaseAgentCommand implements Runnable {
         this.in = in;
     }
 
+    @SuppressWarnings("java:S8450")
     protected BufferedReader getIn() {
         if (in != null) {
             return in;

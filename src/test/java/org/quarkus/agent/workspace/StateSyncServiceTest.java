@@ -3,8 +3,10 @@ package org.quarkus.agent.workspace;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.quarkus.agent.entity.TaskPersistenceService;
 import org.quarkus.agent.model.StepAudit;
 import org.quarkus.agent.model.TaskRun;
+import org.quarkus.agent.model.TaskStateChangeEvent;
 import org.quarkus.agent.model.TaskStatus;
 
 import java.io.IOException;
@@ -188,5 +190,43 @@ class StateSyncServiceTest {
 
         // Verify outside target was not overwritten
         assertThat(Files.readString(outsideTarget)).isEqualTo("original-content");
+    }
+
+    @Test
+    @DisplayName("Given TaskStateChangeEvent - when onStateTransition called - invokes persistence and projects to markdown")
+    void testOnStateTransition() throws IOException {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        SecretRedactionFilter secretFilter = new SecretRedactionFilter();
+
+        TaskRun recordedRun = TaskRun.builder()
+            .taskId("TASK-SYNC-EVENT")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .userStory("Story")
+            .build();
+
+        TaskPersistenceService mockPersistence = new TaskPersistenceService() {
+            @Override
+            public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
+                return recordedRun;
+            }
+        };
+
+        StateSyncService service = new StateSyncService(workspace, secretFilter, mockPersistence);
+
+        TaskStateChangeEvent event = TaskStateChangeEvent.builder()
+            .taskId("TASK-SYNC-EVENT")
+            .projectId("org/repo")
+            .newStatus(TaskStatus.PLANNING)
+            .phaseName("PLANNING")
+            .stepSummary("password=mySecret")
+            .build();
+
+        service.onStateTransition(event);
+
+        Path journalFile = workspace.resolveAgentsDir().resolve("runs").resolve("TASK-SYNC-EVENT.md");
+        assertThat(Files.exists(journalFile)).isTrue();
+        assertThat(Files.readString(journalFile)).contains("task_id: \"TASK-SYNC-EVENT\"");
     }
 }

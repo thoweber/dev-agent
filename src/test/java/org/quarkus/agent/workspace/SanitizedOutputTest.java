@@ -19,7 +19,7 @@ class SanitizedOutputTest {
             .doesNotContain("hunter2")
             .doesNotContain("sk-123456789012345678901234567890123456789012345678")
             .contains("***REDACTED_CREDENTIAL***");
-        assertThat(output.toString()).isEqualTo(output.value());
+        assertThat(output).hasToString(output.value());
         assertThat(output.isBlank()).isFalse();
     }
 

@@ -5,7 +5,6 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.quarkus.agent.entity.TaskPersistenceService;
 import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.TaskRun;
@@ -40,9 +39,6 @@ class ResumeCommandIT {
 
     @Inject
     WorkspaceContextResolver workspaceResolver;
-
-    @TempDir
-    Path tempDir;
 
     private void createWorktree(String taskId) throws IOException {
         Path worktree = workspaceResolver.resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
@@ -159,7 +155,7 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isZero();
+        assertThat(exitCode).isEqualTo(1);
         assertThat(sw.toString()).contains("Resumption aborted.");
     }
 
@@ -247,5 +243,83 @@ class ResumeCommandIT {
 
         assertThat(exitCode).isZero();
         assertThat(sw.toString()).contains("Resuming task: TASK-VALID-CRASH");
+    }
+
+    @Test
+    @DisplayName("Given multiple interrupted tasks in interactive mode - when valid selection - resumes selected task")
+    void testResumeMultiCandidatesInteractiveSelect() throws IOException {
+        createWorktree("TASK-MULTI-1");
+        createWorktree("TASK-MULTI-2");
+        ProjectId projectId = projectResolver.resolveProjectId();
+
+        persistenceService.saveTask(TaskRun.builder()
+            .projectId(projectId.idString())
+            .taskId("TASK-MULTI-1")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .pid(999999999L)
+            .createdAt(Instant.now().minusSeconds(60))
+            .updatedAt(Instant.now().minusSeconds(50))
+            .build());
+
+        persistenceService.saveTask(TaskRun.builder()
+            .projectId(projectId.idString())
+            .taskId("TASK-MULTI-2")
+            .status(TaskStatus.GREEN_PATCH)
+            .currentPhase("GREEN_PATCH")
+            .pid(999999999L)
+            .createdAt(Instant.now().minusSeconds(30))
+            .updatedAt(Instant.now().minusSeconds(10))
+            .build());
+
+        ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
+        cmd.setIn(new BufferedReader(new StringReader("1\n")));
+        CommandLine cli = new CommandLine(cmd);
+        StringWriter sw = new StringWriter();
+        cli.setOut(new PrintWriter(sw));
+
+        int exitCode = cli.execute();
+
+        assertThat(exitCode).isZero();
+        assertThat(sw.toString()).contains("Found 2 interrupted tasks:").contains("Resuming task: TASK-MULTI-2");
+    }
+
+    @Test
+    @DisplayName("Given multiple interrupted tasks in interactive mode - when invalid selection - reports error")
+    void testResumeMultiCandidatesInvalidSelect() throws IOException {
+        createWorktree("TASK-INV-1");
+        createWorktree("TASK-INV-2");
+        ProjectId projectId = projectResolver.resolveProjectId();
+
+        persistenceService.saveTask(TaskRun.builder()
+            .projectId(projectId.idString())
+            .taskId("TASK-INV-1")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .pid(999999999L)
+            .createdAt(Instant.now().minusSeconds(60))
+            .updatedAt(Instant.now().minusSeconds(50))
+            .build());
+
+        persistenceService.saveTask(TaskRun.builder()
+            .projectId(projectId.idString())
+            .taskId("TASK-INV-2")
+            .status(TaskStatus.GREEN_PATCH)
+            .currentPhase("GREEN_PATCH")
+            .pid(999999999L)
+            .createdAt(Instant.now().minusSeconds(30))
+            .updatedAt(Instant.now().minusSeconds(10))
+            .build());
+
+        ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
+        cmd.setIn(new BufferedReader(new StringReader("99\n")));
+        CommandLine cli = new CommandLine(cmd);
+        StringWriter sw = new StringWriter();
+        cli.setOut(new PrintWriter(sw));
+
+        int exitCode = cli.execute();
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(sw.toString()).contains("Invalid selection.");
     }
 }

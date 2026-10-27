@@ -81,4 +81,21 @@ class SubprocessExecutorTest {
         assertThat(result.exitCode()).isNotZero();
         assertThat(result.stdErr()).isNotEmpty();
     }
+
+    @Test
+    @DisplayName("Given non-existent binary - returns failure result without hanging")
+    void testExecuteNonExistentBinary() {
+        SubprocessExecutor executor = new SubprocessExecutor();
+        ProcessResult result = executor.execute(
+            List.of("/bin/non_existent_binary_dev_agent_xyz_999"),
+            null,
+            Duration.ofSeconds(5),
+            null
+        );
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(-1);
+        assertThat(result.timedOut()).isFalse();
+        assertThat(result.stdErr()).isNotEmpty();
+    }
 }

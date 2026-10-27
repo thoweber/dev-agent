@@ -64,53 +64,47 @@ public class ProjectIdResolver {
             return "unknown";
         }
         String clean = remoteUrl.trim();
-        String host = null;
-        String path = null;
-
-        if (clean.contains("://")) {
-            Matcher urlMatcher = URL_PATTERN.matcher(clean);
-            if (urlMatcher.matches()) {
-                host = urlMatcher.group(1);
-                path = urlMatcher.group(2);
-            }
-        } else {
-            Matcher scpMatcher = SCP_PATTERN.matcher(clean);
-            if (scpMatcher.matches()) {
-                host = scpMatcher.group(1);
-                path = scpMatcher.group(2);
-            } else {
-                Matcher urlMatcher = URL_PATTERN.matcher(clean);
-                if (urlMatcher.matches()) {
-                    host = urlMatcher.group(1);
-                    path = urlMatcher.group(2);
-                }
-            }
-        }
-
-        if (host != null && path != null) {
-            host = host.toLowerCase(Locale.ROOT);
-            while (path.startsWith("/")) {
-                path = path.substring(1);
-            }
-            while (path.endsWith("/")) {
-                path = path.substring(0, path.length() - 1);
-            }
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            while (path.endsWith("/")) {
-                path = path.substring(0, path.length() - 1);
-            }
+        HostAndPath parsed = parseHostAndPath(clean);
+        if (parsed != null) {
+            String host = parsed.host().toLowerCase(Locale.ROOT);
+            String path = cleanPath(parsed.path());
             return host + "/" + path;
         }
 
-        if (clean.endsWith(".git")) {
-            clean = clean.substring(0, clean.length() - 4);
+        return cleanPath(clean);
+    }
+
+    private record HostAndPath(String host, String path) {}
+
+    private HostAndPath parseHostAndPath(String clean) {
+        if (!clean.contains("://")) {
+            Matcher scpMatcher = SCP_PATTERN.matcher(clean);
+            if (scpMatcher.matches()) {
+                return new HostAndPath(scpMatcher.group(1), scpMatcher.group(2));
+            }
         }
-        while (clean.endsWith("/")) {
-            clean = clean.substring(0, clean.length() - 1);
+        Matcher urlMatcher = URL_PATTERN.matcher(clean);
+        if (urlMatcher.matches()) {
+            return new HostAndPath(urlMatcher.group(1), urlMatcher.group(2));
         }
-        return clean;
+        return null;
+    }
+
+    private String cleanPath(String rawPath) {
+        String p = rawPath;
+        while (p.startsWith("/")) {
+            p = p.substring(1);
+        }
+        while (p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        if (p.endsWith(".git")) {
+            p = p.substring(0, p.length() - 4);
+        }
+        while (p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
     }
 
     private String probeGitRemote(Path rootPath) {

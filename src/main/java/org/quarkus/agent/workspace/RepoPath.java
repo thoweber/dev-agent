@@ -44,8 +44,7 @@ public record RepoPath(Path path, Path root) {
         Objects.requireNonNull(candidatePath, "candidatePath must not be null");
         Objects.requireNonNull(root, "root must not be null");
 
-        String pathStr = candidatePath.toString();
-        if (pathStr.contains("..")) {
+        if (candidatePath.toString().contains("..")) {
             throw new SecurityException("Jailbreak attempt: Traversal detected: " + candidatePath);
         }
 
@@ -57,34 +56,43 @@ public record RepoPath(Path path, Path root) {
             Path realRoot = root.toRealPath();
             Path normalized = candidatePath.toAbsolutePath().normalize();
 
-            if (!normalized.equals(realRoot)) {
-                Path parent = normalized.getParent();
-                if (parent != null && Files.exists(parent)) {
-                    if (!parent.toRealPath().startsWith(realRoot)) {
-                        throw new SecurityException("Jailbreak attempt: Parent path resolves outside root: " + candidatePath);
-                    }
-                }
-            }
-
-            if (Files.exists(candidatePath, LinkOption.NOFOLLOW_LINKS)) {
-                if (Files.isSymbolicLink(candidatePath) || !candidatePath.toRealPath().startsWith(realRoot)) {
-                    throw new SecurityException("Jailbreak attempt: Path physically resolves outside root: " + candidatePath);
-                }
-            }
+            validateParentBoundaries(normalized, realRoot, candidatePath);
+            validatePhysicalBoundaries(candidatePath, realRoot);
 
             if (!normalized.startsWith(realRoot)) {
                 throw new SecurityException("Jailbreak attempt: Path resolves outside root: " + candidatePath);
             }
 
-            Path relative = realRoot.relativize(normalized);
-            String relStr = relative.toString().replace('\\', '/');
-            if (relStr.equals(".git") || relStr.startsWith(".git/")) {
-                throw new SecurityException("Protected location: modification of .git directory is forbidden: " + candidatePath);
-            }
+            validateProtectedLocations(normalized, realRoot, candidatePath);
 
             return new RepoPath(normalized, realRoot);
         } catch (IOException e) {
             throw new SecurityException("Failed to resolve physical canonical path for: " + candidatePath, e);
+        }
+    }
+
+    private static void validateParentBoundaries(Path normalized, Path realRoot, Path candidatePath) throws IOException {
+        if (normalized.equals(realRoot)) {
+            return;
+        }
+        Path parent = normalized.getParent();
+        if (parent != null && Files.exists(parent) && !parent.toRealPath().startsWith(realRoot)) {
+            throw new SecurityException("Jailbreak attempt: Parent path resolves outside root: " + candidatePath);
+        }
+    }
+
+    private static void validatePhysicalBoundaries(Path candidatePath, Path realRoot) throws IOException {
+        if (Files.exists(candidatePath, LinkOption.NOFOLLOW_LINKS)
+            && (Files.isSymbolicLink(candidatePath) || !candidatePath.toRealPath().startsWith(realRoot))) {
+            throw new SecurityException("Jailbreak attempt: Path physically resolves outside root: " + candidatePath);
+        }
+    }
+
+    private static void validateProtectedLocations(Path normalized, Path realRoot, Path candidatePath) {
+        Path relative = realRoot.relativize(normalized);
+        String relStr = relative.toString().replace('\\', '/');
+        if (relStr.equals(".git") || relStr.startsWith(".git/")) {
+            throw new SecurityException("Protected location: modification of .git directory is forbidden: " + candidatePath);
         }
     }
 

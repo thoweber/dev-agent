@@ -32,23 +32,31 @@ public class StateSyncService {
     private final WorkspaceContextResolver workspaceResolver;
     private final SecretRedactionFilter secretFilter;
     private final TaskPersistenceService persistenceService;
-
-    @Inject
-    Instance<TransactionSynchronizationRegistry> registryInstance;
+    private final Instance<TransactionSynchronizationRegistry> registryInstance;
 
     @Inject
     public StateSyncService(
         WorkspaceContextResolver workspaceResolver,
         SecretRedactionFilter secretFilter,
-        TaskPersistenceService persistenceService
+        TaskPersistenceService persistenceService,
+        Instance<TransactionSynchronizationRegistry> registryInstance
     ) {
         this.workspaceResolver = workspaceResolver;
         this.secretFilter = secretFilter;
         this.persistenceService = persistenceService;
+        this.registryInstance = registryInstance;
+    }
+
+    public StateSyncService(
+        WorkspaceContextResolver workspaceResolver,
+        SecretRedactionFilter secretFilter,
+        TaskPersistenceService persistenceService
+    ) {
+        this(workspaceResolver, secretFilter, persistenceService, null);
     }
 
     public StateSyncService() {
-        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService());
+        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), null);
     }
 
     @Transactional
@@ -68,19 +76,7 @@ public class StateSyncService {
             try {
                 TransactionSynchronizationRegistry registry = registryInstance.get();
                 if (registry.getTransactionStatus() == Status.STATUS_ACTIVE) {
-                    registry.registerInterposedSynchronization(new Synchronization() {
-                        @Override
-                        public void beforeCompletion() {
-                            // No-op
-                        }
-
-                        @Override
-                        public void afterCompletion(int status) {
-                            if (status == Status.STATUS_COMMITTED) {
-                                projectToMarkdown(taskRun);
-                            }
-                        }
-                    });
+                    registerPostCommitProjection(registry, taskRun);
                     return;
                 }
             } catch (Exception e) {
@@ -90,10 +86,24 @@ public class StateSyncService {
         projectToMarkdown(taskRun);
     }
 
+    private void registerPostCommitProjection(TransactionSynchronizationRegistry registry, TaskRun taskRun) {
+        registry.registerInterposedSynchronization(new Synchronization() {
+            @Override
+            public void beforeCompletion() {
+                // No-op
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status == Status.STATUS_COMMITTED) {
+                    projectToMarkdown(taskRun);
+                }
+            }
+        });
+    }
+
     public void projectToMarkdown(TaskRun taskRun) {
-        if (taskRun.taskId() == null || taskRun.taskId().contains("..") || taskRun.taskId().contains("/") || taskRun.taskId().contains("\\")) {
-            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + taskRun.taskId());
-        }
+        validateTaskId(taskRun.taskId());
 
         Path targetRunsDir = workspaceResolver.resolveAgentsDir().resolve("runs");
 
@@ -128,15 +138,15 @@ public class StateSyncService {
             taskRun.projectId(),
             taskRun.status(),
             taskRun.currentPhase(),
-            taskRun.branch() != null ? taskRun.branch() : "unassigned",
-            taskRun.baseCommit() != null ? taskRun.baseCommit() : "HEAD",
-            taskRun.checkpointStash() != null ? taskRun.checkpointStash() : "none",
+            safe(taskRun.branch(), "unassigned"),
+            safe(taskRun.baseCommit(), "HEAD"),
+            safe(taskRun.checkpointStash(), "none"),
             taskRun.pid() != null ? taskRun.pid() : 0L,
             taskRun.retryCount(),
             taskRun.updatedAt() != null ? DateTimeFormatter.ISO_INSTANT.format(taskRun.updatedAt()) : "unknown",
             taskRun.taskId(),
-            taskRun.userStory() != null ? taskRun.userStory() : "None specified",
-            taskRun.approvedPlanJson() != null ? taskRun.approvedPlanJson() : "{}",
+            safe(taskRun.userStory(), "None specified"),
+            safe(taskRun.approvedPlanJson(), "{}"),
             renderStepsHistory(taskRun)
         );
 
@@ -171,5 +181,15 @@ public class StateSyncService {
             ));
         }
         return sb.toString();
+    }
+
+    private void validateTaskId(String taskId) {
+        if (taskId == null || taskId.contains("..") || taskId.contains("/") || taskId.contains("\\")) {
+            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + taskId);
+        }
+    }
+
+    private String safe(String value, String fallback) {
+        return value != null ? value : fallback;
     }
 }
