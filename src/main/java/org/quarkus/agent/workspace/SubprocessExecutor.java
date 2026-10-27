@@ -4,6 +4,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -40,8 +41,8 @@ public class SubprocessExecutor {
         }
 
         try (
-            BoundedOverflowOutputStream stdoutBuffer = new BoundedOverflowOutputStream(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY);
-            BoundedOverflowOutputStream stderrBuffer = new BoundedOverflowOutputStream(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY)
+            BoundedOverflowBuffer stdoutBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY);
+            BoundedOverflowBuffer stderrBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY)
         ) {
             Process process;
             try {
@@ -56,8 +57,8 @@ public class SubprocessExecutor {
                     .build();
             }
 
-            Thread stdoutDrainer = Thread.ofVirtual().start(() -> drain(process.getInputStream(), stdoutBuffer));
-            Thread stderrDrainer = Thread.ofVirtual().start(() -> drain(process.getErrorStream(), stderrBuffer));
+            Thread stdoutDrainer = Thread.ofVirtual().start(() -> drain(process.getInputStream(), stdoutBuffer.outputStream()));
+            Thread stderrDrainer = Thread.ofVirtual().start(() -> drain(process.getErrorStream(), stderrBuffer.outputStream()));
 
             boolean finished = false;
             boolean timedOut = false;
@@ -90,8 +91,8 @@ public class SubprocessExecutor {
             String out = "";
             String err = "";
             try {
-                out = stdoutBuffer.readString(StandardCharsets.UTF_8);
-                err = stderrBuffer.readString(StandardCharsets.UTF_8);
+                out = stdoutBuffer.asString(StandardCharsets.UTF_8);
+                err = stderrBuffer.asString(StandardCharsets.UTF_8);
             } catch (IOException _) {
                 // Buffers closed or read failed
             }
@@ -118,7 +119,7 @@ public class SubprocessExecutor {
         }
     }
 
-    private void drain(InputStream source, BoundedOverflowOutputStream sink) {
+    private void drain(InputStream source, OutputStream sink) {
         try {
             source.transferTo(sink);
         } catch (IOException _) {

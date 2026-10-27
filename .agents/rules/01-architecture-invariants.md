@@ -57,7 +57,7 @@
 
 ## 11. Subprocess Lifetime & Timeout Governance
 * All external operating system process forks (`git`, `mvnw`, `npm`, `vitest`, etc.) must be executed through `SubprocessExecutor` with a mandatory timeout `Duration`.
-* Subprocess execution uses concurrent virtual thread stream draining with 2-tier bounded buffers (`BoundedOverflowOutputStream`):
+* Subprocess execution uses concurrent virtual thread stream draining with 2-tier bounded buffers (`BoundedOverflowBuffer`):
   * **Memory Tier:** In-memory byte array up to 1 MB.
   * **Disk Overflow Tier:** Temporary file on disk from 1 MB up to 10 MB.
   * **Truncation Tier:** Output exceeding 10 MB is truncated in storage while draining continues to prevent OS pipe deadlocks.
