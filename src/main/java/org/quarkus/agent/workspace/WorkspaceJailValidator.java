@@ -2,8 +2,10 @@ package org.quarkus.agent.workspace;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
+
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -39,8 +41,24 @@ public class WorkspaceJailValidator {
             normalizedRoot = activeWorkingRoot.toAbsolutePath().normalize();
         }
 
+        Path target = normalizedRoot.resolve(untrustedPath).normalize();
+
+        for (Path segment : target) {
+            if (segment.toString().equals("..")) {
+                throw new SecurityException("Jailbreak attempt: Traversal detected: " + untrustedPath);
+            }
+        }
+
+        // Check if target or any ancestor directory is a symbolic link
+        Path curr = target;
+        while (curr != null && !curr.equals(normalizedRoot)) {
+            if (Files.exists(curr, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(curr)) {
+                throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + untrustedPath);
+            }
+            curr = curr.getParent();
+        }
+
         try {
-            Path target = normalizedRoot.resolve(untrustedPath);
             Path realResolved = target.toRealPath();
             if (!realResolved.startsWith(normalizedRoot)) {
                 throw new SecurityException("Jailbreak attempt: Path traverses outside boundary: " + untrustedPath);
@@ -48,11 +66,10 @@ public class WorkspaceJailValidator {
             return realResolved;
         } catch (IOException _) {
             // File does not exist yet; validate normalized parent chain
-            Path resolved = normalizedRoot.resolve(untrustedPath).normalize();
-            if (!resolved.startsWith(normalizedRoot)) {
+            if (!target.startsWith(normalizedRoot)) {
                 throw new SecurityException("Jailbreak attempt: Path traverses outside boundary: " + untrustedPath);
             }
-            return resolved;
+            return target;
         }
     }
 
@@ -66,10 +83,9 @@ public class WorkspaceJailValidator {
      */
     public RepoPath validateForWrite(String untrustedPath) {
         Path rawPath = activeWorkingRoot.toAbsolutePath().normalize().resolve(untrustedPath);
-        if (Files.isSymbolicLink(rawPath)) {
+        if (Files.exists(rawPath, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(rawPath)) {
             throw new SecurityException("Refusing to write through symbolic link: " + rawPath);
         }
-
         Path resolved = validateAndResolve(untrustedPath);
         return RepoPath.of(resolved, activeWorkingRoot);
     }

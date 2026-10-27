@@ -41,7 +41,8 @@ public abstract class BaseAgentCommand implements Runnable {
     }
 
     protected boolean isInteractive() {
-        return in != null || System.console() != null;
+        java.io.Console console = System.console();
+        return in != null || (console != null && console.isTerminal());
     }
 
     @SuppressWarnings("java:S106")

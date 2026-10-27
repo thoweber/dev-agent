@@ -16,13 +16,14 @@ Execute the following commands to inspect remote quality gate status and active 
    ```bash
    curl -s "https://sonarcloud.io/api/issues/search?projectKeys=thoweber_dev-agent&pullRequest=<PR_ID>&resolved=false"
    ```
-3. **GitHub PR Inline Review Comments:**
+3. **GitHub PR Review Threads & CodeRabbit Audit:**
    ```bash
-   gh api "repos/{owner}/{repo}/pulls/<PR_ID>/comments"
+   ./scripts/check_pr_reviews.py
+   ./scripts/check_pr_reviews.py --details
    ```
-4. **GitHub PR Top-Level Issue Comments (Reviews & Summaries):**
+4. **GitHub PR Review Progress Status:**
    ```bash
-   gh api "repos/{owner}/{repo}/issues/<PR_ID>/comments"
+   ./scripts/check_pr_reviews.py --check-status
    ```
 
 ---
@@ -87,7 +88,10 @@ Before pushing any commit, verify that all local checks pass in accordance with 
    ```bash
    git push origin feature/<TASK-ID>-<slug>
    ```
-3. Reply to existing CodeRabbit comments on GitHub and resolve threads.
+3. Reply to existing CodeRabbit comments on GitHub and resolve threads:
+   ```bash
+   ./scripts/check_pr_reviews.py --thread <THREAD_ID> --reply "Resolved. <explanation>" --resolve
+   ```
 4. Bounded SonarCloud Quality Gate polling:
    ```bash
    # Poll SonarCloud with max 5 attempts (30s sleep) and fail-fast error detection:

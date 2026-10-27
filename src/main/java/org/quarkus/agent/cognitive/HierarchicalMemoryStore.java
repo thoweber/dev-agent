@@ -51,7 +51,11 @@ public class HierarchicalMemoryStore implements ChatMemory {
     @Override
     public void add(ChatMessage message) {
         if (message instanceof SystemMessage systemMessage) {
-            this.pinnedInvariants.add(systemMessage);
+            boolean alreadyPresent = pinnedInvariants.stream()
+                .anyMatch(sm -> Objects.equals(sm.text(), systemMessage.text()));
+            if (!alreadyPresent) {
+                this.pinnedInvariants.add(systemMessage);
+            }
             return;
         }
 
@@ -89,9 +93,15 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private int countTurns() {
+        if (slidingScratchpad.isEmpty()) {
+            return 0;
+        }
         int count = 0;
+        if (slidingScratchpad.getFirst() instanceof AiMessage) {
+            count++;
+        }
         for (ChatMessage msg : slidingScratchpad) {
-            if (!(msg instanceof ToolExecutionResultMessage)) {
+            if (msg instanceof UserMessage) {
                 count++;
             }
         }

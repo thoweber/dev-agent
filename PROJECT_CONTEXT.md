@@ -117,3 +117,10 @@ To ensure high-speed developer ergonomics and autonomous feedback loops, key uti
   * Audit coverage: `./scripts/parse_jacoco.py --threshold 80.0`
   * Gate verification: `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`
   * Verbose class breakdown: `./scripts/parse_jacoco.py --verbose`
+* `scripts/check_pr_reviews.py`: Ingests, audits, and remediates GitHub PR review threads (including CodeRabbit AI reviews and peer discussions). Detects active in-progress reviews, parses findings with severity and CWE categorization, and enables CLI-driven thread replies and resolutions.
+  * Audit open threads: `./scripts/check_pr_reviews.py`
+  * Detailed inspection with prompts: `./scripts/check_pr_reviews.py --details`
+  * Automated JSON export: `./scripts/check_pr_reviews.py --json`
+  * Check active review status: `./scripts/check_pr_reviews.py --check-status`
+  * Reply & resolve thread: `./scripts/check_pr_reviews.py --thread <THREAD_ID> --reply "Resolved..." --resolve`
+  * Gate check on unresolved threads: `./scripts/check_pr_reviews.py --fail-on-unresolved`

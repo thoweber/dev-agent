@@ -12,7 +12,7 @@ This skill governs static analysis, security hotspot analysis, and Quality Gate 
 ## 1. Quality Gate Standards
 
 * **0 Critical / Blocker Issues:** Zero vulnerabilities or security hotspots.
-* **Coverage:** Maintain $\ge 80\%$ line and condition coverage verified locally via `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`.
+* **Coverage:** Maintain $\ge 80\%$ instruction coverage verified locally via `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`.
 * **Duplication:** Keep code duplication $<3\%$.
 
 ---
@@ -21,3 +21,11 @@ This skill governs static analysis, security hotspot analysis, and Quality Gate 
 
 * **Initial Wait Threshold:** Wait 2 minutes (120 seconds) after push before checking initial SonarCloud status.
 * **Status Polling Interval:** Wait at least 45 seconds between subsequent status polls.
+
+---
+
+## 3. Review Remediation & Audit Tooling
+
+* **PR Review Thread Audit:** `./scripts/check_pr_reviews.py`
+* **Detailed Finding Inspection:** `./scripts/check_pr_reviews.py --details`
+* **Resolve Thread with Reply:** `./scripts/check_pr_reviews.py --thread <THREAD_ID> --reply "Resolved..." --resolve`

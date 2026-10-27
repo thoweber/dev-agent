@@ -88,4 +88,33 @@ class RepoPathTest {
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Traversal detected");
     }
+
+    @Test
+    @DisplayName("Given direct constructor call with path outside root - throws SecurityException")
+    void testDirectConstructorEnforcesValidation() {
+        assertThatThrownBy(() -> new RepoPath(Path.of("/outside/file.txt"), tempDir))
+            .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("Given valid filename containing double dots - does not trigger false positive traversal")
+    void testValidFilenameWithDotsAllowed() throws IOException {
+        Path validFile = tempDir.resolve("backup..v2.json");
+        Files.writeString(validFile, "{}");
+
+        RepoPath repoPath = RepoPath.of(validFile, tempDir);
+        assertThat(repoPath.toPath().getFileName().toString()).isEqualTo("backup..v2.json");
+    }
+
+    @Test
+    @DisplayName("Given symlink ancestor directory - throws SecurityException")
+    void testIntermediateSymlinkRejected() throws IOException {
+        Path realSub = Files.createDirectories(tempDir.resolve("real_sub"));
+        Path symlinkSub = tempDir.resolve("sym_sub");
+        Files.createSymbolicLink(symlinkSub, realSub);
+
+        assertThatThrownBy(() -> RepoPath.of(symlinkSub.resolve("child.txt"), tempDir))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden");
+    }
 }

@@ -26,6 +26,8 @@ Remote CI/CD runs are too slow for autonomous iteration. Execute these fast loca
   `./mvnw test -Dtest=AgentArchitectureTest,WorkspaceJailValidatorTest`
 * **Audit JaCoCo Coverage & Flag Deficits ($< 2\text{ s}$):**  
   `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`
+* **Audit & Ingest PR Review Threads ($< 2\text{ s}$):**  
+  `./scripts/check_pr_reviews.py`
 * **Full Clean Build & Verification ($< 30\text{ s}$):**  
   `./mvnw clean verify`
 * **Auto-Format Code:**  

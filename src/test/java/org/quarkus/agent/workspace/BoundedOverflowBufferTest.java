@@ -145,4 +145,20 @@ class BoundedOverflowBufferTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(200, 100))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("Given closed buffer - subsequent operations throw IOException and temp file is cleaned up")
+    void testClosedBufferThrowsOnSubsequentWrites() throws IOException {
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(10, 100);
+        OutputStream out = buffer.outputStream();
+        out.write("test".getBytes(StandardCharsets.UTF_8));
+        buffer.close();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write('a'))
+            .isInstanceOf(IOException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[]{1, 2, 3}))
+            .isInstanceOf(IOException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(buffer::inputStream)
+            .isInstanceOf(IOException.class);
+    }
 }

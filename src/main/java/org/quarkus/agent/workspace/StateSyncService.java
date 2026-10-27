@@ -16,6 +16,7 @@ import org.quarkus.agent.model.TaskStateChangeEvent;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
@@ -105,8 +106,6 @@ public class StateSyncService {
     public void projectToMarkdown(TaskRun taskRun) {
         validateTaskId(taskRun.taskId());
 
-        Path targetRunsDir = workspaceResolver.resolveAgentsDir().resolve("runs");
-
         String markdown = String.format("""
             ---
             task_id: "%s"
@@ -151,8 +150,10 @@ public class StateSyncService {
         );
 
         try {
+            Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
+            Path targetRunsDir = repoRoot.resolve(".agents/runs");
             Files.createDirectories(targetRunsDir);
-            RepoPath runsDir = RepoPath.of(targetRunsDir, workspaceResolver.resolveRepoRoot());
+            RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
             RepoPath journalFile = runsDir.resolve(taskRun.taskId() + ".md");
 
             Files.writeString(
@@ -160,7 +161,8 @@ public class StateSyncService {
                 secretFilter.sanitize(markdown).value(),
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE
+                StandardOpenOption.WRITE,
+                LinkOption.NOFOLLOW_LINKS
             );
         } catch (IOException e) {
             LOG.warnf(e, "Failed to project Markdown state journal: %s", e.getMessage());

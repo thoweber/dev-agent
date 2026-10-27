@@ -30,6 +30,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     private Path diskTempFile;
     private int totalBytesWritten = 0;
     private boolean truncated = false;
+    private boolean closed = false;
 
     private final OutputStream sink;
 
@@ -57,6 +58,9 @@ public class BoundedOverflowBuffer implements AutoCloseable {
      * Exposes the pure read source over the captured data (memory or disk).
      */
     public synchronized InputStream inputStream() throws IOException {
+        if (closed) {
+            throw new IOException("Buffer is closed");
+        }
         sink.flush();
         if (diskTempFile != null) {
             if (fileOutputStream != null) {
@@ -95,17 +99,29 @@ public class BoundedOverflowBuffer implements AutoCloseable {
 
     @Override
     public synchronized void close() throws IOException {
+        closed = true;
+        IOException streamCloseException = null;
         if (fileOutputStream != null) {
-            fileOutputStream.close();
-            fileOutputStream = null;
+            try {
+                fileOutputStream.close();
+            } catch (IOException e) {
+                streamCloseException = e;
+            } finally {
+                fileOutputStream = null;
+            }
         }
         if (diskTempFile != null) {
             try {
                 Files.deleteIfExists(diskTempFile);
             } catch (IOException _) {
                 // Ignore failure to delete temp file on close
+            } finally {
+                diskTempFile = null;
             }
-            diskTempFile = null;
+        }
+        memoryBuffer = null;
+        if (streamCloseException != null) {
+            throw streamCloseException;
         }
     }
 
@@ -123,6 +139,9 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     private void checkOverflow(int incoming) throws IOException {
+        if (closed) {
+            throw new IOException("Buffer is closed");
+        }
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             diskTempFile = createSecureTempFile();
             fileOutputStream = Files.newOutputStream(diskTempFile);
@@ -134,6 +153,9 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     synchronized void appendByte(int b) throws IOException {
+        if (closed) {
+            throw new IOException("Buffer is closed");
+        }
         if (totalBytesWritten >= maxCapacity) {
             truncated = true;
             return;
@@ -148,6 +170,9 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     synchronized void appendBytes(byte[] b, int off, int len) throws IOException {
+        if (closed) {
+            throw new IOException("Buffer is closed");
+        }
         if (b == null) {
             throw new NullPointerException("Buffer must not be null");
         }

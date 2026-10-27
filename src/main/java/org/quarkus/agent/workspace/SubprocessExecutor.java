@@ -39,6 +39,11 @@ public class SubprocessExecutor {
         Process process;
         try {
             process = pb.start();
+            try {
+                process.getOutputStream().close();
+            } catch (IOException ignored) {
+                // Ignore if process already terminated or stdin closed
+            }
         } catch (IOException e) {
             LOG.warnf(e, "Subprocess execution failed: %s", e.getMessage());
             return failureResult(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());

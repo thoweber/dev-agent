@@ -47,7 +47,7 @@ def calculate_metrics(rows: List[Dict[str, str]]) -> Dict[str, Tuple[int, int]]:
 
 def format_pct(covered: int, total: int) -> str:
     if total == 0:
-        return "100.00%"
+        return "0.00%"
     return f"{(covered / total) * 100:.2f}%"
 
 
@@ -87,9 +87,20 @@ def main() -> None:
     rows = parse_csv(args.file)
     if not rows:
         print("Warning: JaCoCo report is empty.", file=sys.stderr)
+        if args.fail_under is not None:
+            print("Error: Coverage is 0.00% (report empty), failing threshold gate.", file=sys.stderr)
+            sys.exit(1)
         sys.exit(0)
 
     metrics = calculate_metrics(rows)
+    cov_inst, tot_inst = metrics["INSTRUCTION"]
+
+    if tot_inst == 0:
+        print("Warning: JaCoCo report contains 0 measured instructions.", file=sys.stderr)
+        if args.fail_under is not None:
+            print("Error: Coverage is 0.00% (0 total instructions), failing threshold gate.", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
 
     print("=" * 68)
     print("                 JACOCO CODE COVERAGE SUMMARY")
@@ -100,8 +111,7 @@ def main() -> None:
         print(f"{name:<16} {cov:<12} {tot:<12} {format_pct(cov, tot):<12}")
     print("=" * 68)
 
-    cov_inst, tot_inst = metrics["INSTRUCTION"]
-    overall_inst_pct = (cov_inst / tot_inst * 100) if tot_inst > 0 else 100.0
+    overall_inst_pct = (cov_inst / tot_inst * 100) if tot_inst > 0 else 0.0
 
     flagged_classes = []
     for r in rows:

@@ -23,6 +23,7 @@ import java.util.Optional;
 @RegisterForReflection
 public class TaskPersistenceService {
 
+    @Transactional
     public Optional<TaskRun> findByProjectAndTask(String projectId, String taskId) {
         try {
             TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(projectId, taskId);
@@ -32,10 +33,12 @@ public class TaskPersistenceService {
         }
     }
 
+    @Transactional
     public Optional<TaskRun> findByProjectAndTask(ProjectId projectId, String taskId) {
         return findByProjectAndTask(projectId.idString(), taskId);
     }
 
+    @Transactional
     public List<TaskRun> findActiveCandidates(String projectId) {
         try {
             List<TaskRunEntity> candidates = TaskRunEntity.list(
@@ -48,10 +51,12 @@ public class TaskPersistenceService {
         }
     }
 
+    @Transactional
     public List<TaskRun> findActiveCandidates(ProjectId projectId) {
         return findActiveCandidates(projectId.idString());
     }
 
+    @Transactional
     public long countByProject(String projectId) {
         try {
             return TaskRunEntity.count("projectId", projectId);
@@ -60,6 +65,7 @@ public class TaskPersistenceService {
         }
     }
 
+    @Transactional
     public long countByProject(ProjectId projectId) {
         return countByProject(projectId.idString());
     }
@@ -82,6 +88,8 @@ public class TaskPersistenceService {
             entity.updatedAt = event.timestamp();
         }
 
+        entity.persist();
+
         if (sanitizedSummary != null && !sanitizedSummary.isBlank()) {
             StepAuditEntity step = new StepAuditEntity();
             step.taskRun = entity;
@@ -97,7 +105,6 @@ public class TaskPersistenceService {
             entity.steps.add(step);
         }
 
-        entity.persist();
         return toDomain(entity);
     }
 

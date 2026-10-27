@@ -27,15 +27,17 @@ class HierarchicalMemoryStoreTest {
 
         List<ChatMessage> messages = memory.messages();
 
-        // Max messages: 1 System (Invariants) + 1 User (Task Spec) + 4 Scratchpad turns = 6 messages
-        assertThat(messages).hasSize(6);
+        // Max messages: 1 System (Invariants) + 1 User (Task Spec) + 4 Scratchpad turns (4 * 2 = 8) = 10 messages
+        assertThat(messages).hasSize(10);
 
         // Verify Tier 1 and Tier 2 remain strictly at indices 0 and 1
         assertThat(((dev.langchain4j.data.message.SystemMessage) messages.get(0)).text()).contains("Quarkus Arc CDI Scoping Invariants");
         assertThat(((dev.langchain4j.data.message.UserMessage) messages.get(1)).singleText()).contains("US-042: Add OAuth2 Endpoint");
 
+        // Oldest scratchpad message should be Turn 7
+        assertThat(((dev.langchain4j.data.message.UserMessage) messages.get(2)).singleText()).contains("Tool execution failure 7");
         // Verify the newest scratchpad messages are preserved (Turn 10)
-        assertThat(((dev.langchain4j.data.message.AiMessage) messages.get(5)).text()).contains("Fix attempt 10");
+        assertThat(((dev.langchain4j.data.message.AiMessage) messages.get(9)).text()).contains("Fix attempt 10");
     }
 
     @Test
@@ -102,7 +104,11 @@ class HierarchicalMemoryStoreTest {
         memory.add(new UserMessage("Next step 1"));
         memory.add(new AiMessage("Response 1"));
         memory.add(new UserMessage("Next step 2"));
-        memory.add(new AiMessage("Response 2")); // Triggers eviction of tool request and dependent tool result!
+        memory.add(new AiMessage("Response 2"));
+        memory.add(new UserMessage("Next step 3"));
+        memory.add(new AiMessage("Response 3"));
+        memory.add(new UserMessage("Next step 4"));
+        memory.add(new AiMessage("Response 4")); // Exceeds 4 turns; triggers eviction of initial tool request and result!
 
         List<ChatMessage> messages = memory.messages();
         // Tool result should not be orphaned
@@ -171,9 +177,25 @@ class HierarchicalMemoryStoreTest {
         memory.add(new UserMessage("Question 5"));
 
         List<ChatMessage> messages = memory.messages();
-        // Scratchpad must NOT begin with Answer 1 (AiMessage)
+        // Scratchpad must NOT begin with Answer 1 (AiMessage); it begins with Question 2
         assertThat(messages.get(0)).isInstanceOf(UserMessage.class);
-        assertThat(((UserMessage) messages.get(0)).singleText()).isEqualTo("Question 4");
+        assertThat(((UserMessage) messages.get(0)).singleText()).isEqualTo("Question 2");
+    }
+
+    @Test
+    @DisplayName("Given duplicate SystemMessage via add() - ignores duplicates and does not grow Tier 1")
+    void testDuplicateSystemMessageIgnored() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.pinInvariants("Base Invariant");
+        memory.add(new dev.langchain4j.data.message.SystemMessage("Base Invariant"));
+        memory.add(new dev.langchain4j.data.message.SystemMessage("Base Invariant"));
+
+        assertThat(memory.messages()).hasSize(1);
+        assertThat(((dev.langchain4j.data.message.SystemMessage) memory.messages().get(0)).text()).isEqualTo("Base Invariant");
+
+        // Adding a different system message is accepted
+        memory.add(new dev.langchain4j.data.message.SystemMessage("Another Invariant"));
+        assertThat(memory.messages()).hasSize(2);
     }
 
     @Test

@@ -10,7 +10,9 @@ import org.quarkus.agent.workspace.WorkspaceJailValidator;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 @Dependent
 @Unremovable
@@ -137,9 +139,16 @@ public class InitCommand extends BaseAgentCommand {
     }
 
     private void writeRuleIfMissing(Path path, String content, WorkspaceJailValidator jail) throws IOException {
-        jail.validateForWrite(path.toString());
-        if (!Files.exists(path) || force) {
-            Files.writeString(path, content.stripIndent());
+        RepoPath repoPath = jail.validateForWrite(path.toString());
+        if (!Files.exists(repoPath.toPath()) || force) {
+            Files.writeString(
+                repoPath.toPath(),
+                content.stripIndent(),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE,
+                LinkOption.NOFOLLOW_LINKS
+            );
         }
     }
 }
