@@ -39,11 +39,7 @@ public class SubprocessExecutor {
         Process process;
         try {
             process = pb.start();
-            try {
-                process.getOutputStream().close();
-            } catch (IOException ignored) {
-                // Ignore if process already terminated or stdin closed
-            }
+            closeProcessStdin(process);
         } catch (IOException e) {
             LOG.warnf(e, "Subprocess execution failed: %s", e.getMessage());
             return failureResult(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
@@ -86,6 +82,14 @@ public class SubprocessExecutor {
             pb.environment().putAll(extraEnv);
         }
         return pb;
+    }
+
+    private void closeProcessStdin(Process process) {
+        try {
+            process.getOutputStream().close();
+        } catch (IOException e) {
+            LOG.debugf(e, "Could not close process stdin: %s", e.getMessage());
+        }
     }
 
     private boolean waitForProcess(Process process, Duration timeout) {

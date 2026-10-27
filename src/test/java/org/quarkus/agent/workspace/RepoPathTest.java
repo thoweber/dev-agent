@@ -92,7 +92,8 @@ class RepoPathTest {
     @Test
     @DisplayName("Given direct constructor call with path outside root - throws SecurityException")
     void testDirectConstructorEnforcesValidation() {
-        assertThatThrownBy(() -> new RepoPath(Path.of("/outside/file.txt"), tempDir))
+        Path outside = Path.of("/outside/file.txt");
+        assertThatThrownBy(() -> new RepoPath(outside, tempDir))
             .isInstanceOf(SecurityException.class);
     }
 
@@ -103,7 +104,7 @@ class RepoPathTest {
         Files.writeString(validFile, "{}");
 
         RepoPath repoPath = RepoPath.of(validFile, tempDir);
-        assertThat(repoPath.toPath().getFileName().toString()).isEqualTo("backup..v2.json");
+        assertThat(repoPath.toPath().getFileName()).hasToString("backup..v2.json");
     }
 
     @Test
@@ -112,8 +113,9 @@ class RepoPathTest {
         Path realSub = Files.createDirectories(tempDir.resolve("real_sub"));
         Path symlinkSub = tempDir.resolve("sym_sub");
         Files.createSymbolicLink(symlinkSub, realSub);
+        Path child = symlinkSub.resolve("child.txt");
 
-        assertThatThrownBy(() -> RepoPath.of(symlinkSub.resolve("child.txt"), tempDir))
+        assertThatThrownBy(() -> RepoPath.of(child, tempDir))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Symbolic links are forbidden");
     }
