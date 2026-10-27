@@ -173,8 +173,8 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             return "Process (PID " + task.pid() + ") is still actively running.";
         }
         Path worktreeDir = workspaceResolver.resolveWorktreeDir(targetTaskId);
-        return !Files.isDirectory(worktreeDir)
-            ? "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing."
-            : null;
+        return Files.isDirectory(worktreeDir)
+            ? null
+            : "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.";
     }
 }
