@@ -122,6 +122,10 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             return 0;
         }
 
+        return promptSelection(out, candidates);
+    }
+
+    private Integer promptSelection(PrintWriter out, List<TaskRun> candidates) {
         out.print("Select task to resume [1-" + candidates.size() + "] or 'q' to abort: ");
         out.flush();
         try {
@@ -169,9 +173,8 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             return "Process (PID " + task.pid() + ") is still actively running.";
         }
         Path worktreeDir = workspaceResolver.resolveWorktreeDir(targetTaskId);
-        if (!Files.isDirectory(worktreeDir)) {
-            return "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.";
-        }
-        return null;
+        return !Files.isDirectory(worktreeDir)
+            ? "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing."
+            : null;
     }
 }

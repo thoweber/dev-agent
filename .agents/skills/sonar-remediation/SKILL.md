@@ -12,7 +12,7 @@ This skill governs static analysis, security hotspot analysis, and Quality Gate 
 ## 1. Quality Gate Standards
 
 * **0 Critical / Blocker Issues:** Zero vulnerabilities or security hotspots.
-* **Coverage:** Maintain $\ge 80\%$ line and condition coverage.
+* **Coverage:** Maintain $\ge 80\%$ line and condition coverage verified locally via `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`.
 * **Duplication:** Keep code duplication $<3\%$.
 
 ---

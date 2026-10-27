@@ -1,6 +1,7 @@
 package org.quarkus.agent.workspace;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import org.jboss.logging.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,6 +20,8 @@ import java.util.concurrent.TimeUnit;
 @ApplicationScoped
 public class SubprocessExecutor {
 
+    private static final Logger LOG = Logger.getLogger(SubprocessExecutor.class);
+
     public static final int DEFAULT_MEMORY_THRESHOLD = 1024 * 1024;       // 1 MB
     public static final int DEFAULT_MAX_CAPACITY = 10 * 1024 * 1024;     // 10 MB
 
@@ -33,18 +36,18 @@ public class SubprocessExecutor {
         Map<String, String> extraEnv
     ) {
         ProcessBuilder pb = createProcessBuilder(command, workingDir, extraEnv);
+        Process process;
+        try {
+            process = pb.start();
+        } catch (IOException e) {
+            LOG.warnf(e, "Subprocess execution failed: %s", e.getMessage());
+            return failureResult(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
 
         try (
             BoundedOverflowBuffer stdoutBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY);
             BoundedOverflowBuffer stderrBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY)
         ) {
-            Process process;
-            try {
-                process = pb.start();
-            } catch (IOException e) {
-                return failureResult(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            }
-
             Thread stdoutDrainer = Thread.ofVirtual().start(() -> drain(process.getInputStream(), stdoutBuffer.outputStream()));
             Thread stderrDrainer = Thread.ofVirtual().start(() -> drain(process.getErrorStream(), stderrBuffer.outputStream()));
 

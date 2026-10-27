@@ -68,10 +68,13 @@ Before pushing any commit, verify that all local checks pass in accordance with 
 # 2. ArchUnit Native Compliance & Path Jail Verification (< 15s):
 ./mvnw test -Dtest=AgentArchitectureTest,WorkspaceJailValidatorTest
 
-# 3. Full Clean Build & Verification (< 30s):
+# 3. JaCoCo Coverage Audit (>= 80% instruction threshold) (< 2s):
+./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0
+
+# 4. Full Clean Build & Verification (< 30s):
 ./mvnw clean verify
 
-# 4. Auto-Format Code:
+# 5. Auto-Format Code:
 ./mvnw spotless:apply
 ```
 

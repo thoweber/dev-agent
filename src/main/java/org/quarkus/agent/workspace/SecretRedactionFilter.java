@@ -14,7 +14,7 @@ public class SecretRedactionFilter {
     private static final String REDACTED_PLACEHOLDER = "***REDACTED_CREDENTIAL***";
 
     private static final String KEY_PREFIX =
-        "(?i)([\"']?(?:password|passwd|secret|auth[_-]?token|api[_-]?key|access[_-]?token|client[_-]?secret)[\"']?\\s*[:=]\\s*)";
+        "(?i)([\"']?[\\w-]*(?:pass(?:word|wd)?|secret|token|key)[\"']?\\s*[:=]\\s*)";
 
     private static final Pattern KEY_DOUBLE_QUOTED = Pattern.compile(KEY_PREFIX + "\"([^\"]*)\"");
     private static final Pattern KEY_SINGLE_QUOTED = Pattern.compile(KEY_PREFIX + "'([^']*)'");
@@ -30,7 +30,7 @@ public class SecretRedactionFilter {
         Pattern.compile("\\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\\b"),
         Pattern.compile("(?i)\\bbearer\\s+[a-z0-9_\\-.=]{15,}"),
         Pattern.compile("(?i)\\bbasic\\s+[a-z0-9_\\-+/=]{20,}"),
-        Pattern.compile("-----BEGIN [A-Z0-9 _]+ PRIVATE KEY-----\\s*[a-zA-Z0-9+/=\\s]+?\\s*-----END [A-Z0-9 _]+ PRIVATE KEY-----")
+        Pattern.compile("-----BEGIN [A-Z ]+ PRIVATE KEY-----[A-Za-z0-9+/=\\s]++-----END [A-Z ]+ PRIVATE KEY-----")
     );
 
     public SanitizedOutput sanitize(String input) {

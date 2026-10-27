@@ -106,3 +106,14 @@ Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority ar
 | **P8** | **REM-08** | Subprocess Lifetime & Timeout Governance | Centralized `SubprocessExecutor`, 2-tier `BoundedOverflowBuffer` (1 MB RAM -> 10 MB Disk) |
 | **P9** | **REM-09** | Two-Phase Test Execution & JaCoCo Isolation | Failsafe for `*IT.java` (`<quarkus.jacoco.enabled>false`), Surefire for pure unit test coverage |
 | **P10** | **REM-10** | Programmatic Test Transaction Scope Protocol | Prohibit `@Transactional` on test methods, use `QuarkusTransaction.requiringNew()`, ArchUnit rule |
+
+---
+
+## 6. Development Scripts & Verification Tooling
+
+To ensure high-speed developer ergonomics and autonomous feedback loops, key utility scripts are maintained in `scripts/`:
+
+* `scripts/parse_jacoco.py`: Parses JaCoCo CSV reports (`target/site/jacoco/jacoco.csv`), displays metric tables (Instructions, Branches, Lines, Complexity, Methods), flags classes falling below the $\ge 80\%$ quality threshold, and supports `--fail-under <pct>` gating for automated local verification and pre-commit hooks.
+  * Audit coverage: `./scripts/parse_jacoco.py --threshold 80.0`
+  * Gate verification: `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`
+  * Verbose class breakdown: `./scripts/parse_jacoco.py --verbose`
