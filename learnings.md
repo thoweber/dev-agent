@@ -48,8 +48,8 @@ The composite priority score ($W = 2 \times \text{Severity} + 1 \times \text{Pre
 | **P2** | **REM-02** | **Universal Credential Scrubbing Quarantine** | Security (CWE-312) | **COMPLETED** | Strongly-typed `SanitizedOutput` domain value object for sinks (commit `db18aed`) |
 | **P3** | **REM-03** | **Regex Sanitization Bounds & Length Flexibility** | Security (CWE-312) | **COMPLETED** | Bounded regexes, word boundaries, quoted space handling (commit `d281d77`) |
 | **P4** | **REM-04** | **3-Tier Hierarchical Memory Turn Invariants** | Cognitive / LLM Stability | **COMPLETED** | Atomic turn eviction, Tier 1 system consolidation, ADR-011 (commit `20c4912`) |
-| **P5** | **REM-05** | **Transactional Event Projection via JTA Synchronization** | Data Integrity | **PROPOSED** | JTA post-commit hook, snapshot isolation, ADR-012 |
-| **P6** | **REM-06** | **Global Project ID Host Isolation** | Multi-Tenancy Isolation | Pending | Document Project Coordinate specification in ADR-0005; update `ProjectIdResolver` contract. |
+| **P5** | **REM-05** | **Panache Entity Encapsulation & Domain Decoupling** | Data Integrity & Architecture | **COMPLETED** | Panache entity isolation, domain models `TaskRun`/`StepAudit`, `TaskPersistenceService`, ADR-012 (commit `f423941`) |
+| **P6** | **REM-06** | **Global Project ID Host Isolation & Deterministic UUIDv3** | Multi-Tenancy Isolation | **COMPLETED** | Protocol normalization, credential scrubbing, `ProjectId` domain value object, ADR-013 |
 | **P7** | **REM-07** | **Exhaustive Crash Recovery Iteration** | High Availability | Pending | Enhance `CrashRecoveryDetector` contract to evaluate complete active candidate queues. |
 | **P8** | **REM-08** | **Subprocess Lifetime & Timeout Governance** | System Resource Hygiene | Pending | Create centralized `ProcessExecutionHelper` that enforces mandatory `destroyForcibly()` timeouts. |
 | **P9** | **REM-09** | **Quarkus & JaCoCo Dual-Instrumentation Build Setup** | Build & CI Infrastructure | Pending | Document build harness rules in `devops-engineer` skill and Maven profile configuration. |

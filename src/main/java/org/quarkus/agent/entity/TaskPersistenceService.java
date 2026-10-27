@@ -3,6 +3,7 @@ package org.quarkus.agent.entity;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
+import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.StepAudit;
 import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStateChangeEvent;
@@ -27,6 +28,10 @@ public class TaskPersistenceService {
         return Optional.ofNullable(entity).map(this::toDomain);
     }
 
+    public Optional<TaskRun> findByProjectAndTask(ProjectId projectId, String taskId) {
+        return findByProjectAndTask(projectId.idString(), taskId);
+    }
+
     public List<TaskRun> findActiveCandidates(String projectId) {
         List<TaskRunEntity> candidates = TaskRunEntity.list(
             "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
@@ -35,8 +40,16 @@ public class TaskPersistenceService {
         return candidates.stream().map(this::toDomain).toList();
     }
 
+    public List<TaskRun> findActiveCandidates(ProjectId projectId) {
+        return findActiveCandidates(projectId.idString());
+    }
+
     public long countByProject(String projectId) {
         return TaskRunEntity.count("projectId", projectId);
+    }
+
+    public long countByProject(ProjectId projectId) {
+        return countByProject(projectId.idString());
     }
 
     @Transactional

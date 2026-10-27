@@ -2,12 +2,12 @@ package org.quarkus.agent.workspace;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.quarkus.agent.model.ProjectId;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,8 +18,8 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class ProjectIdResolver {
 
-    private static final Pattern SCP_PATTERN = Pattern.compile("^[a-zA-Z0-9._-]+@([a-zA-Z0-9._-]+):(.+)$");
-    private static final Pattern URL_PATTERN = Pattern.compile("^https?://([^/]+)/(.+)$");
+    private static final Pattern SCP_PATTERN = Pattern.compile("^(?:[\\w.-]+@)?([\\w.-]+):(.+)$");
+    private static final Pattern URL_PATTERN = Pattern.compile("^(?:[a-zA-Z][a-zA-Z0-9+-.]*://)?(?:[^@/]+@)?([^:/]+)(?::\\d+)?/(.+)$");
 
     private final WorkspaceContextResolver workspaceResolver;
 
@@ -32,16 +32,25 @@ public class ProjectIdResolver {
         this(new WorkspaceContextResolver());
     }
 
-    public String resolveProjectId() {
+    public ProjectId resolveProjectId() {
         return resolveForPath(workspaceResolver.resolveRepoRoot());
     }
 
-    public String resolveForPath(Path rootPath) {
+    public ProjectId resolveForPath(Path rootPath) {
+        String coordinate = resolveCoordinate(rootPath);
+        return ProjectId.fromCoordinate(coordinate);
+    }
+
+    public String resolveCoordinate() {
+        return resolveCoordinate(workspaceResolver.resolveRepoRoot());
+    }
+
+    public String resolveCoordinate(Path rootPath) {
         String remote = probeGitRemote(rootPath);
         if (remote != null && !remote.isBlank()) {
             return normalizeRemote(remote);
         }
-        return computeSha256Fallback(rootPath);
+        return computeLocalFallback(rootPath);
     }
 
     public String normalizeRemote(String remoteUrl) {
@@ -49,17 +58,51 @@ public class ProjectIdResolver {
             return "unknown";
         }
         String clean = remoteUrl.trim();
-        Matcher scpMatcher = SCP_PATTERN.matcher(clean);
-        if (scpMatcher.matches()) {
-            clean = scpMatcher.group(1) + "/" + scpMatcher.group(2);
-        } else {
+        String host = null;
+        String path = null;
+
+        if (clean.contains("://")) {
             Matcher urlMatcher = URL_PATTERN.matcher(clean);
             if (urlMatcher.matches()) {
-                clean = urlMatcher.group(1) + "/" + urlMatcher.group(2);
+                host = urlMatcher.group(1);
+                path = urlMatcher.group(2);
+            }
+        } else {
+            Matcher scpMatcher = SCP_PATTERN.matcher(clean);
+            if (scpMatcher.matches()) {
+                host = scpMatcher.group(1);
+                path = scpMatcher.group(2);
+            } else {
+                Matcher urlMatcher = URL_PATTERN.matcher(clean);
+                if (urlMatcher.matches()) {
+                    host = urlMatcher.group(1);
+                    path = urlMatcher.group(2);
+                }
             }
         }
+
+        if (host != null && path != null) {
+            host = host.toLowerCase(Locale.ROOT);
+            while (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+            while (path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            while (path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
+            return host + "/" + path;
+        }
+
         if (clean.endsWith(".git")) {
             clean = clean.substring(0, clean.length() - 4);
+        }
+        while (clean.endsWith("/")) {
+            clean = clean.substring(0, clean.length() - 1);
         }
         return clean;
     }
@@ -84,28 +127,13 @@ public class ProjectIdResolver {
         return null;
     }
 
-    private String computeSha256Fallback(Path rootPath) {
+    private String computeLocalFallback(Path rootPath) {
         Path targetPath;
         try {
             targetPath = rootPath.toRealPath();
         } catch (IOException _) {
             targetPath = rootPath.toAbsolutePath().normalize();
         }
-
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(targetPath.toString().getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) {
-                    hexString.append('0');
-                }
-                hexString.append(hex);
-            }
-            return hexString.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm must be supported by the JVM runtime", e);
-        }
+        return "local:" + targetPath;
     }
 }

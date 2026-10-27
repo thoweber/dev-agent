@@ -3,6 +3,7 @@ package org.quarkus.agent.workspace;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.quarkus.agent.entity.TaskPersistenceService;
+import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.TaskRun;
 
 import java.util.List;
@@ -29,6 +30,10 @@ public class CrashRecoveryDetector {
 
     public Optional<TaskRun> findResumableTask() {
         return findResumableTask(projectResolver.resolveProjectId());
+    }
+
+    public Optional<TaskRun> findResumableTask(ProjectId projectId) {
+        return findResumableTask(projectId.idString());
     }
 
     public Optional<TaskRun> findResumableTask(String projectId) {

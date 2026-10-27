@@ -3,7 +3,9 @@ package org.quarkus.agent.workspace;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.quarkus.agent.model.ProjectId;
 
+import java.io.IOException;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,30 +16,56 @@ class ProjectIdResolverTest {
     Path tempDir;
 
     @Test
-    @DisplayName("Given local directory without git remote - when resolveProjectId called - then returns SHA-256 fallback")
-    void testResolveProjectIdFallback() {
+    @DisplayName("Given local directory without git remote - when resolveProjectId called - then returns deterministic UUIDv3 ProjectId")
+    void testResolveProjectIdFallback() throws IOException {
         ProjectIdResolver resolver = new ProjectIdResolver();
-        String projectId = resolver.resolveForPath(tempDir);
+        ProjectId projectId = resolver.resolveForPath(tempDir);
 
-        assertThat(projectId).isNotNull().hasSize(64); // SHA-256 hex string length
+        assertThat(projectId).isNotNull();
+        assertThat(projectId.value().version()).isEqualTo(3);
+        assertThat(projectId).isEqualTo(ProjectId.fromCoordinate("local:" + tempDir.toRealPath()));
     }
 
     @Test
-    @DisplayName("Given git remote url - when normalized - then returns host and repo identifier")
-    void testNormalizeRemoteUrl() {
+    @DisplayName("Given git remote url across protocols - when normalized - then scrubs credentials, ports and extracts host and repo identifier")
+    void testNormalizeRemoteUrlProtocols() {
         ProjectIdResolver resolver = new ProjectIdResolver();
 
-        String gitUrl = "git@github.com:thoweber/dev-agent.git";
-        assertThat(resolver.normalizeRemote(gitUrl)).isEqualTo("github.com/thoweber/dev-agent");
+        // SCP syntax
+        assertThat(resolver.normalizeRemote("git@github.com:thoweber/dev-agent.git"))
+            .isEqualTo("github.com/thoweber/dev-agent");
 
-        String httpsUrl = "https://github.com/thoweber/dev-agent.git";
-        assertThat(resolver.normalizeRemote(httpsUrl)).isEqualTo("github.com/thoweber/dev-agent");
+        // HTTPS standard
+        assertThat(resolver.normalizeRemote("https://github.com/thoweber/dev-agent.git"))
+            .isEqualTo("github.com/thoweber/dev-agent");
 
-        String plainHttps = "https://github.com/my-org/my-project";
-        assertThat(resolver.normalizeRemote(plainHttps)).isEqualTo("github.com/my-org/my-project");
+        // HTTPS with plain token
+        assertThat(resolver.normalizeRemote("https://oauth2:ghp_secretToken123@github.com/thoweber/dev-agent.git"))
+            .isEqualTo("github.com/thoweber/dev-agent");
 
-        String gitlabUrl = "git@gitlab.com:my-org/my-project.git";
-        assertThat(resolver.normalizeRemote(gitlabUrl)).isEqualTo("gitlab.com/my-org/my-project");
+        // HTTPS with user and password on subgroup
+        assertThat(resolver.normalizeRemote("https://user:pass123@gitlab.com/group/subgroup/project.git"))
+            .isEqualTo("gitlab.com/group/subgroup/project");
+
+        // SSH with protocol and port
+        assertThat(resolver.normalizeRemote("ssh://git@github.com:22/thoweber/dev-agent.git"))
+            .isEqualTo("github.com/thoweber/dev-agent");
+
+        // SSH with protocol without port
+        assertThat(resolver.normalizeRemote("ssh://git@gitlab.internal.corp/team/project.git"))
+            .isEqualTo("gitlab.internal.corp/team/project");
+
+        // Git protocol
+        assertThat(resolver.normalizeRemote("git://github.com/thoweber/dev-agent.git"))
+            .isEqualTo("github.com/thoweber/dev-agent");
+
+        // Host case insensitivity
+        assertThat(resolver.normalizeRemote("HTTPS://GITHUB.COM/thoweber/dev-agent.git"))
+            .isEqualTo("github.com/thoweber/dev-agent");
+
+        // Trailing slash
+        assertThat(resolver.normalizeRemote("https://github.com/thoweber/dev-agent/"))
+            .isEqualTo("github.com/thoweber/dev-agent");
     }
 
     @Test
@@ -49,11 +77,30 @@ class ProjectIdResolverTest {
     }
 
     @Test
-    @DisplayName("Given resolver initialized with workspace - resolves project id")
-    void testResolveProjectIdWithWorkspace() {
+    @DisplayName("Given resolver initialized with workspace - resolves ProjectId")
+    void testResolveProjectIdWithWorkspace() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         ProjectIdResolver resolver = new ProjectIdResolver(workspace);
 
-        assertThat(resolver.resolveProjectId()).isNotNull().hasSize(64);
+        ProjectId projectId = resolver.resolveProjectId();
+        assertThat(projectId).isNotNull();
+        assertThat(projectId.value().version()).isEqualTo(3);
+        assertThat(projectId).isEqualTo(ProjectId.fromCoordinate("local:" + tempDir.toRealPath()));
+    }
+
+    @Test
+    @DisplayName("Given same repository accessed via different protocols or credentials - produces identical ProjectId")
+    void testCredentialAndProtocolEquivalence() {
+        ProjectIdResolver resolver = new ProjectIdResolver();
+
+        String sshUrl = "git@github.com:thoweber/dev-agent.git";
+        String httpsWithToken = "https://oauth2:secretToken@github.com/thoweber/dev-agent.git";
+        String sshWithPort = "ssh://git@github.com:22/thoweber/dev-agent.git";
+
+        ProjectId idSsh = ProjectId.fromCoordinate(resolver.normalizeRemote(sshUrl));
+        ProjectId idHttps = ProjectId.fromCoordinate(resolver.normalizeRemote(httpsWithToken));
+        ProjectId idPort = ProjectId.fromCoordinate(resolver.normalizeRemote(sshWithPort));
+
+        assertThat(idSsh).isEqualTo(idHttps).isEqualTo(idPort);
     }
 }

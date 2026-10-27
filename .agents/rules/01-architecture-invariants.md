@@ -39,3 +39,9 @@
 * Panache entities (`@Entity`) are strictly quarantined within `org.quarkus.agent.entity` and must never be accessed by classes outside this package.
 * Classes outside `org.quarkus.agent.entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
 * Enforced via ArchUnit `entitiesMustNotBeAccessedOutsideTheirPackage`.
+
+## 9. Global Project ID Host Isolation & Deterministic UUIDv3 (ADR-013)
+* Multi-tenant task execution and state persistence identify repositories via strongly-typed `ProjectId` value objects wrapping deterministic RFC 4122 UUIDv3 instances.
+* Project coordinates are extracted by `ProjectIdResolver`, normalizing Git remotes across SCP, HTTPS, SSH, and Git protocols, scrubbing credentials (`userInfo`), ports, and `.git` extensions.
+* Offline / non-git directories fall back to `local:<canonicalRealPath>`.
+* Raw un-normalized URLs or naked strings must never be used directly as project identifiers in domain services.

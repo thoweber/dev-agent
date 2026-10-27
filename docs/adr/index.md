@@ -16,3 +16,4 @@ This directory records the key architectural decisions for **dev-agent**.
 | [ADR-010](file:///home/developer/projects/dev-agent/docs/adr/ADR-010-embedded-vertx-review-gui.md) | Embedded Vert.x Local Web Diff Review Engine | Accepted | 2026-10-25 |
 | [ADR-011](file:///home/developer/projects/dev-agent/docs/adr/ADR-011-hierarchical-memory-invariants.md) | 3-Tier Hierarchical Memory Turn Invariants & Atomic Tool Eviction | Accepted | 2026-10-26 |
 | [ADR-012](file:///home/developer/projects/dev-agent/docs/adr/ADR-012-entity-encapsulation-and-domain-mapping.md) | Panache Entity Encapsulation & Domain Model Decoupling | Accepted | 2026-10-26 |
+| [ADR-013](file:///home/developer/projects/dev-agent/docs/adr/ADR-013-global-project-id-host-isolation.md) | Global Project ID Host Isolation and Deterministic UUIDv3 Derivation | Accepted | 2026-10-27 |
