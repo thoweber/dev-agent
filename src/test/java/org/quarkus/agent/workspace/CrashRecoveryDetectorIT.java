@@ -2,7 +2,6 @@ package org.quarkus.agent.workspace;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,13 +44,11 @@ class CrashRecoveryDetectorIT {
     }
 
     @BeforeEach
-    @Transactional
     void setUp() {
         persistenceService.deleteAll();
     }
 
     @Test
-    @Transactional
     @DisplayName("Given crashed task with dead PID and intact worktree - when findResumableTask called - then identifies task for recovery")
     void testDetectCrashedTask() throws IOException {
         persistenceService.deleteAll();
@@ -76,7 +73,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given crashed task with dead PID but missing worktree - when findResumableTask called - returns empty")
     void testIgnoreCrashedTaskWithMissingWorktree() throws IOException {
         persistenceService.deleteAll();
@@ -98,7 +94,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given no tasks exist - when findResumableTask called - returns empty")
     void testNoTasksFound() {
         persistenceService.deleteAll();
@@ -107,7 +102,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given active task with current process PID - when findResumableTask called - returns empty")
     void testActiveTaskWithRunningPid() throws IOException {
         persistenceService.deleteAll();
@@ -129,7 +123,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given multiple tasks - when findAllResumableTasks called - returns all crashed tasks with intact worktrees in descending order")
     void testFindAllResumableTasks() throws IOException {
         persistenceService.deleteAll();
@@ -197,7 +190,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given target taskId - when findResumableTaskById called - evaluates specific task eligibility")
     void testFindResumableTaskById() throws IOException {
         persistenceService.deleteAll();
@@ -240,7 +232,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given active task and older crashed task - when findResumableTask called - skips active and recovers older crashed task")
     void testActiveTaskDoesNotMaskOlderCrashedTask() throws IOException {
         persistenceService.deleteAll();
@@ -277,7 +268,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given crashed task with null pid - when findResumableTask called - returns task")
     void testCrashedTaskWithNullPid() throws IOException {
         persistenceService.deleteAll();
@@ -300,7 +290,6 @@ class CrashRecoveryDetectorIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given default findResumableTask called - resolves via projectResolver")
     void testDefaultFindResumableTask() {
         persistenceService.deleteAll();

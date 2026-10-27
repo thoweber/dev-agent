@@ -62,3 +62,9 @@
   * **Disk Overflow Tier:** Temporary file on disk from 1 MB up to 10 MB.
   * **Truncation Tier:** Output exceeding 10 MB is truncated in storage while draining continues to prevent OS pipe deadlocks.
 * On timeout or thread interruption, `process.destroyForcibly()` is invoked immediately, and `Thread.currentThread().interrupt()` is preserved.
+
+## 12. Programmatic Test Transaction Scope Protocol
+* Test methods (`@Test`) and lifecycle fixtures (`@BeforeEach`, `@AfterEach`) must never be annotated with `@Transactional`.
+* Production services (`TaskPersistenceService`) maintain discrete transaction boundaries.
+* Integration tests requiring custom transactional data seeding or entity manipulation must use programmatic transactions via `QuarkusTransaction.requiringNew().run(...)` or `.call(...)`.
+* ArchUnit enforces that methods annotated with `@Test`, `@BeforeEach`, or `@AfterEach` are not annotated with `@Transactional`.

@@ -2,7 +2,6 @@ package org.quarkus.agent.cli;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,13 +50,11 @@ class ResumeCommandIT {
     }
 
     @BeforeEach
-    @Transactional
     void setUp() {
         persistenceService.deleteAll();
     }
 
     @Test
-    @Transactional
     @DisplayName("Given no interrupted tasks - when resume executed without arguments - reports no tasks found")
     void testResumeNoTasksFound() {
         ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
@@ -72,7 +69,6 @@ class ResumeCommandIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given single crashed task in non-interactive mode - when resume executed without arguments - reports task with guidance")
     void testResumeSingleTaskNonInteractive() throws IOException {
         String taskId = "TASK-AUTO-RESUME";
@@ -104,7 +100,6 @@ class ResumeCommandIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given single crashed task in interactive mode - when user answers y - resumes task")
     void testResumeSingleTaskInteractiveYes() throws IOException {
         String taskId = "TASK-PROMPT-YES";
@@ -138,7 +133,6 @@ class ResumeCommandIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given single crashed task in interactive mode - when user answers n - aborts resumption")
     void testResumeSingleTaskInteractiveNo() throws IOException {
         String taskId = "TASK-PROMPT-NO";
@@ -170,7 +164,6 @@ class ResumeCommandIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given explicit taskId whose process is still active - reports running error")
     void testResumeExplicitTaskAlreadyRunning() throws IOException {
         String taskId = "TASK-STILL-ALIVE";
@@ -200,7 +193,6 @@ class ResumeCommandIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given explicit taskId with missing worktree - reports worktree missing error")
     void testResumeExplicitTaskMissingWorktree() {
         String taskId = "TASK-MISSING-DIR";
@@ -229,7 +221,6 @@ class ResumeCommandIT {
     }
 
     @Test
-    @Transactional
     @DisplayName("Given explicit valid crashed task - resumes task successfully")
     void testResumeExplicitValidCrashedTask() throws IOException {
         String taskId = "TASK-VALID-CRASH";

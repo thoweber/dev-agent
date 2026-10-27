@@ -53,7 +53,7 @@ The composite priority score ($W = 2 \times \text{Severity} + 1 \times \text{Pre
 | **P7** | **REM-07** | **Exhaustive Crash Recovery & Worktree Health Inspection** | High Availability | **COMPLETED** | Complete queue evaluation `findAllResumableTasks`, physical worktree check, interactive `ResumeCommand` |
 | **P8** | **REM-08** | **Subprocess Lifetime & Timeout Governance** | System Resource Hygiene | **COMPLETED** | Centralized `SubprocessExecutor`, bounded 2-tier `BoundedOverflowBuffer` (1 MB RAM -> 10 MB Disk), mandatory `destroyForcibly()` |
 | **P9** | **REM-09** | **Quarkus & JaCoCo Dual-Instrumentation Build Setup** | Build & CI Infrastructure | **COMPLETED** | Failsafe isolation for `*IT.java` with `quarkus.jacoco.enabled=false`, Surefire pure unit test coverage via `jacoco-maven-plugin` |
-| **P10** | **REM-10** | **Test Transaction Scope Protocol (`QuarkusTransaction` vs `@Transactional`)** | Test Framework Strategy | Pending | Update `test-engineer` skill and `AGENTS.md` testing protocol to avoid `@Transactional` on test methods with event projection. |
+| **P10** | **REM-10** | **Test Transaction Scope Protocol (`QuarkusTransaction` vs `@Transactional`)** | Test Framework Strategy | **COMPLETED** | Prohibit `@Transactional` on test methods, use `QuarkusTransaction.requiringNew()`, ArchUnit enforcement |
 
 ---
 

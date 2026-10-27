@@ -38,4 +38,12 @@ public class AgentArchitectureTest {
         classes()
             .that().areAnnotatedWith(jakarta.persistence.Entity.class)
             .should().onlyBeAccessed().byClassesThat().resideInAPackage("org.quarkus.agent.entity..");
+
+    @ArchTest
+    public static final ArchRule testMethodsMustNotBeAnnotatedWithTransactional =
+        methods()
+            .that().areAnnotatedWith(org.junit.jupiter.api.Test.class)
+            .or().areAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
+            .or().areAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
+            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
 }

@@ -1,8 +1,8 @@
 package org.quarkus.agent.entity;
 
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,54 +20,62 @@ class StatePersistenceIT {
     ProjectIdResolver projectResolver;
 
     @BeforeEach
-    @Transactional
     void setUp() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        QuarkusTransaction.requiringNew().run(() -> {
+            StepAuditEntity.deleteAll();
+            TaskRunEntity.deleteAll();
+        });
     }
 
     @Test
-    @Transactional
     @DisplayName("Given tasks across multiple projects - when queried by project_id - then isolates data without cross-talk")
     void testMultiTenantIsolation() {
-        // Clean up previous runs if any
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        QuarkusTransaction.requiringNew().run(() -> {
+            // Clean up previous runs if any
+            StepAuditEntity.deleteAll();
+            TaskRunEntity.deleteAll();
 
-        // Seed Project A task
-        TaskRunEntity taskA = new TaskRunEntity();
-        taskA.projectId = "thoweber/omnidepot";
-        taskA.taskId = "TASK-001";
-        taskA.status = TaskStatus.PLANNING;
-        taskA.currentPhase = "PLANNING";
-        taskA.createdAt = Instant.now();
-        taskA.updatedAt = Instant.now();
-        taskA.persist();
+            // Seed Project A task
+            TaskRunEntity taskA = new TaskRunEntity();
+            taskA.projectId = "thoweber/omnidepot";
+            taskA.taskId = "TASK-001";
+            taskA.status = TaskStatus.PLANNING;
+            taskA.currentPhase = "PLANNING";
+            taskA.createdAt = Instant.now();
+            taskA.updatedAt = Instant.now();
+            taskA.persist();
 
-        // Seed Project B task
-        TaskRunEntity taskB = new TaskRunEntity();
-        taskB.projectId = "thoweber/store-front";
-        taskB.taskId = "TASK-001"; // Same taskId, different projectId
-        taskB.status = TaskStatus.GREEN_PATCH;
-        taskB.currentPhase = "GREEN_PATCH";
-        taskB.createdAt = Instant.now();
-        taskB.updatedAt = Instant.now();
-        taskB.persist();
+            // Seed Project B task
+            TaskRunEntity taskB = new TaskRunEntity();
+            taskB.projectId = "thoweber/store-front";
+            taskB.taskId = "TASK-001"; // Same taskId, different projectId
+            taskB.status = TaskStatus.GREEN_PATCH;
+            taskB.currentPhase = "GREEN_PATCH";
+            taskB.createdAt = Instant.now();
+            taskB.updatedAt = Instant.now();
+            taskB.persist();
+        });
 
         // Verify Project A query
-        TaskRunEntity retrievedA = TaskRunEntity.findByProjectAndTask("thoweber/omnidepot", "TASK-001");
+        TaskRunEntity retrievedA = QuarkusTransaction.requiringNew().call(() ->
+            TaskRunEntity.findByProjectAndTask("thoweber/omnidepot", "TASK-001")
+        );
         assertThat(retrievedA).isNotNull();
         assertThat(retrievedA.projectId).isEqualTo("thoweber/omnidepot");
         assertThat(retrievedA.status).isEqualTo(TaskStatus.PLANNING);
 
         // Verify Project B query
-        TaskRunEntity retrievedB = TaskRunEntity.findByProjectAndTask("thoweber/store-front", "TASK-001");
+        TaskRunEntity retrievedB = QuarkusTransaction.requiringNew().call(() ->
+            TaskRunEntity.findByProjectAndTask("thoweber/store-front", "TASK-001")
+        );
         assertThat(retrievedB).isNotNull();
         assertThat(retrievedB.projectId).isEqualTo("thoweber/store-front");
         assertThat(retrievedB.status).isEqualTo(TaskStatus.GREEN_PATCH);
 
         // Verify count per project
-        long countA = TaskRunEntity.count("projectId", "thoweber/omnidepot");
+        long countA = QuarkusTransaction.requiringNew().call(() ->
+            TaskRunEntity.count("projectId", "thoweber/omnidepot")
+        );
         assertThat(countA).isEqualTo(1);
     }
 
