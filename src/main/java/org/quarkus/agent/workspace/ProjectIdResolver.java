@@ -5,10 +5,10 @@ import jakarta.inject.Inject;
 import org.quarkus.agent.model.ProjectId;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,14 +22,20 @@ public class ProjectIdResolver {
     private static final Pattern URL_PATTERN = Pattern.compile("^(?:[a-zA-Z][a-zA-Z0-9+-.]*://)?(?:[^@/]+@)?([^:/]+)(?::\\d+)?/(.+)$");
 
     private final WorkspaceContextResolver workspaceResolver;
+    private final SubprocessExecutor subprocessExecutor;
 
     @Inject
-    public ProjectIdResolver(WorkspaceContextResolver workspaceResolver) {
+    public ProjectIdResolver(WorkspaceContextResolver workspaceResolver, SubprocessExecutor subprocessExecutor) {
         this.workspaceResolver = workspaceResolver;
+        this.subprocessExecutor = subprocessExecutor;
+    }
+
+    public ProjectIdResolver(WorkspaceContextResolver workspaceResolver) {
+        this(workspaceResolver, new SubprocessExecutor());
     }
 
     public ProjectIdResolver() {
-        this(new WorkspaceContextResolver());
+        this(new WorkspaceContextResolver(), new SubprocessExecutor());
     }
 
     public ProjectId resolveProjectId() {
@@ -107,22 +113,15 @@ public class ProjectIdResolver {
         return clean;
     }
 
-    @SuppressWarnings("java:S4036")
     private String probeGitRemote(Path rootPath) {
-        try {
-            Process process = new ProcessBuilder("git", "config", "--get", "remote.origin.url")
-                .directory(rootPath.toFile())
-                .start();
-            boolean finished = process.waitFor(2, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-            } else if (process.exitValue() == 0) {
-                return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            }
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
-        } catch (IOException _) {
-            // Git command failed or directory not a git repo
+        ProcessResult result = subprocessExecutor.execute(
+            List.of("git", "config", "--get", "remote.origin.url"),
+            rootPath,
+            Duration.ofSeconds(2)
+        );
+        if (result.isSuccess()) {
+            String remote = result.stdOut().trim();
+            return remote.isBlank() ? null : remote;
         }
         return null;
     }

@@ -54,3 +54,11 @@
   3. The task's physical Git worktree directory (`.git/dev-agent-worktrees/<taskId>`) physically exists on disk.
 * Missing worktrees indicate intentional pruning or deletion; orphaned tasks with missing worktrees must not be selected for auto-resumption.
 * Interactive CLI resumption (`dev-agent resume`) prompts the developer when multiple candidates exist, offering explicit selection.
+
+## 11. Subprocess Lifetime & Timeout Governance
+* All external operating system process forks (`git`, `mvnw`, `npm`, `vitest`, etc.) must be executed through `SubprocessExecutor` with a mandatory timeout `Duration`.
+* Subprocess execution uses concurrent virtual thread stream draining with 2-tier bounded buffers (`BoundedOverflowOutputStream`):
+  * **Memory Tier:** In-memory byte array up to 1 MB.
+  * **Disk Overflow Tier:** Temporary file on disk from 1 MB up to 10 MB.
+  * **Truncation Tier:** Output exceeding 10 MB is truncated in storage while draining continues to prevent OS pipe deadlocks.
+* On timeout or thread interruption, `process.destroyForcibly()` is invoked immediately, and `Thread.currentThread().interrupt()` is preserved.
