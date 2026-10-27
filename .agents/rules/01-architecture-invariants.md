@@ -45,3 +45,12 @@
 * Project coordinates are extracted by `ProjectIdResolver`, normalizing Git remotes across SCP, HTTPS, SSH, and Git protocols, scrubbing credentials (`userInfo`), ports, and `.git` extensions.
 * Offline / non-git directories fall back to `local:<canonicalRealPath>`.
 * Raw un-normalized URLs or naked strings must never be used directly as project identifiers in domain services.
+
+## 10. Exhaustive Crash Recovery & Physical Worktree Invariant
+* Crash recovery evaluates complete candidate queues via `CrashRecoveryDetector.findAllResumableTasks(...)` rather than truncating at the queue head.
+* Tasks are eligible for resumption if and only if:
+  1. Task lifecycle status is non-terminal (`not in COMPLETED, FAILED, ABORTED`).
+  2. The registered process handle is confirmed dead on the host OS (`ProcessHandle.of(pid).isEmpty()`).
+  3. The task's physical Git worktree directory (`.git/dev-agent-worktrees/<taskId>`) physically exists on disk.
+* Missing worktrees indicate intentional pruning or deletion; orphaned tasks with missing worktrees must not be selected for auto-resumption.
+* Interactive CLI resumption (`dev-agent resume`) prompts the developer when multiple candidates exist, offering explicit selection.

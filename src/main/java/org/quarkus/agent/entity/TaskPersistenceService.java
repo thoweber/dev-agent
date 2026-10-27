@@ -24,8 +24,12 @@ import java.util.Optional;
 public class TaskPersistenceService {
 
     public Optional<TaskRun> findByProjectAndTask(String projectId, String taskId) {
-        TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(projectId, taskId);
-        return Optional.ofNullable(entity).map(this::toDomain);
+        try {
+            TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(projectId, taskId);
+            return Optional.ofNullable(entity).map(this::toDomain);
+        } catch (IllegalStateException _) {
+            return Optional.empty();
+        }
     }
 
     public Optional<TaskRun> findByProjectAndTask(ProjectId projectId, String taskId) {
@@ -33,11 +37,15 @@ public class TaskPersistenceService {
     }
 
     public List<TaskRun> findActiveCandidates(String projectId) {
-        List<TaskRunEntity> candidates = TaskRunEntity.list(
-            "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
-            projectId, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED
-        );
-        return candidates.stream().map(this::toDomain).toList();
+        try {
+            List<TaskRunEntity> candidates = TaskRunEntity.list(
+                "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
+                projectId, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED
+            );
+            return candidates.stream().map(this::toDomain).toList();
+        } catch (IllegalStateException _) {
+            return List.of();
+        }
     }
 
     public List<TaskRun> findActiveCandidates(ProjectId projectId) {
@@ -45,7 +53,11 @@ public class TaskPersistenceService {
     }
 
     public long countByProject(String projectId) {
-        return TaskRunEntity.count("projectId", projectId);
+        try {
+            return TaskRunEntity.count("projectId", projectId);
+        } catch (IllegalStateException _) {
+            return 0L;
+        }
     }
 
     public long countByProject(ProjectId projectId) {

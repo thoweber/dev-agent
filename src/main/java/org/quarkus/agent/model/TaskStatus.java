@@ -14,5 +14,9 @@ public enum TaskStatus {
     CI_POLLING,
     COMPLETED,
     FAILED,
-    ABORTED
+    ABORTED;
+
+    public boolean isTerminal() {
+        return this == COMPLETED || this == FAILED || this == ABORTED;
+    }
 }

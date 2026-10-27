@@ -83,6 +83,13 @@ public class WorkspaceContextResolver {
     }
 
     /**
+     * Resolves the dedicated worktree directory for a specific task.
+     */
+    public Path resolveWorktreeDir(String taskId) {
+        return resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
+    }
+
+    /**
      * Resolves the .agents metadata directory.
      */
     public Path resolveAgentsDir() {

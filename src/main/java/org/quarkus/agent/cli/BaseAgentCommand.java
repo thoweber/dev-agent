@@ -7,6 +7,8 @@ import picocli.CommandLine.Spec;
 import org.quarkus.agent.DevAgentCommand;
 import org.quarkus.agent.workspace.WorkspaceContextResolver;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 
@@ -23,6 +25,23 @@ public abstract class BaseAgentCommand implements Runnable {
 
     @Option(names = {"-d", "--dir", "--workspace"}, description = "Target workspace root directory", defaultValue = ".")
     protected String dir = ".";
+
+    private BufferedReader in;
+
+    public void setIn(BufferedReader in) {
+        this.in = in;
+    }
+
+    protected BufferedReader getIn() {
+        if (in != null) {
+            return in;
+        }
+        return new BufferedReader(new InputStreamReader(System.in));
+    }
+
+    protected boolean isInteractive() {
+        return in != null || System.console() != null;
+    }
 
     @SuppressWarnings("java:S106")
     protected PrintWriter getOut() {
