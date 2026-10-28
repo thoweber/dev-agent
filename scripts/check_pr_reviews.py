@@ -251,8 +251,11 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
             c_page_info = comments_conn.get("pageInfo", {})
             thread_id = thread.get("id")
             seen_cursors = set()
-            while c_page_info.get("hasNextPage") and c_page_info.get("endCursor"):
-                c_cursor = c_page_info["endCursor"]
+            while c_page_info.get("hasNextPage"):
+                c_cursor = c_page_info.get("endCursor")
+                if not c_cursor:
+                    print(f"Error: hasNextPage is true but endCursor is missing in comment pagination for thread {thread_id}", file=sys.stderr)
+                    sys.exit(1)
                 if c_cursor in seen_cursors:
                     print(f"Error: Infinite cursor loop detected in comment pagination for thread {thread_id}", file=sys.stderr)
                     sys.exit(1)
@@ -362,7 +365,7 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     if "Outside diff range comments" not in body and "Outside diff comments" not in body:
         return []
 
-    m_section = re.search(r"Outside diff range comments.*?\n(.*?)(?:\n---|\Z)", body, re.DOTALL)
+    m_section = re.search(r"Outside diff range comments.*?\n(.*?)(?:\n---\s*(?:\n|\Z)|\n(?=[#]{1,3}\s)|\Z)", body, re.DOTALL)
     if not m_section:
         return []
     section = m_section.group(1)

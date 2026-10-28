@@ -101,46 +101,47 @@ public class HierarchicalMemoryStore implements ChatMemory {
         }
     }
 
-    boolean canTrimOldestToolInteraction() {
+    int findOldestTrimmableToolInteractionIndex() {
         if (slidingScratchpad.isEmpty()) {
-            return false;
+            return -1;
         }
         int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
-        if (startIndex >= slidingScratchpad.size()) {
-            return false;
-        }
-        ChatMessage candidate = slidingScratchpad.get(startIndex);
-        if (!(candidate instanceof AiMessage ai && ai.hasToolExecutionRequests())) {
-            return false;
-        }
-        for (int i = startIndex + 1; i < slidingScratchpad.size(); i++) {
-            if (slidingScratchpad.get(i) instanceof AiMessage) {
-                return true;
+        int toolAiIndex = -1;
+        for (int i = startIndex; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                toolAiIndex = i;
+                break;
             }
         }
-        return false;
+        if (toolAiIndex == -1) {
+            return -1;
+        }
+        for (int i = toolAiIndex + 1; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof AiMessage) {
+                return toolAiIndex;
+            }
+        }
+        return -1;
+    }
+
+    boolean canTrimOldestToolInteraction() {
+        return findOldestTrimmableToolInteractionIndex() != -1;
     }
 
     void trimOldestToolInteraction() {
-        if (slidingScratchpad.isEmpty()) {
+        int targetIndex = findOldestTrimmableToolInteractionIndex();
+        if (targetIndex == -1) {
             return;
         }
-        int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
-        if (startIndex >= slidingScratchpad.size()) {
-            return;
-        }
-        ChatMessage candidate = slidingScratchpad.get(startIndex);
-        if (!(candidate instanceof AiMessage ai && ai.hasToolExecutionRequests())) {
-            return;
-        }
+        AiMessage ai = (AiMessage) slidingScratchpad.get(targetIndex);
         Set<String> requestIds = ai.toolExecutionRequests().stream()
             .map(ToolExecutionRequest::id)
             .collect(Collectors.toSet());
-        slidingScratchpad.remove(startIndex);
-        while (startIndex < slidingScratchpad.size()) {
-            ChatMessage next = slidingScratchpad.get(startIndex);
+        slidingScratchpad.remove(targetIndex);
+        while (targetIndex < slidingScratchpad.size()) {
+            ChatMessage next = slidingScratchpad.get(targetIndex);
             if (next instanceof ToolExecutionResultMessage toolResult && requestIds.contains(toolResult.id())) {
-                slidingScratchpad.remove(startIndex);
+                slidingScratchpad.remove(targetIndex);
             } else {
                 break;
             }

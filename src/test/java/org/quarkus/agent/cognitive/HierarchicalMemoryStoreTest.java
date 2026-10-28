@@ -262,6 +262,33 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
+    @DisplayName("Given single active turn with plain AiMessage before tool executions exceeding budget - bounds scratchpad while preserving user message and plain AiMessage")
+    void testSingleTurnWithPlainAiMessageBeforeToolInteractionsTrimming() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Root prompt for single long turn"));
+        memory.add(new AiMessage("Thinking about how to solve the problem..."));
+
+        for (int i = 1; i <= 15; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("call-step-" + i)
+                .name("tool_" + i)
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+        }
+
+        // 1 user message + 1 plain AI message + 15 * 2 = 32 messages.
+        // MAX_SCRATCHPAD_MESSAGES is 24.
+        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
+        assertThat(memory.messages().get(1)).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) memory.messages().get(1)).text()).isEqualTo("Thinking about how to solve the problem...");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
     @DisplayName("Given scratchpad exceeding budget but cannot trim tool interaction - loop terminates cleanly")
     void testScratchpadExceedsBudgetCannotTrim() throws Exception {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
@@ -334,6 +361,13 @@ class HierarchicalMemoryStoreTest {
         // Candidate has tool requests and later AiMessage exists
         scratchpad.add(new AiMessage("Later AI message"));
         assertThat(memory.canTrimOldestToolInteraction()).isTrue();
+        assertThat(memory.findOldestTrimmableToolInteractionIndex()).isEqualTo(1);
+
+        // Scratchpad starting with tool AiMessage without UserMessage (index 0)
+        scratchpad.clear();
+        scratchpad.add(AiMessage.from(req));
+        scratchpad.add(new AiMessage("Later AI message"));
+        assertThat(memory.findOldestTrimmableToolInteractionIndex()).isEqualTo(0);
     }
 
     @Test
@@ -387,12 +421,30 @@ class HierarchicalMemoryStoreTest {
         assertThat(((dev.langchain4j.data.message.ToolExecutionResultMessage) scratchpad.get(1)).id()).isEqualTo("call-other");
         assertThat(scratchpad.get(2)).isInstanceOf(AiMessage.class);
 
-        // AiMessage at index 0 trimmed until empty
+        // AiMessage at index 0 with later AiMessage trimmed
         scratchpad.clear();
         scratchpad.add(AiMessage.from(req));
         scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"));
+        scratchpad.add(new AiMessage("Later AI response"));
         memory.trimOldestToolInteraction();
-        assertThat(scratchpad).isEmpty();
+        assertThat(scratchpad).hasSize(1);
+        assertThat(scratchpad.getFirst()).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) scratchpad.getFirst()).text()).isEqualTo("Later AI response");
+
+        // Trimming when plain AiMessage precedes tool interaction
+        scratchpad.clear();
+        scratchpad.add(new UserMessage("Prompt"));
+        scratchpad.add(new AiMessage("Plain thought"));
+        scratchpad.add(AiMessage.from(req));
+        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"));
+        scratchpad.add(new AiMessage("Subsequent message"));
+        memory.trimOldestToolInteraction();
+        assertThat(scratchpad).hasSize(3);
+        assertThat(scratchpad.get(0)).isInstanceOf(UserMessage.class);
+        assertThat(scratchpad.get(1)).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) scratchpad.get(1)).text()).isEqualTo("Plain thought");
+        assertThat(scratchpad.get(2)).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) scratchpad.get(2)).text()).isEqualTo("Subsequent message");
     }
 
     @Test
