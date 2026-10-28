@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
@@ -93,6 +95,45 @@ public class HierarchicalMemoryStore implements ChatMemory {
         }
         while (countTurns() > 1 && slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES) {
             evictOldestTurn();
+        }
+        while (slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES && canTrimOldestToolInteraction()) {
+            trimOldestToolInteraction();
+        }
+    }
+
+    private boolean canTrimOldestToolInteraction() {
+        if (slidingScratchpad.isEmpty()) {
+            return false;
+        }
+        int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
+        if (startIndex >= slidingScratchpad.size()) {
+            return false;
+        }
+        ChatMessage candidate = slidingScratchpad.get(startIndex);
+        if (!(candidate instanceof AiMessage ai && ai.hasToolExecutionRequests())) {
+            return false;
+        }
+        boolean hasLaterAiMessage = false;
+        for (int i = startIndex + 1; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof AiMessage) {
+                hasLaterAiMessage = true;
+                break;
+            }
+        }
+        return hasLaterAiMessage;
+    }
+
+    private void trimOldestToolInteraction() {
+        int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
+        ChatMessage candidate = slidingScratchpad.get(startIndex);
+        if (candidate instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+            Set<String> requestIds = ai.toolExecutionRequests().stream()
+                .map(ToolExecutionRequest::id)
+                .collect(Collectors.toSet());
+            slidingScratchpad.remove(startIndex);
+            while (startIndex < slidingScratchpad.size() && slidingScratchpad.get(startIndex) instanceof ToolExecutionResultMessage toolResult && requestIds.contains(toolResult.id())) {
+                slidingScratchpad.remove(startIndex);
+            }
         }
     }
 
