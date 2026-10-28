@@ -63,14 +63,14 @@ class WorkspaceJailValidatorTest {
     }
 
     @Test
-    @DisplayName("Given valid file for write - when checked - then returns validated Path")
+    @DisplayName("Given valid file for write - when checked - then returns validated RepoPath")
     void testValidateForWriteSuccess() throws IOException {
         Path validFile = Files.createFile(tempDir.resolve("valid.yaml"));
         WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
 
-        Path resolved = validator.validateForWrite("valid.yaml");
+        RepoPath resolved = validator.validateForWrite("valid.yaml");
 
-        assertThat(resolved).isEqualTo(validFile.toRealPath());
+        assertThat(resolved.toPath()).isEqualTo(validFile.toRealPath());
         assertThat(validator.getActiveWorkingRoot()).isEqualTo(tempDir);
     }
 
@@ -94,5 +94,23 @@ class WorkspaceJailValidatorTest {
         WorkspaceJailValidator validator = new WorkspaceJailValidator();
 
         assertThat(validator.getActiveWorkingRoot()).isEqualTo(Path.of(System.getProperty("user.dir")));
+    }
+
+    @Test
+    @DisplayName("Given symlinked ancestor directory - when validateAndResolve or validateForWrite checked - then throws SecurityException")
+    void testValidateRejectsSymlinkedAncestorDirectory() throws IOException {
+        Path realDir = Files.createDirectories(tempDir.resolve("real_dir"));
+        Path symlinkDir = tempDir.resolve("sym_dir");
+        Files.createSymbolicLink(symlinkDir, realDir);
+
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
+
+        assertThatThrownBy(() -> validator.validateAndResolve("sym_dir/file.txt"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden");
+
+        assertThatThrownBy(() -> validator.validateForWrite("sym_dir/file.txt"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden");
     }
 }

@@ -35,17 +35,17 @@ jobs:
           restore-keys: ${{ runner.os }}-sonar
 
       - name: Validate Code Formatting (Spotless)
-        run: ./mvnw spotless:check
+        run: ./mvnw --batch-mode spotless:check
 
       - name: Full Reactor Clean Build & Verification
-        run: ./mvnw clean verify
+        run: ./mvnw --batch-mode clean verify
 
       - name: SonarCloud Analysis & Quality Gate Check
         if: env.SONAR_TOKEN != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: ./mvnw -B sonar:sonar -Dsonar.qualitygate.wait=true
+        run: ./mvnw --batch-mode sonar:sonar -Dsonar.qualitygate.wait=true
 
       - name: Upload JaCoCo Coverage Artifact
         if: always()

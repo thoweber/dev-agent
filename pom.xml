@@ -108,10 +108,14 @@
             <artifactId>quarkus-cache</artifactId>
         </dependency>
 
-        <!-- Relational State (Embedded H2) -->
+        <!-- Relational State (Embedded H2 & Hibernate Panache) -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jdbc-h2</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
 
         <!-- Eclipse Vert.x Reactive Core -->
@@ -141,6 +145,11 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jacoco</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -206,6 +215,25 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${surefire-plugin.version}</version>
+                <configuration>
+                    <argLine>@{argLine} -Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1</argLine>
+                    <systemPropertyVariables>
+                        <quarkus.jacoco.enabled>false</quarkus.jacoco.enabled>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
@@ -215,6 +243,9 @@
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
+                        <configuration>
+                            <exclClassLoaders>*QuarkusClassLoader</exclClassLoaders>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>report</id>

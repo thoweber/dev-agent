@@ -33,4 +33,38 @@
 ## 7. Context-Aware Secret Redaction Quarantine (ADR-008)
 * Secret scrubbing is strictly quarantined:
   * **Never applied** to raw Java/TypeScript source code or test files.
-  * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity`, HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+  * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity` (via strongly-typed `SanitizedOutput`), HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+
+## 8. Panache Entity Encapsulation & Domain Decoupling (ADR-012)
+* Panache entities (`@Entity`) are strictly quarantined within `org.quarkus.agent.entity` and must never be accessed by classes outside this package.
+* Classes outside `org.quarkus.agent.entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
+* Enforced via ArchUnit `entitiesMustNotBeAccessedOutsideTheirPackage`.
+
+## 9. Global Project ID Host Isolation & Deterministic UUIDv3 (ADR-013)
+* Multi-tenant task execution and state persistence identify repositories via strongly-typed `ProjectId` value objects wrapping deterministic RFC 4122 UUIDv3 instances.
+* Project coordinates are extracted by `ProjectIdResolver`, normalizing Git remotes across SCP, HTTPS, SSH, and Git protocols, scrubbing credentials (`userInfo`), ports, and `.git` extensions.
+* Offline / non-git directories fall back to `local:<canonicalRealPath>`.
+* Raw un-normalized URLs or naked strings must never be used directly as project identifiers in domain services.
+
+## 10. Exhaustive Crash Recovery & Physical Worktree Invariant
+* Crash recovery evaluates complete candidate queues via `CrashRecoveryDetector.findAllResumableTasks(...)` rather than truncating at the queue head.
+* Tasks are eligible for resumption if and only if:
+  1. Task lifecycle status is non-terminal (`not in COMPLETED, FAILED, ABORTED`).
+  2. The registered process handle is confirmed dead on the host OS (`ProcessHandle.of(pid).isEmpty()`).
+  3. The task's physical Git worktree directory (`.git/dev-agent-worktrees/<taskId>`) physically exists on disk.
+* Missing worktrees indicate intentional pruning or deletion; orphaned tasks with missing worktrees must not be selected for auto-resumption.
+* Interactive CLI resumption (`dev-agent resume`) prompts the developer when multiple candidates exist, offering explicit selection.
+
+## 11. Subprocess Lifetime & Timeout Governance
+* All external operating system process forks (`git`, `mvnw`, `npm`, `vitest`, etc.) must be executed through `SubprocessExecutor` with a mandatory timeout `Duration`.
+* Subprocess execution uses concurrent virtual thread stream draining with 2-tier bounded buffers (`BoundedOverflowBuffer`):
+  * **Memory Tier:** In-memory byte array up to 1 MB.
+  * **Disk Overflow Tier:** Temporary file on disk from 1 MB up to 10 MB.
+  * **Truncation Tier:** Output exceeding 10 MB is truncated in storage while draining continues to prevent OS pipe deadlocks.
+* On timeout or thread interruption, `process.destroyForcibly()` is invoked immediately, and `Thread.currentThread().interrupt()` is preserved.
+
+## 12. Programmatic Test Transaction Scope Protocol
+* Test methods (`@Test`) and lifecycle fixtures (`@BeforeEach`, `@AfterEach`) must never be annotated with `@Transactional`.
+* Production services (`TaskPersistenceService`) maintain discrete transaction boundaries.
+* Integration tests requiring custom transactional data seeding or entity manipulation must use programmatic transactions via `QuarkusTransaction.requiringNew().run(...)` or `.call(...)`.
+* ArchUnit enforces that methods annotated with `@Test`, `@BeforeEach`, or `@AfterEach` are not annotated with `@Transactional`.

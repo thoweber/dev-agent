@@ -19,12 +19,22 @@ This skill governs test engineering, ArchUnit architecture rule enforcement, Pic
 
 ## 2. ArchUnit Native Compliance Rules
 
-All tests in `AgentArchitectureTest` verify native GraalVM safety:
+All tests in `AgentArchitectureTest` verify native GraalVM safety and architecture invariants:
 1. All methods annotated with `@Tool` must be declared in classes annotated with `@ApplicationScoped`.
 2. All non-interface classes in packages `..model..`, `..entity..`, `..remote..`, and `..gui..` must be annotated with `@RegisterForReflection`.
+3. Panache entities annotated with `@Entity` must only be accessed by classes in `org.quarkus.agent.entity..`.
+4. Test methods (`@Test`, `@BeforeEach`, `@AfterEach`) must not be annotated with `@Transactional`.
 
 ---
 
-## 3. Coverage SLA
+## 3. Test Transaction Scope Protocol
+
+* Never annotate `@Test` or lifecycle fixtures with `@Transactional`.
+* Use `QuarkusTransaction.requiringNew().run(...)` or `.call(...)` for explicit transaction scoping in integration tests.
+* Production service methods (`TaskPersistenceService`) manage their own transactional boundaries.
+
+---
+
+## 4. Coverage SLA
 
 * Every class and module MUST maintain AT LEAST 80% line coverage and 80% branch/condition coverage across JaCoCo reports.

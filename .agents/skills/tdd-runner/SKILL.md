@@ -17,6 +17,10 @@ This skill coordinates the fast local inner execution feedback loop during auton
   Pass `-Dproject.build.directory=target-agent` to ensure agent test runs never contaminate standard target directories.
 * **Surefire Memory Bounding:**  
   `-DargLine="-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1"`
+* **Coverage Verification & Audit:**  
+  `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`
+* **PR Review Thread Audit:**  
+  `./scripts/check_pr_reviews.py`
 
 ---
 

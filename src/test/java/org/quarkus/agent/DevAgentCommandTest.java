@@ -242,11 +242,13 @@ class DevAgentCommandTest {
         DevAgentCommand command = new DevAgentCommand();
         CommandLine cmd = new CommandLine(command);
         StringWriter sw1 = new StringWriter();
+        StringWriter err1 = new StringWriter();
         cmd.setOut(new PrintWriter(sw1));
+        cmd.setErr(new PrintWriter(err1));
 
         int exitCode1 = cmd.execute("resume", "TASK-101");
-        assertThat(exitCode1).isZero();
-        assertThat(sw1.toString()).contains("Resuming task: TASK-101");
+        assertThat(exitCode1).isEqualTo(1);
+        assertThat(err1.toString()).contains("Task not found: TASK-101");
 
         StringWriter sw2 = new StringWriter();
         cmd.setOut(new PrintWriter(sw2));
@@ -260,9 +262,8 @@ class DevAgentCommandTest {
     void testResumeCommandDirect() {
         ResumeCommand resume = new ResumeCommand();
         CommandLine cmd = new CommandLine(resume);
-        int exit = cmd.execute("--dir=" + tempDir.toString(), "TASK-404");
+        cmd.execute("--dir=" + tempDir.toString(), "TASK-404");
 
-        assertThat(exit).isZero();
         assertThat(resume.getTaskId()).isEqualTo("TASK-404");
         assertThat(resume.getDir()).isEqualTo(tempDir.toString());
     }

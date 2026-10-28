@@ -31,3 +31,11 @@ Declare AiServices using Quarkus-LangChain4j annotations:
 * Gatekeeper audits at `temperature: 0.0` are cached using Caffeine:
   `@CacheResult(cacheName = "architect-verdicts")`
   Key: $\text{SHA-256}(\text{UnifiedDiff} + \text{RetrievedAdrsDigest})$.
+
+---
+
+## 4. 3-Tier Hierarchical Memory Invariants (ADR-011)
+
+* **Tier 1 (Pinned System Invariants):** Immutable project guidelines and architecture rules (`SystemMessage`). Quarantined strictly to Tier 1; never placed in sliding scratchpad.
+* **Tier 2 (Pinned Task Spec):** User story and approved implementation plan JSON (`UserMessage`).
+* **Tier 3 (Sliding Scratchpad & Atomic Eviction):** Bounded by `MAX_SCRATCHPAD_TURNS`. Eviction MUST operate on complete atomic turns (purging the user prompt and all its answering assistant messages and tool execution results together) to prevent severed context and API 400 Bad Request errors.
