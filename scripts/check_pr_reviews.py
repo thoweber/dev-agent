@@ -119,7 +119,7 @@ def check_coderabbit_progress(owner: str, repo: str, pr_num: int) -> Dict[str, A
             return {"in_progress": None, "status": "Invalid JSON from GitHub API", "run_id": None}
 
     for c in reversed(comments):
-        user = c.get("user", {}).get("login", "")
+        user = (c.get("user") or {}).get("login", "")
         body = c.get("body", "")
         if "coderabbit" in user.lower() or "coderabbit-ai-generated" in body:
             run_id_match = re.search(r"(?:\*\*)?Run ID(?:\*\*)?:\s*`([a-f0-9-]+)`", body)
