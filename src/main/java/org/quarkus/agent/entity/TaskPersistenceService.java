@@ -23,6 +23,8 @@ import java.util.Optional;
 @RegisterForReflection
 public class TaskPersistenceService {
 
+    private static final org.jboss.logging.Logger LOG = org.jboss.logging.Logger.getLogger(TaskPersistenceService.class);
+
     @Transactional
     public Optional<TaskRun> findByProjectAndTask(String projectId, String taskId) {
         try {
@@ -75,8 +77,8 @@ public class TaskPersistenceService {
         TaskRunEntity entity = null;
         try {
             entity = TaskRunEntity.findByProjectAndTask(event.projectId(), event.taskId());
-        } catch (IllegalStateException | NullPointerException _) {
-            // Uninitialized persistence runtime fallback
+        } catch (IllegalStateException | NullPointerException e) {
+            LOG.debugf(e, "Uninitialized persistence runtime fallback during recordStateChange: %s", e.getMessage());
         }
         if (entity == null) {
             entity = new TaskRunEntity();
@@ -118,8 +120,8 @@ public class TaskPersistenceService {
         TaskRunEntity entity = null;
         try {
             entity = TaskRunEntity.findByProjectAndTask(taskRun.projectId(), taskRun.taskId());
-        } catch (IllegalStateException | NullPointerException _) {
-            // Uninitialized persistence runtime fallback
+        } catch (IllegalStateException | NullPointerException e) {
+            LOG.debugf(e, "Uninitialized persistence runtime fallback during saveTask: %s", e.getMessage());
         }
         if (entity == null) {
             entity = new TaskRunEntity();
@@ -146,16 +148,16 @@ public class TaskPersistenceService {
         try {
             StepAuditEntity.deleteAll();
             TaskRunEntity.deleteAll();
-        } catch (IllegalStateException | NullPointerException _) {
-            // Defensive fallback when Panache or Arc runtime is uninitialized
+        } catch (IllegalStateException | NullPointerException e) {
+            LOG.debugf(e, "Panache runtime uninitialized during deleteAll: %s", e.getMessage());
         }
     }
 
     void persistEntity(io.quarkus.hibernate.orm.panache.PanacheEntityBase entity) {
         try {
             entity.persist();
-        } catch (IllegalStateException | NullPointerException _) {
-            // Defensive fallback when Panache or Arc runtime is uninitialized
+        } catch (IllegalStateException | NullPointerException e) {
+            LOG.debugf(e, "Panache runtime uninitialized during persist: %s", e.getMessage());
         }
     }
 

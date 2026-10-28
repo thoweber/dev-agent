@@ -331,4 +331,16 @@ class HierarchicalMemoryStoreTest {
         assertThat(((UserMessage) messages.getFirst()).singleText()).isEqualTo("Turn 2");
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
+
+    @Test
+    @DisplayName("Given multiple turns below message budget - preserves all turns")
+    void testMultipleTurnsBelowMessageBudget() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Turn 1"));
+        memory.add(new AiMessage("Ans 1"));
+        memory.add(new UserMessage("Turn 2"));
+        memory.add(new AiMessage("Ans 2"));
+
+        assertThat(memory.messages()).hasSize(4);
+    }
 }
