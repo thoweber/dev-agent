@@ -145,12 +145,8 @@ public class TaskPersistenceService {
 
     @Transactional
     public void deleteAll() {
-        try {
-            StepAuditEntity.deleteAll();
-            TaskRunEntity.deleteAll();
-        } catch (IllegalStateException | NullPointerException e) {
-            LOG.debugf(e, "Panache runtime uninitialized during deleteAll: %s", e.getMessage());
-        }
+        StepAuditEntity.deleteAll();
+        TaskRunEntity.deleteAll();
     }
 
     void persistEntity(io.quarkus.hibernate.orm.panache.PanacheEntityBase entity) {

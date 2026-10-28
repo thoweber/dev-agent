@@ -280,11 +280,7 @@ class TaskPersistenceServiceTest {
         }
     }
 
-    @Test
-    @DisplayName("Given deleteAll - safely invokes cleanup without throwing")
-    void testDeleteAll() {
-        service.deleteAll();
-    }
+
 
     @Test
     @DisplayName("Given persistEntity - handles successful persistence and defensive exception catches")

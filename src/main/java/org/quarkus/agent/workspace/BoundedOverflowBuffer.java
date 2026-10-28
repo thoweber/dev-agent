@@ -13,6 +13,7 @@ import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.EnumSet;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -173,12 +174,8 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (closed) {
             throw new IOException("Buffer is closed");
         }
-        if (b == null) {
-            throw new NullPointerException("Buffer must not be null");
-        }
-        if (off < 0 || len < 0 || off + len > b.length || off + len < 0) {
-            throw new IndexOutOfBoundsException("Invalid offset or length: off=" + off + ", len=" + len + ", bufferLength=" + b.length);
-        }
+        Objects.requireNonNull(b, "Buffer must not be null");
+        Objects.checkFromIndexSize(off, len, b.length);
         if (len == 0) {
             return;
         }

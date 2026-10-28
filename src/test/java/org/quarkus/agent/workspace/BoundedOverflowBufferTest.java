@@ -129,6 +129,14 @@ class BoundedOverflowBufferTest {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 0, -1))
                 .isInstanceOf(IndexOutOfBoundsException.class);
 
+            // Negative offset throws IndexOutOfBoundsException
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], -1, 5))
+                .isInstanceOf(IndexOutOfBoundsException.class);
+
+            // Offset + length exceeding buffer throws IndexOutOfBoundsException
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 6, 5))
+                .isInstanceOf(IndexOutOfBoundsException.class);
+
             out.write("default-buffer-test".getBytes(StandardCharsets.UTF_8));
             out.close();
 

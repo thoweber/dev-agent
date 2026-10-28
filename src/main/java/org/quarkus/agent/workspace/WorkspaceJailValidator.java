@@ -83,6 +83,9 @@ public class WorkspaceJailValidator {
      * @return validated RepoPath
      */
     public RepoPath validateForWrite(String untrustedPath) {
+        if (untrustedPath == null || untrustedPath.isBlank()) {
+            throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
+        }
         Path rawPath = activeWorkingRoot.toAbsolutePath().normalize().resolve(untrustedPath);
         if (Files.exists(rawPath, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(rawPath)) {
             throw new SecurityException("Refusing to write through symbolic link: " + rawPath);
