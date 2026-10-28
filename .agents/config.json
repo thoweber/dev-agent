@@ -15,7 +15,8 @@
     "maxTaskCostUsd": 2.00,
     "maxTaskTokens": 250000,
     "localFeedbackSlaSeconds": 15,
-    "targetBranchCoveragePercent": 80
+    "targetLineCoveragePercent": 95,
+    "targetBranchCoveragePercent": 90
   },
   "skills": {
     "leadArchitect": ".agents/skills/lead-architect/SKILL.md",
@@ -31,7 +32,7 @@
   "mcpServers": {
     "intellij": {
       "type": "sse",
-      "url": "http://127.0.0.1:64343/sse",
+      "url": "http://127.0.0.1:64348/sse",
       "headers": {
         "IJ_MCP_SERVER_PROJECT_PATH": "/home/developer/projects/dev-agent"
       }

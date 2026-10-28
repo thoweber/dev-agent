@@ -113,4 +113,14 @@ class WorkspaceJailValidatorTest {
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Symbolic links are forbidden");
     }
+
+    @Test
+    @DisplayName("Given non-existent activeWorkingRoot - falls back to absolute normalized path")
+    void testNonExistentActiveWorkingRoot() {
+        Path nonExistentRoot = tempDir.resolve("non_existent_workspace_root");
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(nonExistentRoot);
+
+        Path resolved = validator.validateAndResolve("file.txt");
+        assertThat(resolved).isEqualTo(nonExistentRoot.toAbsolutePath().normalize().resolve("file.txt"));
+    }
 }

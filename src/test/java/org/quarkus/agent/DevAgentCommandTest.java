@@ -157,6 +157,12 @@ class DevAgentCommandTest {
         int exitCode2 = cmd.execute("abort");
         assertThat(exitCode2).isZero();
         assertThat(sw2.toString()).contains("Please specify a Task ID to abort.");
+
+        StringWriter sw3 = new StringWriter();
+        cmd.setOut(new PrintWriter(sw3));
+        int exitCode3 = cmd.execute("abort", "   ");
+        assertThat(exitCode3).isZero();
+        assertThat(sw3.toString()).contains("Please specify a Task ID to abort.");
     }
 
     @Test
@@ -188,6 +194,12 @@ class DevAgentCommandTest {
         int exitCode2 = cmd.execute("plan");
         assertThat(exitCode2).isZero();
         assertThat(sw2.toString()).contains("Please provide a requirement or story description to plan.");
+
+        StringWriter sw3 = new StringWriter();
+        cmd.setOut(new PrintWriter(sw3));
+        int exitCode3 = cmd.execute("plan", "   ");
+        assertThat(exitCode3).isZero();
+        assertThat(sw3.toString()).contains("Please provide a requirement or story description to plan.");
     }
 
     @Test
@@ -221,6 +233,12 @@ class DevAgentCommandTest {
         int exitCode2 = cmd.execute("logs");
         assertThat(exitCode2).isZero();
         assertThat(sw2.toString()).contains("Please specify a task ID to display logs.");
+
+        StringWriter sw3 = new StringWriter();
+        cmd.setOut(new PrintWriter(sw3));
+        int exitCode3 = cmd.execute("logs", "   ");
+        assertThat(exitCode3).isZero();
+        assertThat(sw3.toString()).contains("Please specify a task ID to display logs.");
     }
 
     @Test

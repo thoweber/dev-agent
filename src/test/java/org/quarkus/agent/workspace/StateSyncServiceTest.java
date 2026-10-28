@@ -1,8 +1,13 @@
 package org.quarkus.agent.workspace;
 
+import jakarta.enterprise.inject.Instance;
+import jakarta.transaction.Status;
+import jakarta.transaction.Synchronization;
+import jakarta.transaction.TransactionSynchronizationRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.quarkus.agent.entity.TaskPersistenceService;
 import org.quarkus.agent.model.StepAudit;
 import org.quarkus.agent.model.TaskRun;
@@ -18,6 +23,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class StateSyncServiceTest {
 
@@ -228,5 +236,169 @@ class StateSyncServiceTest {
         Path journalFile = workspace.resolveAgentsDir().resolve("runs").resolve("TASK-SYNC-EVENT.md");
         assertThat(Files.exists(journalFile)).isTrue();
         assertThat(Files.readString(journalFile)).contains("task_id: \"TASK-SYNC-EVENT\"");
+    }
+
+    @Test
+    @DisplayName("Given active transaction registry - schedules post-commit synchronization and runs callbacks")
+    @SuppressWarnings("unchecked")
+    void testScheduleMarkdownProjectionWithActiveTransaction() throws IOException {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        SecretRedactionFilter secretFilter = new SecretRedactionFilter();
+
+        TaskRun recordedRun = TaskRun.builder()
+            .taskId("TASK-TX-SYNC")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .build();
+
+        TaskPersistenceService mockPersistence = new TaskPersistenceService() {
+            @Override
+            public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
+                return recordedRun;
+            }
+        };
+
+        Instance<TransactionSynchronizationRegistry> registryInstance = mock(Instance.class);
+        TransactionSynchronizationRegistry registry = mock(TransactionSynchronizationRegistry.class);
+
+        when(registryInstance.isResolvable()).thenReturn(true);
+        when(registryInstance.get()).thenReturn(registry);
+        when(registry.getTransactionStatus()).thenReturn(Status.STATUS_ACTIVE);
+
+        StateSyncService service = new StateSyncService(workspace, secretFilter, mockPersistence, registryInstance);
+
+        TaskStateChangeEvent event = TaskStateChangeEvent.builder()
+            .taskId("TASK-TX-SYNC")
+            .projectId("org/repo")
+            .newStatus(TaskStatus.PLANNING)
+            .phaseName("PLANNING")
+            .build();
+
+        service.onStateTransition(event);
+
+        Path journalFile = workspace.resolveAgentsDir().resolve("runs/TASK-TX-SYNC.md");
+        assertThat(Files.exists(journalFile)).isFalse();
+
+        ArgumentCaptor<Synchronization> captor = ArgumentCaptor.forClass(Synchronization.class);
+        verify(registry).registerInterposedSynchronization(captor.capture());
+
+        Synchronization synchronization = captor.getValue();
+        synchronization.beforeCompletion(); // no-op test
+
+        synchronization.afterCompletion(Status.STATUS_ROLLEDBACK);
+        assertThat(Files.exists(journalFile)).isFalse();
+
+        synchronization.afterCompletion(Status.STATUS_COMMITTED);
+        assertThat(Files.exists(journalFile)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given transaction registry inactive or throwing - projects markdown immediately")
+    @SuppressWarnings("unchecked")
+    void testScheduleMarkdownProjectionWithInactiveOrFailingRegistry() {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        SecretRedactionFilter secretFilter = new SecretRedactionFilter();
+
+        TaskRun recordedRun = TaskRun.builder()
+            .taskId("TASK-TX-INACTIVE")
+            .projectId("org/repo")
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .build();
+
+        TaskPersistenceService mockPersistence = new TaskPersistenceService() {
+            @Override
+            public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
+                return recordedRun;
+            }
+        };
+
+        Instance<TransactionSynchronizationRegistry> registryInstance = mock(Instance.class);
+        TransactionSynchronizationRegistry registry = mock(TransactionSynchronizationRegistry.class);
+
+        when(registryInstance.isResolvable()).thenReturn(true);
+        when(registryInstance.get()).thenReturn(registry);
+        when(registry.getTransactionStatus()).thenReturn(Status.STATUS_NO_TRANSACTION);
+
+        StateSyncService service = new StateSyncService(workspace, secretFilter, mockPersistence, registryInstance);
+
+        TaskStateChangeEvent event = TaskStateChangeEvent.builder()
+            .taskId("TASK-TX-INACTIVE")
+            .projectId("org/repo")
+            .newStatus(TaskStatus.PLANNING)
+            .phaseName("PLANNING")
+            .build();
+
+        service.onStateTransition(event);
+
+        Path journalFile = workspace.resolveAgentsDir().resolve("runs/TASK-TX-INACTIVE.md");
+        assertThat(Files.exists(journalFile)).isTrue();
+
+        // Test exception branch
+        when(registry.getTransactionStatus()).thenThrow(new RuntimeException("Simulated registry error"));
+        TaskRun recordedRun2 = recordedRun.toBuilder().taskId("TASK-TX-FAIL").build();
+        TaskPersistenceService mockPersistence2 = new TaskPersistenceService() {
+            @Override
+            public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
+                return recordedRun2;
+            }
+        };
+
+        StateSyncService service2 = new StateSyncService(workspace, secretFilter, mockPersistence2, registryInstance);
+        service2.onStateTransition(event.toBuilder().taskId("TASK-TX-FAIL").build());
+        Path journalFile2 = workspace.resolveAgentsDir().resolve("runs/TASK-TX-FAIL.md");
+        assertThat(Files.exists(journalFile2)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given null persistence result or null taskId - handles safely")
+    void testEdgeCasesAndNullValidation() {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        SecretRedactionFilter secretFilter = new SecretRedactionFilter();
+
+        TaskPersistenceService nullPersistence = new TaskPersistenceService() {
+            @Override
+            public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
+                return null;
+            }
+        };
+
+        StateSyncService service = new StateSyncService(workspace, secretFilter, nullPersistence);
+        TaskStateChangeEvent event = TaskStateChangeEvent.builder()
+            .taskId("TASK-NULL")
+            .projectId("org/repo")
+            .newStatus(TaskStatus.PLANNING)
+            .phaseName("PLANNING")
+            .stepSummary("") // blank summary
+            .build();
+
+        // Should return early and not project markdown
+        service.onStateTransition(event);
+        Path journalFile = workspace.resolveAgentsDir().resolve("runs/TASK-NULL.md");
+        assertThat(Files.exists(journalFile)).isFalse();
+
+        // Test registryInstance not resolvable branch
+        Instance<TransactionSynchronizationRegistry> unresolvableRegistry = mock(Instance.class);
+        when(unresolvableRegistry.isResolvable()).thenReturn(false);
+        TaskRun recordedRun = TaskRun.builder().taskId("TASK-UNRESOLVABLE").build();
+        TaskPersistenceService mockPersist = new TaskPersistenceService() {
+            @Override
+            public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
+                return recordedRun;
+            }
+        };
+        StateSyncService unresolvableService = new StateSyncService(workspace, secretFilter, mockPersist, unresolvableRegistry);
+        unresolvableService.onStateTransition(event.toBuilder().taskId("TASK-UNRESOLVABLE").stepSummary("   ").build());
+        assertThat(Files.exists(workspace.resolveAgentsDir().resolve("runs/TASK-UNRESOLVABLE.md"))).isTrue();
+
+        // Validate null taskId throws SecurityException
+        TaskRun nullTaskRun = TaskRun.builder().taskId(null).build();
+        assertThatThrownBy(() -> service.projectToMarkdown(nullTaskRun))
+            .isInstanceOf(SecurityException.class);
+
+        // Validate default constructor
+        StateSyncService defaultService = new StateSyncService();
+        assertThat(defaultService).isNotNull();
     }
 }

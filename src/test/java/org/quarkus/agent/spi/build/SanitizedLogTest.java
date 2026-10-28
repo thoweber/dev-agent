@@ -38,4 +38,32 @@ class SanitizedLogTest {
         assertThat(log.hasErrors()).isTrue();
         assertThat(log.errorCount()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("Given exitCode 0 but errorCount > 0 - then hasErrors returns true")
+    void testZeroExitCodeWithErrorCountReportsErrors() {
+        SanitizedLog log = SanitizedLog.builder()
+            .exitCode(0)
+            .errorCount(2)
+            .errorLines(List.of())
+            .cleanStdout("")
+            .cleanStderr("")
+            .build();
+
+        assertThat(log.hasErrors()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given exitCode 0 and errorCount 0 but non-empty errorLines - then hasErrors returns true")
+    void testZeroExitCodeWithErrorLinesReportsErrors() {
+        SanitizedLog log = SanitizedLog.builder()
+            .exitCode(0)
+            .errorCount(0)
+            .errorLines(List.of("Warning escalated to error"))
+            .cleanStdout("")
+            .cleanStderr("")
+            .build();
+
+        assertThat(log.hasErrors()).isTrue();
+    }
 }

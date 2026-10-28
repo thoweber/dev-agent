@@ -24,7 +24,19 @@ public record RepoPath(Path path, Path root) {
 
         try {
             Path realRoot = root.toRealPath();
-            Path absoluteCandidate = path.isAbsolute() ? path.normalize() : realRoot.resolve(path).normalize();
+            Path normRoot = root.toAbsolutePath().normalize();
+            Path absoluteCandidate;
+            if (path.isAbsolute()) {
+                Path normPath = path.normalize();
+                if (normPath.startsWith(normRoot)) {
+                    Path rel = normRoot.relativize(normPath);
+                    absoluteCandidate = realRoot.resolve(rel).normalize();
+                } else {
+                    absoluteCandidate = normPath;
+                }
+            } else {
+                absoluteCandidate = realRoot.resolve(path).normalize();
+            }
 
             validateNoAncestorSymlinks(absoluteCandidate, realRoot, path);
             Path canonicalCandidate = resolveCanonicalCandidate(absoluteCandidate, path);

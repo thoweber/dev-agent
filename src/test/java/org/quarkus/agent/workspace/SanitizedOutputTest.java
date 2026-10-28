@@ -41,4 +41,14 @@ class SanitizedOutputTest {
         assertThat(input.value()).doesNotContain("ghp_123456789012345678901234567890123456");
         assertThat(summary.value()).doesNotContain("secretToken123");
     }
+
+    @Test
+    @DisplayName("Given static factory and edge inputs - behaves correctly")
+    void testStaticFactoryAndConstructors() {
+        assertThat(SanitizedOutput.of(null, filter).value()).isEmpty();
+        assertThat(SanitizedOutput.of("   ", filter).value()).isEmpty();
+        assertThat(SanitizedOutput.of("valid token", filter).value()).contains("valid token");
+        assertThat(new SanitizedOutput(null).value()).isEmpty();
+        assertThat(SanitizedOutput.empty().value()).isEmpty();
+    }
 }

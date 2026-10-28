@@ -54,5 +54,11 @@ class FeatureCommandTest {
 
         assertThat(exitCode).isZero();
         assertThat(sw.toString()).contains("Please provide a feature specification");
+
+        StringWriter swBlank = new StringWriter();
+        cmd.setOut(new PrintWriter(swBlank));
+        int exitCodeBlank = cmd.execute("   ");
+        assertThat(exitCodeBlank).isZero();
+        assertThat(swBlank.toString()).contains("Please provide a feature specification");
     }
 }

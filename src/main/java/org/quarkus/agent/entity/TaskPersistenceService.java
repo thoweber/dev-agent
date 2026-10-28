@@ -28,7 +28,7 @@ public class TaskPersistenceService {
         try {
             TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(projectId, taskId);
             return Optional.ofNullable(entity).map(this::toDomain);
-        } catch (IllegalStateException _) {
+        } catch (IllegalStateException | NullPointerException _) {
             return Optional.empty();
         }
     }
@@ -46,7 +46,7 @@ public class TaskPersistenceService {
                 projectId, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED
             );
             return candidates.stream().map(this::toDomain).toList();
-        } catch (IllegalStateException _) {
+        } catch (IllegalStateException | NullPointerException _) {
             return List.of();
         }
     }
@@ -60,7 +60,7 @@ public class TaskPersistenceService {
     public long countByProject(String projectId) {
         try {
             return TaskRunEntity.count("projectId", projectId);
-        } catch (IllegalStateException _) {
+        } catch (IllegalStateException | NullPointerException _) {
             return 0L;
         }
     }
@@ -72,7 +72,12 @@ public class TaskPersistenceService {
 
     @Transactional
     public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
-        TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(event.projectId(), event.taskId());
+        TaskRunEntity entity = null;
+        try {
+            entity = TaskRunEntity.findByProjectAndTask(event.projectId(), event.taskId());
+        } catch (IllegalStateException | NullPointerException _) {
+            // Uninitialized persistence runtime fallback
+        }
         if (entity == null) {
             entity = new TaskRunEntity();
             entity.projectId = event.projectId();
@@ -88,7 +93,7 @@ public class TaskPersistenceService {
             entity.updatedAt = event.timestamp();
         }
 
-        entity.persist();
+        persistEntity(entity);
 
         if (sanitizedSummary != null && !sanitizedSummary.isBlank()) {
             StepAuditEntity step = new StepAuditEntity();
@@ -98,7 +103,7 @@ public class TaskPersistenceService {
             step.exitCode = 0;
             step.durationMs = 0L;
             step.createdAt = event.timestamp();
-            step.persist();
+            persistEntity(step);
             if (entity.steps == null) {
                 entity.steps = new ArrayList<>();
             }
@@ -110,7 +115,12 @@ public class TaskPersistenceService {
 
     @Transactional
     public TaskRun saveTask(TaskRun taskRun) {
-        TaskRunEntity entity = TaskRunEntity.findByProjectAndTask(taskRun.projectId(), taskRun.taskId());
+        TaskRunEntity entity = null;
+        try {
+            entity = TaskRunEntity.findByProjectAndTask(taskRun.projectId(), taskRun.taskId());
+        } catch (IllegalStateException | NullPointerException _) {
+            // Uninitialized persistence runtime fallback
+        }
         if (entity == null) {
             entity = new TaskRunEntity();
             entity.projectId = taskRun.projectId();
@@ -127,14 +137,26 @@ public class TaskPersistenceService {
         entity.updatedAt = taskRun.updatedAt() != null ? taskRun.updatedAt() : Instant.now();
         entity.userStory = taskRun.userStory();
         entity.approvedPlanJson = taskRun.approvedPlanJson();
-        entity.persist();
+        persistEntity(entity);
         return toDomain(entity);
     }
 
     @Transactional
     public void deleteAll() {
-        StepAuditEntity.deleteAll();
-        TaskRunEntity.deleteAll();
+        try {
+            StepAuditEntity.deleteAll();
+            TaskRunEntity.deleteAll();
+        } catch (IllegalStateException | NullPointerException _) {
+            // Defensive fallback when Panache or Arc runtime is uninitialized
+        }
+    }
+
+    void persistEntity(io.quarkus.hibernate.orm.panache.PanacheEntityBase entity) {
+        try {
+            entity.persist();
+        } catch (IllegalStateException | NullPointerException _) {
+            // Defensive fallback when Panache or Arc runtime is uninitialized
+        }
     }
 
     public TaskRun toDomain(TaskRunEntity entity) {

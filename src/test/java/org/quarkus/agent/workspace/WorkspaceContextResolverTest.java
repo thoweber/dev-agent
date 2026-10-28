@@ -139,6 +139,18 @@ class WorkspaceContextResolverTest {
 
         assertThat(WorkspaceContextResolver.resolveEffectiveRoot(".", "."))
             .isEqualTo(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot("   ", "   "))
+            .isEqualTo(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot(null, null))
+            .isEqualTo(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot("   ", parentDir.toString()))
+            .isEqualTo(parentDir.toAbsolutePath().normalize());
+
+        assertThat(WorkspaceContextResolver.resolveEffectiveRoot(".", null))
+            .isEqualTo(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
     }
 
     @Test

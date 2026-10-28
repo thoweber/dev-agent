@@ -31,6 +31,13 @@ class SubprocessExecutorTest {
         assertThat(result.stdOut().trim()).isEqualTo("dev-agent-subprocess-test");
         assertThat(result.timedOut()).isFalse();
         assertThat(result.truncated()).isFalse();
+
+        // Null working dir and null / empty extraEnv
+        ProcessResult resNullDir = executor.execute(List.of("echo", "null-dir"), null, Duration.ofSeconds(5), null);
+        assertThat(resNullDir.isSuccess()).isTrue();
+
+        ProcessResult resEmptyEnv = executor.execute(List.of("echo", "empty-env"), null, Duration.ofSeconds(5), Map.of());
+        assertThat(resEmptyEnv.isSuccess()).isTrue();
     }
 
     @Test
@@ -97,5 +104,32 @@ class SubprocessExecutorTest {
         assertThat(result.exitCode()).isEqualTo(-1);
         assertThat(result.timedOut()).isFalse();
         assertThat(result.stdErr()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("Given thread interrupted during execution - terminates process and restores interrupt status")
+    void testExecuteInterruptedThread() throws Exception {
+        SubprocessExecutor executor = new SubprocessExecutor();
+        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicReference<ProcessResult> resultRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        Thread t = new Thread(() -> {
+            ProcessResult res = executor.execute(
+                List.of("sleep", "30"),
+                tempDir,
+                Duration.ofSeconds(30)
+            );
+            resultRef.set(res);
+            interrupted.set(Thread.currentThread().isInterrupted());
+        });
+
+        t.start();
+        Thread.sleep(150);
+        t.interrupt();
+        t.join(2000);
+
+        assertThat(interrupted.get()).isTrue();
+        assertThat(resultRef.get()).isNotNull();
+        assertThat(resultRef.get().timedOut()).isTrue();
     }
 }
