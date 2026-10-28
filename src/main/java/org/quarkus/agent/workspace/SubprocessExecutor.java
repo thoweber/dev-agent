@@ -97,13 +97,13 @@ public class SubprocessExecutor {
         try {
             finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException _) {
-            process.destroyForcibly();
+            killProcessTree(process);
             Thread.currentThread().interrupt();
             return true;
         }
 
         if (!finished) {
-            process.destroyForcibly();
+            killProcessTree(process);
             try {
                 process.waitFor(1, TimeUnit.SECONDS);
             } catch (InterruptedException _) {
@@ -112,6 +112,11 @@ public class SubprocessExecutor {
             return true;
         }
         return false;
+    }
+
+    private void killProcessTree(Process process) {
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
     }
 
     private void joinDrainers(Thread stdoutDrainer, Thread stderrDrainer) {

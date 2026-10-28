@@ -176,7 +176,10 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (b == null) {
             throw new NullPointerException("Buffer must not be null");
         }
-        if (len <= 0) {
+        if (off < 0 || len < 0 || off + len > b.length || off + len < 0) {
+            throw new IndexOutOfBoundsException("Invalid offset or length: off=" + off + ", len=" + len + ", bufferLength=" + b.length);
+        }
+        if (len == 0) {
             return;
         }
         if (totalBytesWritten >= maxCapacity) {

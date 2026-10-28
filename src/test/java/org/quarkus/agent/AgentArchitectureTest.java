@@ -46,4 +46,11 @@ public class AgentArchitectureTest {
             .or().areAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
             .or().areAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
             .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+
+    @ArchTest
+    public static final ArchRule testClassesMustNotBeAnnotatedWithTransactional =
+        classes()
+            .that().haveSimpleNameEndingWith("Test")
+            .or().haveSimpleNameEndingWith("IT")
+            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
 }

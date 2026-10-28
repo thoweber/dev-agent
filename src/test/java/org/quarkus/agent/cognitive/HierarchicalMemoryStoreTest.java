@@ -314,11 +314,10 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given single user turn with many tool interactions - bounds active turn growth to 16 messages")
-    void testActiveTurnMessageBudgetEnforcement() {
+    @DisplayName("Given multiple turns with many messages - evicts complete older turns to respect message budget")
+    void testMessageBudgetEvictsOlderTurns() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        memory.add(new UserMessage("Single long-running turn"));
-
+        memory.add(new UserMessage("Turn 1"));
         for (int i = 1; i <= 15; i++) {
             dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
                 .id("call-" + i).name("tool" + i).arguments("{}").build();
@@ -326,32 +325,10 @@ class HierarchicalMemoryStoreTest {
             memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
         }
 
+        memory.add(new UserMessage("Turn 2"));
         List<ChatMessage> messages = memory.messages();
-        assertThat(messages.size()).isLessThanOrEqualTo(16);
         assertThat(messages.getFirst()).isInstanceOf(UserMessage.class);
-        assertThat(((UserMessage) messages.getFirst()).singleText()).isEqualTo("Single long-running turn");
+        assertThat(((UserMessage) messages.getFirst()).singleText()).isEqualTo("Turn 2");
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Given active turn starting with AiMessage and exceeding message budget - evicts turn")
-    void testActiveTurnStartingWithAiMessageBudgetEviction() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        for (int i = 1; i <= 20; i++) {
-            memory.add(new AiMessage("Ai turn " + i));
-        }
-        assertThat(memory.messages().size()).isLessThanOrEqualTo(16);
-    }
-
-    @Test
-    @DisplayName("Given active turn with only AiMessages following UserMessage - trims without ToolExecutionResultMessage")
-    void testActiveTurnWithOnlyAiMessages() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        memory.add(new UserMessage("Prompt"));
-        for (int i = 1; i <= 20; i++) {
-            memory.add(new AiMessage("Ai step " + i));
-        }
-        assertThat(memory.messages().size()).isLessThanOrEqualTo(16);
-        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
     }
 }

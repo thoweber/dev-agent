@@ -123,8 +123,11 @@ class BoundedOverflowBufferTest {
 
             // Zero length write is no-op
             out.write(new byte[10], 0, 0);
-            out.write(new byte[10], 0, -1);
             assertThat(buffer.getTotalBytesWritten()).isZero();
+
+            // Negative length throws IndexOutOfBoundsException
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 0, -1))
+                .isInstanceOf(IndexOutOfBoundsException.class);
 
             out.write("default-buffer-test".getBytes(StandardCharsets.UTF_8));
             out.close();

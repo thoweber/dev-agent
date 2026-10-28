@@ -28,7 +28,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     private UserMessage pinnedTaskSpec;
     private final List<ChatMessage> slidingScratchpad = new LinkedList<>();
     private static final int MAX_SCRATCHPAD_TURNS = 4;
-    private static final int MAX_ACTIVE_TURN_MESSAGES = 16;
+    private static final int MAX_SCRATCHPAD_MESSAGES = 24;
 
     @Override
     public Object id() {
@@ -91,18 +91,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         while (countTurns() > MAX_SCRATCHPAD_TURNS) {
             evictOldestTurn();
         }
-        while (slidingScratchpad.size() > MAX_ACTIVE_TURN_MESSAGES) {
-            evictOldestToolInteractionInActiveTurn();
-        }
-    }
-
-    private void evictOldestToolInteractionInActiveTurn() {
-        if (slidingScratchpad.size() > 1 && slidingScratchpad.getFirst() instanceof UserMessage) {
-            slidingScratchpad.remove(1);
-            while (slidingScratchpad.size() > 1 && slidingScratchpad.get(1) instanceof ToolExecutionResultMessage) {
-                slidingScratchpad.remove(1);
-            }
-        } else {
+        while (countTurns() > 1 && slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES) {
             evictOldestTurn();
         }
     }

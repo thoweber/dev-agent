@@ -431,7 +431,7 @@ When resuming interrupted background sessions:
 * `CrashRecoveryDetector` evaluates the complete candidate queue via `findAllResumableTasks` rather than only checking the queue head.
 * Tasks are considered resumable strictly if:
   1. The task status is non-terminal (not `COMPLETED`, `FAILED`, or `ABORTED`).
-  2. The registered process ID (`pid`) is dead on the host operating system (`ProcessHandle.of(pid).isEmpty()`).
+  2. The registered process ID (`pid`) is null or dead on the host operating system (`pid == null || ProcessHandle.of(pid).isEmpty()`).
   3. The task's dedicated Git worktree directory (`.git/dev-agent-worktrees/<taskId>`) physically exists on disk.
 * Stale tasks with missing physical directories or alive PIDs are safely quarantined from resurrection.
 
@@ -445,7 +445,7 @@ To protect architectural boundaries and ensure thread-safe multi-tenant persiste
 To prevent corrupting binary base64 fixtures, Content-Addressable Storage (CAS) digests, or test assertions (e.g., `assertEquals("Basic dXNlcjpwYXNz", header)`), secret scrubbing is strictly quarantined:
 * **Never applied** to raw Java/TypeScript source code or test files.
 * **Strictly applied** to tool outputs before writing to H2 entities, HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
-* Persistence sinks and audit entities consume the strongly-typed `SanitizedOutput` domain value object (REM-02 / CWE-312), preventing raw, un-scrubbed strings from being written to persistence sinks at compile time.
+* Persistence sinks and audit entities consume the strongly-typed `SanitizedOutput` domain value object (REM-02 / CWE-312), preventing raw, un-scrubbed strings from being written to persistence sinks at compile time. `StepAuditEntity` enforces this by exposing setters (`setSanitizedInput`, `setOutputSummary`) accepting strictly `SanitizedOutput` value objects, isolating credential scrub boundaries at compile time.
 
 ---
 
@@ -698,6 +698,13 @@ public class AgentArchitectureTest {
             .that().areAnnotatedWith(org.junit.jupiter.api.Test.class)
             .or().areAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
             .or().areAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
+            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+
+    @ArchTest
+    public static final ArchRule testClassesMustNotBeAnnotatedWithTransactional =
+        classes()
+            .that().haveSimpleNameEndingWith("Test")
+            .or().haveSimpleNameEndingWith("IT")
             .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
 }
 ```

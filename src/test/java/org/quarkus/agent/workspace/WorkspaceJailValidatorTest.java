@@ -38,6 +38,18 @@ class WorkspaceJailValidatorTest {
     }
 
     @Test
+    @DisplayName("Given null or blank path - throws SecurityException")
+    void testNullOrBlankPathThrowsSecurityException() {
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
+        assertThatThrownBy(() -> validator.validateAndResolve(null))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> validator.validateAndResolve("   "))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> validator.validateForWrite(""))
+            .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
     @DisplayName("Given path traversal attempt outside root - when resolved - then throws SecurityException")
     void testPathTraversalThrowsSecurityException() {
         WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);

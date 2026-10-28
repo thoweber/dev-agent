@@ -100,10 +100,23 @@ def check_coderabbit_progress(owner: str, repo: str, pr_num: int) -> Dict[str, A
     if code != 0 or not out:
         return {"in_progress": None, "status": "Unknown (API call failed)", "run_id": None}
 
-    try:
-        comments = json.loads(out)
-    except json.JSONDecodeError:
-        return {"in_progress": None, "status": "Invalid JSON from GitHub API", "run_id": None}
+    comments = []
+    decoder = json.JSONDecoder()
+    raw = out.strip()
+    idx = 0
+    while idx < len(raw):
+        sub = raw[idx:].lstrip()
+        if not sub:
+            break
+        try:
+            obj, offset = decoder.raw_decode(sub)
+            if isinstance(obj, list):
+                comments.extend(obj)
+            elif isinstance(obj, dict):
+                comments.append(obj)
+            idx += (len(raw[idx:]) - len(sub)) + offset
+        except json.JSONDecodeError:
+            return {"in_progress": None, "status": "Invalid JSON from GitHub API", "run_id": None}
 
     for c in reversed(comments):
         user = c.get("user", {}).get("login", "")
