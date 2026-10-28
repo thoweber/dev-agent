@@ -365,7 +365,7 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     if "Outside diff range comments" not in body and "Outside diff comments" not in body:
         return []
 
-    m_section = re.search(r"Outside diff range comments.*?\n(.*?)(?:\n---\s*(?:\n|\Z)|\n(?=[#]{1,3}\s)|\Z)", body, re.DOTALL)
+    m_section = re.search(r"Outside diff range comments.*?\n(.*?)(?:\n---\s*(?:\n|\Z)|\n\n(?=[^>])|\Z)", body, re.DOTALL)
     if not m_section:
         return []
     section = m_section.group(1)
