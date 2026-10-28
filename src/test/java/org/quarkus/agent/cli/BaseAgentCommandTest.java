@@ -41,5 +41,17 @@ class BaseAgentCommandTest {
         cmd.setIn(reader);
         assertThat(cmd.isInteractive()).isTrue();
         assertThat(cmd.getIn()).isSameAs(reader);
+
+        // Parent command and context resolver
+        org.quarkus.agent.DevAgentCommand parent = new org.quarkus.agent.DevAgentCommand();
+        cmd.parentCommand = parent;
+        assertThat(cmd.getWorkspaceRoot()).isNotNull();
+        assertThat(cmd.getWorkspaceContextResolver()).isNotNull();
+
+        // Execution through CommandLine sets spec
+        picocli.CommandLine cl = new picocli.CommandLine(cmd);
+        cl.execute();
+        assertThat(cmd.getOut()).isNotNull();
+        assertThat(cmd.getErr()).isNotNull();
     }
 }

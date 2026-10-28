@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.Objects;
 
 /**
  * Sandboxes all filesystem operations strictly within the active execution root.
@@ -32,7 +31,9 @@ public class WorkspaceJailValidator {
      * @throws SecurityException if the resolved path traverses outside activeWorkingRoot boundary
      */
     public Path validateAndResolve(String untrustedPath) {
-        Objects.requireNonNull(untrustedPath, "untrustedPath must not be null");
+        if (untrustedPath == null || untrustedPath.isBlank()) {
+            throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
+        }
 
         Path normalizedRoot;
         try {
@@ -82,6 +83,9 @@ public class WorkspaceJailValidator {
      * @return validated RepoPath
      */
     public RepoPath validateForWrite(String untrustedPath) {
+        if (untrustedPath == null || untrustedPath.isBlank()) {
+            throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
+        }
         Path rawPath = activeWorkingRoot.toAbsolutePath().normalize().resolve(untrustedPath);
         if (Files.exists(rawPath, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(rawPath)) {
             throw new SecurityException("Refusing to write through symbolic link: " + rawPath);

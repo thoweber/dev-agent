@@ -199,6 +199,62 @@ class ResumeCommandTest {
     }
 
     @Test
+    @DisplayName("Given multiple candidates in interactive shell - non-numeric or out of bounds option fails")
+    void testMultiCandidatesInteractiveNonNumericAndZero() {
+        TaskRun task1 = TaskRun.builder().taskId("TASK-402").currentPhase("PLANNING").build();
+        CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
+            @Override
+            public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
+                return List.of(task1, task1);
+            }
+        };
+
+        // Test non-numeric input "abc"
+        ResumeCommand cmd = new ResumeCommand(crashDetector, new ProjectIdResolver(new WorkspaceContextResolver(tempDir)), new TaskPersistenceService(), new WorkspaceContextResolver(tempDir));
+        cmd.setIn(new BufferedReader(new StringReader("abc\n")));
+
+        StringWriter out = new StringWriter();
+        CommandLine cl = new CommandLine(cmd);
+        cl.setOut(new PrintWriter(out));
+        int exitCode = cl.execute();
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(out.toString()).contains("[dev-agent] Resumption aborted.");
+
+        // Test out of bounds 0
+        cmd.setIn(new BufferedReader(new StringReader("0\n")));
+        StringWriter out2 = new StringWriter();
+        CommandLine cl2 = new CommandLine(cmd);
+        cl2.setOut(new PrintWriter(out2));
+        int exitCode2 = cl2.execute();
+
+        assertThat(exitCode2).isEqualTo(1);
+        assertThat(out2.toString()).contains("[dev-agent] Invalid selection.");
+    }
+
+    @Test
+    @DisplayName("Given single candidate with null currentPhase - falls back to status name")
+    void testSingleCandidateNullPhaseFallsBackToStatus() {
+        TaskRun task = TaskRun.builder().taskId("TASK-105").status(TaskStatus.RED_TEST).currentPhase(null).build();
+        CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
+            @Override
+            public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
+                return List.of(task);
+            }
+        };
+
+        ResumeCommand cmd = new ResumeCommand(crashDetector, new ProjectIdResolver(new WorkspaceContextResolver(tempDir)), new TaskPersistenceService(), new WorkspaceContextResolver(tempDir));
+        StringWriter out = new StringWriter();
+        CommandLine cl = new CommandLine(cmd);
+        cl.setOut(new PrintWriter(out));
+
+        int exitCode = cl.execute();
+
+        assertThat(exitCode).isZero();
+        assertThat(out.toString()).contains("in phase [RED_TEST]");
+    }
+
+    @Test
     @DisplayName("Given multiple candidates in interactive shell - 'q' aborts")
     void testMultiCandidatesInteractiveAbort() {
         TaskRun task1 = TaskRun.builder().taskId("TASK-501").currentPhase("PLANNING").build();

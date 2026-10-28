@@ -38,6 +38,18 @@ class WorkspaceJailValidatorTest {
     }
 
     @Test
+    @DisplayName("Given null or blank path - throws SecurityException")
+    void testNullOrBlankPathThrowsSecurityException() {
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
+        assertThatThrownBy(() -> validator.validateAndResolve(null))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> validator.validateAndResolve("   "))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> validator.validateForWrite(""))
+            .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
     @DisplayName("Given path traversal attempt outside root - when resolved - then throws SecurityException")
     void testPathTraversalThrowsSecurityException() {
         WorkspaceJailValidator validator = new WorkspaceJailValidator(tempDir);
@@ -112,5 +124,15 @@ class WorkspaceJailValidatorTest {
         assertThatThrownBy(() -> validator.validateForWrite("sym_dir/file.txt"))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Symbolic links are forbidden");
+    }
+
+    @Test
+    @DisplayName("Given non-existent activeWorkingRoot - falls back to absolute normalized path")
+    void testNonExistentActiveWorkingRoot() {
+        Path nonExistentRoot = tempDir.resolve("non_existent_workspace_root");
+        WorkspaceJailValidator validator = new WorkspaceJailValidator(nonExistentRoot);
+
+        Path resolved = validator.validateAndResolve("file.txt");
+        assertThat(resolved).isEqualTo(nonExistentRoot.toAbsolutePath().normalize().resolve("file.txt"));
     }
 }

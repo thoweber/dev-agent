@@ -119,4 +119,56 @@ class RepoPathTest {
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Symbolic links are forbidden");
     }
+
+    @Test
+    @DisplayName("Given null path or root or relativePath - throws NullPointerException")
+    void testNullArgumentsValidation() {
+        assertThatThrownBy(() -> new RepoPath(null, tempDir))
+            .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new RepoPath(tempDir, null))
+            .isInstanceOf(NullPointerException.class);
+
+        RepoPath repoPath = RepoPath.of(tempDir, tempDir);
+        assertThatThrownBy(() -> repoPath.resolve(null))
+            .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    @DisplayName("Given root/.git exact match - throws SecurityException")
+    void testExactGitDirectoryRejected() throws IOException {
+        Path gitDir = tempDir.resolve(".git");
+        Files.createDirectories(gitDir);
+
+        assertThatThrownBy(() -> RepoPath.of(gitDir, tempDir))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Protected location");
+    }
+
+    @Test
+    @DisplayName("Given root is a symlink alias - absolute candidate under root alias is rebased onto realRoot")
+    void testSymlinkedRootAliasWithAbsoluteCandidate() throws IOException {
+        Path realDir = Files.createDirectories(tempDir.resolve("real_workspace"));
+        Path file = Files.writeString(realDir.resolve("Main.java"), "class Main {}");
+
+        Path rootSymlink = tempDir.resolve("link_workspace");
+        Files.createSymbolicLink(rootSymlink, realDir);
+
+        Path candidateUnderSymlink = rootSymlink.resolve("Main.java");
+        RepoPath repoPath = RepoPath.of(candidateUnderSymlink, rootSymlink);
+
+        assertThat(repoPath.toPath()).isEqualTo(file.toRealPath());
+        assertThat(repoPath.root()).isEqualTo(realDir.toRealPath());
+    }
+
+    @Test
+    @DisplayName("Given relative candidate path - resolves correctly against root")
+    void testRelativeCandidatePath() throws IOException {
+        Path validFile = tempDir.resolve("src/main/Relative.java");
+        Files.createDirectories(validFile.getParent());
+        Files.writeString(validFile, "public class Relative {}");
+
+        RepoPath repoPath = RepoPath.of(Path.of("src/main/Relative.java"), tempDir);
+        assertThat(repoPath.toPath()).isEqualTo(validFile.toRealPath());
+        assertThat(repoPath.relativize()).isEqualTo(Path.of("src/main/Relative.java"));
+    }
 }

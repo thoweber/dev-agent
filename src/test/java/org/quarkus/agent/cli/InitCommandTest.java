@@ -76,6 +76,23 @@ class InitCommandTest {
     }
 
     @Test
+    @DisplayName("Given existing configuration with same archetype - when executed without force - succeeds idempotently")
+    void testInitExistingArchetypeSameWithoutForce() throws Exception {
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+
+        int exit1 = cmd.execute("--dir=" + tempDir.toString(), "--type=rest-panache");
+        assertThat(exit1).isZero();
+
+        int exit2 = cmd.execute("--dir=" + tempDir.toString(), "--type=rest-panache");
+        assertThat(exit2).isZero();
+
+        Path yamlPath = tempDir.resolve(".agents/dev-agent.yaml");
+        String content = Files.readString(yamlPath);
+        assertThat(content).contains("rest-panache");
+    }
+
+    @Test
     @DisplayName("Given existing configuration - when executed with force - then overwrites archetype")
     void testInitExistingArchetypeWithForce() throws Exception {
         InitCommand command = new InitCommand();

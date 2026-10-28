@@ -96,17 +96,30 @@ def detect_repo_and_pr(cli_repo: Optional[str], cli_pr: Optional[int]) -> Tuple[
 def check_coderabbit_progress(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
     """Inspect top-level issue comments to see if CodeRabbit is actively running."""
     endpoint = f"repos/{owner}/{repo}/issues/{pr_num}/comments"
-    code, out, err = run_gh_cmd(["api", endpoint])
+    code, out, err = run_gh_cmd(["api", "--paginate", endpoint])
     if code != 0 or not out:
-        return {"in_progress": False, "status": "Unknown", "run_id": None}
+        return {"in_progress": None, "status": "Unknown (API call failed)", "run_id": None}
 
-    try:
-        comments = json.loads(out)
-    except json.JSONDecodeError:
-        return {"in_progress": False, "status": "Invalid JSON", "run_id": None}
+    comments = []
+    decoder = json.JSONDecoder()
+    raw = out.strip()
+    idx = 0
+    while idx < len(raw):
+        sub = raw[idx:].lstrip()
+        if not sub:
+            break
+        try:
+            obj, offset = decoder.raw_decode(sub)
+            if isinstance(obj, list):
+                comments.extend(obj)
+            elif isinstance(obj, dict):
+                comments.append(obj)
+            idx += (len(raw[idx:]) - len(sub)) + offset
+        except json.JSONDecodeError:
+            return {"in_progress": None, "status": "Invalid JSON from GitHub API", "run_id": None}
 
     for c in reversed(comments):
-        user = c.get("user", {}).get("login", "")
+        user = (c.get("user") or {}).get("login", "")
         body = c.get("body", "")
         if "coderabbit" in user.lower() or "coderabbit-ai-generated" in body:
             run_id_match = re.search(r"(?:\*\*)?Run ID(?:\*\*)?:\s*`([a-f0-9-]+)`", body)
@@ -132,9 +145,9 @@ def check_coderabbit_progress(owner: str, repo: str, pr_num: int) -> Dict[str, A
 
 
 def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
-    """Fetch PR review threads using GraphQL."""
+    """Fetch PR review threads using GraphQL with cursor-based pagination."""
     query = """
-    query($owner: String!, $repo: String!, $pr: Int!) {
+    query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $pr) {
           id
@@ -142,7 +155,11 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
           state
           isDraft
           headRefName
-          reviewThreads(first: 100) {
+          reviewThreads(first: 100, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               id
               isResolved
@@ -150,7 +167,11 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
               path
               line
               originalLine
-              comments(first: 20) {
+              comments(first: 100) {
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
                 nodes {
                   id
                   author {
@@ -167,24 +188,55 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
       }
     }
     """
-    code, out, err = run_gh_cmd([
-        "api",
-        "graphql",
-        "-f", f"owner={owner}",
-        "-f", f"repo={repo}",
-        "-F", f"pr={pr_num}",
-        "-f", f"query={query}",
-    ])
+    all_threads = []
+    cursor = None
+    pr_metadata = {}
 
-    if code != 0:
-        print(f"Error fetching review threads: {err}", file=sys.stderr)
-        sys.exit(1)
+    while True:
+        cmd = [
+            "api",
+            "graphql",
+            "-f", f"owner={owner}",
+            "-f", f"repo={repo}",
+            "-F", f"pr={pr_num}",
+            "-f", f"query={query}",
+        ]
+        if cursor:
+            cmd.extend(["-f", f"cursor={cursor}"])
 
-    try:
-        return json.loads(out)
-    except json.JSONDecodeError as e:
-        print(f"Error decoding GraphQL response: {e}", file=sys.stderr)
-        sys.exit(1)
+        code, out, err = run_gh_cmd(cmd)
+        if code != 0:
+            print(f"Error fetching review threads: {err}", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding GraphQL response: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        pr_node = data.get("data", {}).get("repository", {}).get("pullRequest", {})
+        if not pr_metadata:
+            pr_metadata = {
+                "id": pr_node.get("id"),
+                "title": pr_node.get("title"),
+                "state": pr_node.get("state"),
+                "isDraft": pr_node.get("isDraft"),
+                "headRefName": pr_node.get("headRefName"),
+            }
+
+        review_threads_conn = pr_node.get("reviewThreads", {})
+        nodes = review_threads_conn.get("nodes", [])
+        all_threads.extend(nodes)
+
+        page_info = review_threads_conn.get("pageInfo", {})
+        if page_info.get("hasNextPage") and page_info.get("endCursor"):
+            cursor = page_info["endCursor"]
+        else:
+            break
+
+    pr_metadata["reviewThreads"] = {"nodes": all_threads}
+    return {"data": {"repository": {"pullRequest": pr_metadata}}}
 
 
 def parse_coderabbit_comment(body: str) -> Dict[str, str]:
@@ -329,6 +381,8 @@ def main() -> None:
             run_id = progress.get("run_id", "N/A")
             print(f"Repository: {owner}/{repo} | PR: #{pr_num}")
             print(f"Review Status: {status_text} (Run ID: {run_id})")
+        if progress.get("in_progress") is None:
+            sys.exit(2)
         sys.exit(1 if progress.get("in_progress") else 0)
 
     # 2. Fetch review threads

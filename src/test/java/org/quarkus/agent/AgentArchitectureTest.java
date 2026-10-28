@@ -46,4 +46,22 @@ public class AgentArchitectureTest {
             .or().areAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
             .or().areAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
             .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+
+    private static final com.tngtech.archunit.base.DescribedPredicate<com.tngtech.archunit.core.domain.JavaClass> CONTAIN_TEST_OR_LIFECYCLE_METHODS =
+        new com.tngtech.archunit.base.DescribedPredicate<>("contain test or lifecycle methods or end with Test/IT") {
+            @Override
+            public boolean test(com.tngtech.archunit.core.domain.JavaClass javaClass) {
+                return javaClass.getMethods().stream().anyMatch(m ->
+                    m.isAnnotatedWith(org.junit.jupiter.api.Test.class)
+                        || m.isAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
+                        || m.isAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
+                ) || javaClass.getSimpleName().endsWith("Test") || javaClass.getSimpleName().endsWith("IT");
+            }
+        };
+
+    @ArchTest
+    public static final ArchRule testClassesMustNotBeAnnotatedWithTransactional =
+        classes()
+            .that(CONTAIN_TEST_OR_LIFECYCLE_METHODS)
+            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
 }

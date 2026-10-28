@@ -52,9 +52,10 @@ Triage every CodeRabbit comment into one of three action states:
 
 ## Step 3: Targeted TDD Remediation Loop
 
-1. **Duplication Reduction First**: Replace repetitive tests with `@ParameterizedTest` (`java:S5976`) to keep line duplication $<3\%$.
-2. **Coverage Enforcement**: Add 1-to-1 boundary tests for uncovered branches and accessors until JaCoCo line coverage reaches $\ge 80\%$ and condition/branch coverage reaches $\ge 80\%$.
-3. **Terminal Output Sanitization**: Route CLI output through `spec.commandLine().getOut()` and annotate CLI classes with `@SuppressWarnings("java:S106")`.
+1. **Spotless-First Rule**: Whenever adding or modifying code, run `./mvnw spotless:apply` before any other Maven goals (such as `./mvnw test`) to prevent formatting failures.
+2. **Duplication Reduction First**: Replace repetitive tests with `@ParameterizedTest` (`java:S5976`) to keep line duplication $<3\%$.
+3. **Coverage Enforcement**: Add 1-to-1 boundary tests for uncovered branches and accessors until JaCoCo line coverage reaches $\ge 95\%$ and condition/branch coverage reaches $\ge 90\%$.
+4. **Terminal Output Sanitization**: Route CLI output through `spec.commandLine().getOut()` and annotate CLI classes with `@SuppressWarnings("java:S106")`.
 
 ---
 
@@ -63,20 +64,20 @@ Triage every CodeRabbit comment into one of three action states:
 Before pushing any commit, verify that all local checks pass in accordance with `AGENTS.md` Rule 2:
 
 ```bash
-# 1. Fast Unit Tests (< 10s):
+# 1. Auto-Format Code (Always Run First):
+./mvnw spotless:apply
+
+# 2. Fast Unit Tests (< 10s):
 ./mvnw test -Dtest=*Test
 
-# 2. ArchUnit Native Compliance & Path Jail Verification (< 15s):
+# 3. ArchUnit Native Compliance & Path Jail Verification (< 15s):
 ./mvnw test -Dtest=AgentArchitectureTest,WorkspaceJailValidatorTest
 
-# 3. JaCoCo Coverage Audit (>= 80% instruction threshold) (< 2s):
-./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0
+# 4. JaCoCo Coverage Audit (Line >= 95%, Condition >= 90%) (< 2s):
+./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates
 
-# 4. Full Clean Build & Verification (< 30s):
+# 5. Full Clean Build & Verification (< 30s):
 ./mvnw clean verify
-
-# 5. Auto-Format Code:
-./mvnw spotless:apply
 ```
 
 ---

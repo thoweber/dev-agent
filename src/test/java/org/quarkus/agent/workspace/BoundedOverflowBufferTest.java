@@ -125,6 +125,18 @@ class BoundedOverflowBufferTest {
             out.write(new byte[10], 0, 0);
             assertThat(buffer.getTotalBytesWritten()).isZero();
 
+            // Negative length throws IndexOutOfBoundsException
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 0, -1))
+                .isInstanceOf(IndexOutOfBoundsException.class);
+
+            // Negative offset throws IndexOutOfBoundsException
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], -1, 5))
+                .isInstanceOf(IndexOutOfBoundsException.class);
+
+            // Offset + length exceeding buffer throws IndexOutOfBoundsException
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 6, 5))
+                .isInstanceOf(IndexOutOfBoundsException.class);
+
             out.write("default-buffer-test".getBytes(StandardCharsets.UTF_8));
             out.close();
 
@@ -160,5 +172,48 @@ class BoundedOverflowBufferTest {
             .isInstanceOf(IOException.class);
         org.assertj.core.api.Assertions.assertThatThrownBy(buffer::inputStream)
             .isInstanceOf(IOException.class);
+    }
+
+    @Test
+    @DisplayName("Given buffer at capacity - single byte writes trigger truncation and flushSink flushes disk stream")
+    void testSingleByteTruncationAndFlush() throws IOException {
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 5)) {
+            OutputStream out = buffer.outputStream();
+            out.write("12345".getBytes(StandardCharsets.UTF_8));
+            assertThat(buffer.isTruncated()).isFalse();
+
+            // Next single byte exceeds capacity
+            out.write('6');
+            assertThat(buffer.isTruncated()).isTrue();
+            assertThat(buffer.getTotalBytesWritten()).isEqualTo(5);
+
+            // Array write when already at capacity
+            out.write(new byte[]{'7', '8'});
+            assertThat(buffer.isTruncated()).isTrue();
+
+            // Flush on memory buffer is safe
+            out.flush();
+            buffer.flushSink();
+        }
+
+        try (BoundedOverflowBuffer diskBuffer = new BoundedOverflowBuffer(5, 20)) {
+            OutputStream out = diskBuffer.outputStream();
+            out.write("1234567890".getBytes(StandardCharsets.UTF_8));
+            assertThat(diskBuffer.isOverflowedToDisk()).isTrue();
+
+            // Flush sink on disk output stream
+            out.flush();
+            diskBuffer.flushSink();
+
+            // Read as string with custom charset
+            String isoString = diskBuffer.asString(StandardCharsets.ISO_8859_1);
+            assertThat(isoString).isEqualTo("1234567890");
+
+            // Write up to max capacity and overflow single byte
+            out.write("1234567890".getBytes(StandardCharsets.UTF_8));
+            assertThat(diskBuffer.isTruncated()).isFalse();
+            out.write('X');
+            assertThat(diskBuffer.isTruncated()).isTrue();
+        }
     }
 }

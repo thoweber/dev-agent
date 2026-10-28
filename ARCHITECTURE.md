@@ -200,29 +200,33 @@ On invocation, `WorkspaceContextResolver` inspects `System.getProperty("user.dir
 2. **Subsystem Discovery**: Scans for frontend roots (`frontend/`, `ui/`, `src/main/webapp/`, or Angular workspace projects) and checks for package configurations.
 3. **Target Build Isolation**: Ensures that all build executions write to `target-agent/` (Maven) or `build-agent/` (Gradle). Automatically adds `target-agent/` and `.cache-agent/` to the repository's `.git/info/exclude` to prevent dirtying `git status`.
 
-### Sandboxing & Canonical Path Jail (`WorkspaceJailValidator`)
-To prevent directory traversal or accidental host corruption:
-* All path inputs must resolve strictly within the active execution root (`activeWorkingRoot.toRealPath()`):
+### Sandboxing & Canonical Path Jail (`WorkspaceJailValidator` & `RepoPath`)
+To prevent directory traversal, symbolic link exploits (CWE-59), or host corruption:
+* All path inputs must resolve strictly within the active execution root (`activeWorkingRoot.toRealPath()`) and are modeled as strongly-typed `RepoPath` value objects:
   ```java
-  public Path validateAndResolve(String untrustedPath) {
-      try {
-          Path realRoot = activeWorkingRoot.toRealPath();
-          Path resolved = realRoot.resolve(untrustedPath).toRealPath();
-          if (!resolved.startsWith(realRoot)) {
-              throw new SecurityException("Jailbreak attempt: Path traverses outside boundary: " + untrustedPath);
-          }
-          return resolved;
-      } catch (IOException e) {
-          // If file does not yet exist, validate normalized parent
-          Path parent = activeWorkingRoot.resolve(untrustedPath).normalize().getParent();
-          if (!parent.startsWith(activeWorkingRoot)) {
-              throw new SecurityException("Jailbreak attempt: " + untrustedPath);
-          }
-          return activeWorkingRoot.resolve(untrustedPath).normalize();
+  public RepoPath validateAndResolve(String untrustedPath) {
+      if (untrustedPath == null || untrustedPath.isBlank()) {
+          throw new SecurityException("Jailbreak attempt: Path cannot be null or empty");
       }
+      return RepoPath.fromUntrusted(activeWorkingRoot, untrustedPath);
+  }
+
+  public RepoPath validateForWrite(RepoPath repoPath) {
+      Path candidate = repoPath.absolutePath();
+      // Ensure all existing ancestor directories do not escape or contain symlinks
+      Path current = candidate.normalize();
+      while (current != null && !current.equals(activeWorkingRoot)) {
+          if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
+              throw new SecurityException("Jailbreak attempt: Intermediate symlink detected: " + current);
+          }
+          current = current.getParent();
+      }
+      return repoPath;
   }
   ```
+* File write sinks (e.g. `writeAtomic`, `writeText`) strictly consume strongly-typed `RepoPath` instances.
 * Explicitly forbids modifications to `.git/**`, global configurations (`~/.config/dev-agent/**`), or the CLI binary itself.
+* Symlinks targeting or originating within repository paths immediately throw `SecurityException`.
 
 ### Tool Scoping via Dynamic Proxy (`ExecutionToolProxy`)
 Prevents backend-only projects from receiving frontend LLM tools:
@@ -305,6 +309,26 @@ Detects oscillatory self-healing loops ($A \rightarrow B \rightarrow A \rightarr
   * *Consecutive Repeat ($A \rightarrow A$)*: Injects an explicit warning into the sliding scratchpad memory.
   * *Oscillating Regression ($A \rightarrow B \rightarrow A \rightarrow B$)*: Invokes `git reset --hard` to rollback to the snapshot and forces a strategy pivot.
   * *Exhaustion (3 failures after pivot)*: Trips the circuit breaker, rolls back all workspace edits, and halts with exit code 1.
+
+### Master Architectural Decision Record (ADR) Index
+
+The system's cognitive evaluation and invariant gatekeeping enforce strict adherence to all 13 core ADRs:
+
+| ADR ID | Title | Summary & Implementation Guardrails |
+| :--- | :--- | :--- |
+| **ADR-001** | Quarkus Picocli Native CLI | Ahead-of-Time native binary targeting sub-50ms cold boot via GraalVM/Mandrel. |
+| **ADR-002** | Two-Axis SPI Extensibility | Independent SPIs for build systems (`BackendBuildSystem`) and framework conventions (`BackendFrameworkConvention`). |
+| **ADR-003** | Workspace Path Jail | Canonical `toRealPath()` boundary containment and strongly-typed `RepoPath` value object. |
+| **ADR-004** | Git Worktree Isolation | Dedicated worktrees under `.git/dev-agent-worktrees/<task-id>/` for non-blocking concurrency. |
+| **ADR-005** | Pure-Java BM25 Retrieval | Zero-JNI lexical inverted index eliminating native C++ ONNX library failures. |
+| **ADR-006** | Non-Locking State Sockets | Ephemeral `state.json` heartbeats avoiding H2 file lock deadlocks during telemetry reads. |
+| **ADR-007** | Contract-Driven Sync | Automated SmallRye OpenAPI spec extraction and TypeScript client code generation. |
+| **ADR-008** | Context-Aware Secret Redaction | Strict redaction quarantine excluding raw source and test code, enforcing `SanitizedOutput`. |
+| **ADR-009** | Cache & Circuit Breaker | Caffeine gatekeeper memoization and normalized error loop circuit breaker. |
+| **ADR-010** | Embedded Vert.x Review GUI | Embedded Vert.x HTTP review server on `:9999` with Storybook iframe integration. |
+| **ADR-011** | Hierarchical Memory Invariants | 3-tier memory store: Tier 1 immutable pinned system invariants, Tier 2 ephemeral task turns with atomic tool request/execution eviction, Tier 3 long-term knowledge. |
+| **ADR-012** | Panache Entity Encapsulation | Panache entities quarantined to `entity` package; external services consume immutable `TaskRun`/`StepAudit` domain models via `TaskPersistenceService`. |
+| **ADR-013** | Global Project ID Host Isolation | Multi-tenant isolation using RFC 4122 UUIDv3 coordinates derived from remote URLs or local paths with host isolation and credential scrubbing. |
 
 ---
 
@@ -395,10 +419,33 @@ To avoid H2 MVStore database lock crashes (`Database may be already in use`) whe
 * **Worker Limit**: Caps simultaneous background worker JVMs at **2** (configurable via `agent.max-concurrent-workers`). Additional detached runs enter a `QUEUED` state.
 * **Surefire Heap Slicing**: Inner Maven test forks are bounded with `-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1`, preventing workstation memory exhaustion.
 
-### Context-Aware Secret Redaction (`SecretRedactionFilter`)
+### Subprocess Lifetime & Timeout Governance (`SubprocessExecutor` & `BoundedOverflowBuffer`)
+All external process forks (`git`, `mvnw`, `npm`, etc.) are centralized through `SubprocessExecutor` to prevent OS pipe deadlocks, process leaks, and silent hanging:
+* **Mandatory Timeout Enforcement**: Every execution requires an explicit timeout duration. Upon timeout expiration or thread interruption, `destroyForcibly()` is called immediately on the process tree, and thread interrupt flags are preserved.
+* **Virtual Thread Non-Blocking Draining**: Standard output and standard error are consumed concurrently on dedicated virtual threads using non-blocking stream draining.
+* **2-Tier Bounded Buffering (`BoundedOverflowBuffer`)**: Output is buffered in memory up to 1 MB. If output exceeds 1 MB, it automatically overflows to a secure POSIX-permissioned disk temporary file up to 10 MB. Any further excess is safely truncated, protecting workstation RAM from runaway log loops.
+* **Explicit Stdin Closure**: Stdin is closed immediately after process start, preventing interactive CLI prompts from hanging non-interactive agent workers indefinitely.
+
+### Exhaustive Crash Recovery & Physical Worktree Inspection (`CrashRecoveryDetector`)
+When resuming interrupted background sessions:
+* `CrashRecoveryDetector` evaluates the complete candidate queue via `findAllResumableTasks` rather than only checking the queue head.
+* Tasks are considered resumable strictly if:
+  1. The task status is non-terminal (not `COMPLETED`, `FAILED`, or `ABORTED`).
+  2. The registered process ID (`pid`) is null or dead on the host operating system (`pid == null || ProcessHandle.of(pid).isEmpty()`).
+  3. The task's dedicated Git worktree directory (`.git/dev-agent-worktrees/<taskId>`) physically exists on disk.
+* Stale tasks with missing physical directories or alive PIDs are safely quarantined from resurrection.
+
+### Panache Entity Encapsulation & Domain Decoupling (`TaskPersistenceService`)
+To protect architectural boundaries and ensure thread-safe multi-tenant persistence:
+* Panache entities (`TaskRunEntity`, `StepAuditEntity`, `MetricLogEntity`) are strictly quarantined inside `org.quarkus.agent.entity` (ADR-012).
+* External services in `cli`, `workspace`, or `cognitive` consume decoupled immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
+* `TaskPersistenceService` manages transactional boundaries (`@Transactional`) and provides defensive fallbacks for unit test environments where Panache runtimes are uninitialized.
+
+### Context-Aware Secret Redaction & `SanitizedOutput` Quarantine
 To prevent corrupting binary base64 fixtures, Content-Addressable Storage (CAS) digests, or test assertions (e.g., `assertEquals("Basic dXNlcjpwYXNz", header)`), secret scrubbing is strictly quarantined:
 * **Never applied** to raw Java/TypeScript source code or test files.
-* **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity`, HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+* **Strictly applied** to tool outputs before writing to H2 entities, HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+* Persistence sinks and audit entities consume the strongly-typed `SanitizedOutput` domain value object (REM-02 / CWE-312), preventing raw, un-scrubbed strings from being written to persistence sinks at compile time. `StepAuditEntity` enforces this by exposing setters (`setSanitizedInput`, `setOutputSummary`) accepting strictly `SanitizedOutput` value objects, isolating credential scrub boundaries at compile time.
 
 ---
 
@@ -615,8 +662,8 @@ CLI Execution: $ dev-agent feature "Add Auth Health Check" --gui
 
 ## 10. Verification, ArchUnit Governance & Implementation Roadmap
 
-### ArchUnit Native Compliance Rules
-To prevent GraalVM native binary crashes caused by missing reflection registrations or improper CDI scopes:
+### ArchUnit Architecture Governance Rules
+To prevent GraalVM native binary crashes, maintain strict domain encapsulation, and avoid transaction deadlock traps:
 
 ```java
 @AnalyzeClasses(packages = "org.quarkus.agent")
@@ -626,16 +673,66 @@ public class AgentArchitectureTest {
     public static final ArchRule toolsMustBeApplicationScoped =
         methods()
             .that().areAnnotatedWith(Tool.class)
-            .should().beDeclaredInClassesThat().areAnnotatedWith(ApplicationScoped.class);
+            .should().beDeclaredInClassesThat().areAnnotatedWith(ApplicationScoped.class)
+            .allowEmptyShould(true);
 
     @ArchTest
     public static final ArchRule recordsAndEntitiesMustRegisterReflection =
         classes()
             .that().resideInAnyPackage("..model..", "..entity..", "..remote..", "..gui..")
+            .and().areTopLevelClasses()
             .and().areNotInterfaces()
+            .and().haveSimpleNameNotEndingWith("Test")
+            .and().haveSimpleNameNotEndingWith("IT")
             .should().beAnnotatedWith(RegisterForReflection.class);
+
+    @ArchTest
+    public static final ArchRule entitiesMustNotBeAccessedOutsideTheirPackage =
+        classes()
+            .that().areAnnotatedWith(jakarta.persistence.Entity.class)
+            .should().onlyBeAccessed().byClassesThat().resideInAPackage("org.quarkus.agent.entity..");
+
+    @ArchTest
+    public static final ArchRule testMethodsMustNotBeAnnotatedWithTransactional =
+        methods()
+            .that().areAnnotatedWith(org.junit.jupiter.api.Test.class)
+            .or().areAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
+            .or().areAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
+            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+
+    @ArchTest
+    public static final ArchRule testClassesMustNotBeAnnotatedWithTransactional =
+        classes()
+            .that().haveSimpleNameEndingWith("Test")
+            .or().haveSimpleNameEndingWith("IT")
+            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
 }
 ```
+
+### Retrospective Remediation Learnings & Engineering Guardrails
+
+Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority architectural and security remediations have been implemented and codified:
+
+| Priority | Task ID | Core Focus & Guardrail | Resolution Vehicle |
+|:---:|:---:|:---|:---|
+| **P1** | **REM-01** | Physical Symlink & Canonical Path Jail (CWE-59) | Strongly-typed `RepoPath` value object & canonical symlink validation |
+| **P2** | **REM-02** | Universal Credential Scrubbing Quarantine (CWE-312) | Strongly-typed `SanitizedOutput` domain value object for audit sinks |
+| **P3** | **REM-03** | Regex Sanitization Bounds & Length Flexibility | Bounded regexes, word boundaries, quoted space handling |
+| **P4** | **REM-04** | 3-Tier Hierarchical Memory Turn Invariants | Atomic tool eviction, Tier 1 system consolidation (ADR-011) |
+| **P5** | **REM-05** | Panache Entity Encapsulation & Domain Decoupling | Entity package isolation, immutable `TaskRun`/`StepAudit`, ADR-012 |
+| **P6** | **REM-06** | Global Project ID Host Isolation & UUIDv3 | Deterministic RFC 4122 UUIDv3 coordinate hashing, ADR-013 |
+| **P7** | **REM-07** | Exhaustive Crash Recovery & Worktree Health Inspection | Complete queue evaluation `findAllResumableTasks`, physical worktree check |
+| **P8** | **REM-08** | Subprocess Lifetime & Timeout Governance | Centralized `SubprocessExecutor`, 2-tier `BoundedOverflowBuffer` (1 MB RAM -> 10 MB Disk) |
+| **P9** | **REM-09** | Two-Phase Test Execution & JaCoCo Isolation | Failsafe for `*IT.java` (`<quarkus.jacoco.enabled>false`), Surefire for pure unit test coverage |
+| **P10** | **REM-10** | Programmatic Test Transaction Scope Protocol | Prohibit `@Transactional` on test methods, use `QuarkusTransaction.requiringNew()`, ArchUnit rule |
+
+### Quality Goals & Verification SLA
+
+* **Line Coverage Gate:** Overall repository line coverage MUST satisfy $\ge 95.0\%$.
+* **Condition / Branch Coverage Gate:** Overall repository branch/condition coverage MUST satisfy $\ge 90.0\%$.
+* **Fast Local Feedback SLA:** Fast unit and ArchUnit tests execute in $<15\text{ s}$ via `./mvnw test -Dtest=*Test`.
+* **Spotless-First Development Protocol:** Whenever writing or modifying Java code, developers and autonomous agents MUST run `./mvnw spotless:apply` before any other Maven goal to eliminate formatting build failures.
+* **Cold Boot Latency:** Native GraalVM Mandrel CLI cold boot $<50\text{ ms}$; JVM cold boot $<800\text{ ms}$.
 
 ### Evolutionary Walking Skeleton Roadmap
 

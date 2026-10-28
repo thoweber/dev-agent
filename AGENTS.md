@@ -20,18 +20,21 @@
 
 Remote CI/CD runs are too slow for autonomous iteration. Execute these fast local verification commands inside `agy`'s loop to self-correct in under 30 seconds:
 
+> [!IMPORTANT]
+> **Spotless-First Invariant:** Whenever adding or modifying code, run `./mvnw spotless:apply` BEFORE running any other Maven goals (such as `./mvnw test` or `./mvnw clean verify`). Otherwise, the build is extremely likely to fail due to formatting violations.
+
+* **Auto-Format Code (Always Run First):**  
+  `./mvnw spotless:apply`
 * **Compile & Fast Unit Tests ($< 10\text{ s}$):**  
   `./mvnw test -Dtest=*Test`
 * **ArchUnit Native Compliance & Path Jail Verification ($< 15\text{ s}$):**  
   `./mvnw test -Dtest=AgentArchitectureTest,WorkspaceJailValidatorTest`
-* **Audit JaCoCo Coverage & Flag Deficits ($< 2\text{ s}$):**  
-  `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`
-* **Audit & Ingest PR Review Threads ($< 2\text{ s}$):**  
-  `./scripts/check_pr_reviews.py`
+* **Audit JaCoCo Coverage & Enforce Quality Gates ($< 2\text{ s}$):**  
+  `./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates`
+* **Audit & Ingest PR Review Threads & CodeRabbit ($< 2\text{ s}$):**  
+  `./scripts/check_pr_reviews.py --check-status`
 * **Full Clean Build & Verification ($< 30\text{ s}$):**  
   `./mvnw clean verify`
-* **Auto-Format Code:**  
-  `./mvnw spotless:apply`
 * **SonarCloud Quality Gate Analysis:**  
   `./mvnw sonar:sonar -Dsonar.qualitygate.wait=true`
 
@@ -49,9 +52,9 @@ All feature development, SPI additions, and engine enhancements MUST follow the 
   └───────────────┘        └───────────────┘        └───────────────┘
 ```
 
-1. **RED Phase:** Write unit or component tests (`*Test.java`) using AssertJ assertions (`assertThat()`). Run `./mvnw test` to confirm the test fails with an expected assertion failure or compile error.
-2. **GREEN Phase:** Write minimal production code until `./mvnw test` passes cleanly.
-3. **REFACTOR Phase:** Run `./mvnw spotless:apply` and perform static analysis / Sonar clean-up. Never declare success with unformatted code or open quality regressions.
+1. **RED Phase:** Write unit or component tests (`*Test.java`) using AssertJ assertions (`assertThat()`). Run `./mvnw spotless:apply` then `./mvnw test` to confirm the test fails with an expected assertion failure or compile error.
+2. **GREEN Phase:** Write minimal production code. Run `./mvnw spotless:apply` then `./mvnw test` until it passes cleanly.
+3. **REFACTOR Phase:** Run `./mvnw spotless:apply`, check coverage via `./scripts/parse_jacoco.py --fail-under-gates`, and perform static analysis / Sonar clean-up. Never declare success with unformatted code or open quality regressions.
 
 ---
 
@@ -72,3 +75,5 @@ All feature development, SPI additions, and engine enhancements MUST follow the 
 13. **Exhaustive Crash Recovery & Physical Worktree Verification:** Background task recovery (`CrashRecoveryDetector`) MUST evaluate complete active candidate queues (`findAllResumableTasks`) rather than only inspecting the queue head. Tasks are resumable strictly if their status is non-terminal, registered PID is dead on the host OS, and their Git worktree (`.git/dev-agent-worktrees/<taskId>`) physically exists on disk.
 14. **Subprocess Lifetime & Timeout Governance:** All external process forks (`git`, `mvnw`, `npm`, etc.) MUST be executed via `SubprocessExecutor` with explicit timeouts. Subprocesses must use non-blocking stream draining with 2-tier bounded output buffering (`BoundedOverflowBuffer`: 1 MB RAM -> 10 MB Disk overflow) to prevent OS pipe deadlocks. On timeout or thread interruption, `destroyForcibly()` MUST be called immediately, and thread interrupt status MUST be preserved.
 15. **Programmatic Test Transaction Scope Protocol:** Test and setup methods (`@Test`, `@BeforeEach`, `@AfterEach`) must NEVER be annotated with `@Transactional`. Production services manage their own transaction boundaries. When integration tests require explicit transaction isolation or data seeding, they MUST use programmatic transactions via `QuarkusTransaction.requiringNew().run(...)` or `.call(...)`. This prevents uncommitted Hibernate session caching and post-commit synchronization deadlocks. Enforced via ArchUnit.
+16. **Spotless-First Execution Protocol:** Whenever writing, patching, or refactoring Java source or test files, execute `./mvnw spotless:apply` before running test suites or compiler checks to eliminate Spotless formatting failures in fast iteration loops.
+17. **Mandatory Quality Gates Enforcement:** Overall repository code coverage MUST strictly satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.

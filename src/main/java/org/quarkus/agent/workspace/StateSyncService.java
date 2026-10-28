@@ -152,8 +152,8 @@ public class StateSyncService {
         try {
             Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
-            Files.createDirectories(targetRunsDir);
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
+            Files.createDirectories(runsDir.toPath());
             RepoPath journalFile = runsDir.resolve(taskRun.taskId() + ".md");
 
             Files.writeString(

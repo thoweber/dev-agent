@@ -103,4 +103,33 @@ class ProjectIdResolverTest {
 
         assertThat(idSsh).isEqualTo(idHttps).isEqualTo(idPort);
     }
+
+    @Test
+    @DisplayName("Given complex paths and non-URL inputs - normalizeRemote sanitizes slashes and falls back")
+    void testNormalizeRemoteEdgeCases() {
+        ProjectIdResolver resolver = new ProjectIdResolver();
+
+        // Leading and trailing slashes with .git
+        assertThat(resolver.normalizeRemote("///org/repo///.git///"))
+            .isEqualTo("org/repo");
+
+        // Non-URL non-SCP string
+        assertThat(resolver.normalizeRemote("simple-repo-identifier"))
+            .isEqualTo("simple-repo-identifier");
+
+        // Coordinate resolution
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        ProjectIdResolver workspaceResolver = new ProjectIdResolver(workspace);
+        assertThat(workspaceResolver.resolveCoordinate()).startsWith("local:");
+    }
+
+    @Test
+    @DisplayName("Given non-existent path - computeLocalFallback falls back to normalized absolute path")
+    void testComputeLocalFallbackNonExistent() {
+        ProjectIdResolver resolver = new ProjectIdResolver();
+        Path nonExistent = tempDir.resolve("sub_dir_not_on_disk");
+
+        String coordinate = resolver.resolveCoordinate(nonExistent);
+        assertThat(coordinate).isEqualTo("local:" + nonExistent.toAbsolutePath().normalize());
+    }
 }

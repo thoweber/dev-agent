@@ -141,5 +141,35 @@ class CrashRecoveryDetectorTest {
         assertThat(notFound).isEmpty();
 
         assertThat(detector.resolveWorktreeDir("TASK-RESUMABLE")).isEqualTo(worktree);
+
+        // Test findFirst overloads
+        assertThat(detector.findResumableTask()).isPresent().contains(resumable);
+        assertThat(detector.findResumableTask(projectId)).isPresent().contains(resumable);
+        assertThat(detector.findResumableTask(projectId.idString())).isPresent().contains(resumable);
+    }
+
+    @Test
+    @DisplayName("Given task with null pid but existing worktree - isTaskResumable returns true")
+    void testTaskWithNullPidAndWorktreeIsResumable() throws IOException {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        CrashRecoveryDetector detector = new CrashRecoveryDetector(new ProjectIdResolver(workspace), new TaskPersistenceService(), workspace);
+
+        Path worktree = workspace.resolveWorktreeDir("TASK-NULL-PID");
+        Files.createDirectories(worktree);
+
+        TaskRun task = TaskRun.builder()
+            .taskId("TASK-NULL-PID")
+            .status(TaskStatus.PLANNING)
+            .pid(null)
+            .build();
+
+        assertThat(detector.isTaskResumable(task)).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given default constructor - initializes dependencies")
+    void testDefaultConstructor() {
+        CrashRecoveryDetector detector = new CrashRecoveryDetector();
+        assertThat(detector).isNotNull();
     }
 }
