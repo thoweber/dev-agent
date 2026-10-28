@@ -101,7 +101,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         }
     }
 
-    private boolean canTrimOldestToolInteraction() {
+    boolean canTrimOldestToolInteraction() {
         if (slidingScratchpad.isEmpty()) {
             return false;
         }
@@ -113,26 +113,36 @@ public class HierarchicalMemoryStore implements ChatMemory {
         if (!(candidate instanceof AiMessage ai && ai.hasToolExecutionRequests())) {
             return false;
         }
-        boolean hasLaterAiMessage = false;
         for (int i = startIndex + 1; i < slidingScratchpad.size(); i++) {
             if (slidingScratchpad.get(i) instanceof AiMessage) {
-                hasLaterAiMessage = true;
-                break;
+                return true;
             }
         }
-        return hasLaterAiMessage;
+        return false;
     }
 
-    private void trimOldestToolInteraction() {
+    void trimOldestToolInteraction() {
+        if (slidingScratchpad.isEmpty()) {
+            return;
+        }
         int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
+        if (startIndex >= slidingScratchpad.size()) {
+            return;
+        }
         ChatMessage candidate = slidingScratchpad.get(startIndex);
-        if (candidate instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-            Set<String> requestIds = ai.toolExecutionRequests().stream()
-                .map(ToolExecutionRequest::id)
-                .collect(Collectors.toSet());
-            slidingScratchpad.remove(startIndex);
-            while (startIndex < slidingScratchpad.size() && slidingScratchpad.get(startIndex) instanceof ToolExecutionResultMessage toolResult && requestIds.contains(toolResult.id())) {
+        if (!(candidate instanceof AiMessage ai && ai.hasToolExecutionRequests())) {
+            return;
+        }
+        Set<String> requestIds = ai.toolExecutionRequests().stream()
+            .map(ToolExecutionRequest::id)
+            .collect(Collectors.toSet());
+        slidingScratchpad.remove(startIndex);
+        while (startIndex < slidingScratchpad.size()) {
+            ChatMessage next = slidingScratchpad.get(startIndex);
+            if (next instanceof ToolExecutionResultMessage toolResult && requestIds.contains(toolResult.id())) {
                 slidingScratchpad.remove(startIndex);
+            } else {
+                break;
             }
         }
     }

@@ -1,6 +1,6 @@
 # Workflow: Autonomous SonarCloud & CodeRabbit Remediation Loop
 
-This workflow defines the standardized 5-step loop for autonomous agents to ingest, triage, patch, and verify SonarCloud Quality Gate issues and CodeRabbit AI review comments.
+This workflow defines the standardized 6-step loop for autonomous agents to ingest, triage, patch, and verify SonarCloud Quality Gate issues and CodeRabbit AI review comments.
 
 ---
 
@@ -158,7 +158,7 @@ Before pushing any commit, verify that all local checks pass in accordance with 
 
 ---
 
-## Step 4: Completion & Hand-Off (Strictly No Autonomous Merge)
+## Step 6: Completion & Hand-Off (Strictly No Autonomous Merge)
 
 * **Mandatory Merge Prohibition:** Under NO circumstances may the agent execute `gh pr merge`, run fast-forward merges into `main`, or use administrative bypasses (`--admin`). PR merging is exclusively reserved for the human user.
 * **Hand-Off Protocol:**

@@ -262,6 +262,140 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
+    @DisplayName("Given scratchpad exceeding budget but cannot trim tool interaction - loop terminates cleanly")
+    void testScratchpadExceedsBudgetCannotTrim() throws Exception {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        // Reflection to inject messages that exceed budget without a later AiMessage to trim
+        java.lang.reflect.Field field = HierarchicalMemoryStore.class.getDeclaredField("slidingScratchpad");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<ChatMessage> scratchpad = (List<ChatMessage>) field.get(memory);
+
+        scratchpad.add(new UserMessage("Prompt"));
+        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-solo")
+            .name("tool")
+            .arguments("{}")
+            .build();
+        scratchpad.add(AiMessage.from(req));
+        for (int i = 0; i < 25; i++) {
+            scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+        assertThat(scratchpad.size()).isGreaterThan(24);
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        // Adding one more message invokes trimScratchpad(), exercising size > 24 && !canTrimOldestToolInteraction()
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-last"));
+        assertThat(scratchpad.size()).isGreaterThan(24);
+    }
+
+    @Test
+    @DisplayName("Given boundary conditions for canTrimOldestToolInteraction - covers all negative and positive branches")
+    void testCanTrimOldestToolInteractionBoundaries() throws Exception {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        memory.add(new UserMessage("Hello"));
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        java.lang.reflect.Field field = HierarchicalMemoryStore.class.getDeclaredField("slidingScratchpad");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<ChatMessage> scratchpad = (List<ChatMessage>) field.get(memory);
+
+        // Candidate at index 0 not AiMessage
+        scratchpad.clear();
+        scratchpad.add(new UserMessage("First"));
+        scratchpad.add(new UserMessage("Second"));
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        // Candidate at index 0 is AiMessage without tool requests
+        scratchpad.clear();
+        scratchpad.add(new AiMessage("Plain text response"));
+        scratchpad.add(new AiMessage("Second plain text"));
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        // Candidate at index 1 is AiMessage without tool requests
+        scratchpad.clear();
+        scratchpad.add(new UserMessage("User prompt"));
+        scratchpad.add(new AiMessage("Plain text response"));
+        scratchpad.add(new AiMessage("Second plain text"));
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        // Candidate has tool requests but NO later AiMessage
+        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-1").name("tool").arguments("{}").build();
+        scratchpad.clear();
+        scratchpad.add(new UserMessage("User prompt"));
+        scratchpad.add(AiMessage.from(req));
+        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res"));
+        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+
+        // Candidate has tool requests and later AiMessage exists
+        scratchpad.add(new AiMessage("Later AI message"));
+        assertThat(memory.canTrimOldestToolInteraction()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given boundary conditions for trimOldestToolInteraction - covers early returns and while loop branches")
+    void testTrimOldestToolInteractionBoundaries() throws Exception {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        // Empty scratchpad
+        memory.trimOldestToolInteraction();
+        assertThat(memory.messages()).isEmpty();
+
+        // Only user message
+        memory.add(new UserMessage("Prompt"));
+        memory.trimOldestToolInteraction();
+        assertThat(memory.messages()).hasSize(1);
+
+        java.lang.reflect.Field field = HierarchicalMemoryStore.class.getDeclaredField("slidingScratchpad");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<ChatMessage> scratchpad = (List<ChatMessage>) field.get(memory);
+
+        // Candidate not AiMessage with tool requests
+        scratchpad.add(new UserMessage("Second user message"));
+        memory.trimOldestToolInteraction();
+        assertThat(scratchpad).hasSize(2);
+
+        // Candidate is AiMessage but without tool requests
+        scratchpad.clear();
+        scratchpad.add(new UserMessage("Prompt"));
+        scratchpad.add(new AiMessage("Plain response without tool requests"));
+        memory.trimOldestToolInteraction();
+        assertThat(scratchpad).hasSize(2);
+
+        // AiMessage with tool requests followed by matching result and non-matching result
+        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-target").name("tool").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest otherReq = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-other").name("tool").arguments("{}").build();
+
+        scratchpad.clear();
+        scratchpad.add(new UserMessage("Prompt"));
+        scratchpad.add(AiMessage.from(req));
+        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"));
+        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(otherReq, "non-matching"));
+        scratchpad.add(new AiMessage("Subsequent message"));
+
+        memory.trimOldestToolInteraction();
+        // req AiMessage and matching result should be trimmed; non-matching result and subsequent AiMessage remain
+        assertThat(scratchpad).hasSize(3);
+        assertThat(scratchpad.get(0)).isInstanceOf(UserMessage.class);
+        assertThat(scratchpad.get(1)).isInstanceOf(dev.langchain4j.data.message.ToolExecutionResultMessage.class);
+        assertThat(((dev.langchain4j.data.message.ToolExecutionResultMessage) scratchpad.get(1)).id()).isEqualTo("call-other");
+        assertThat(scratchpad.get(2)).isInstanceOf(AiMessage.class);
+
+        // AiMessage at index 0 trimmed until empty
+        scratchpad.clear();
+        scratchpad.add(AiMessage.from(req));
+        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"));
+        memory.trimOldestToolInteraction();
+        assertThat(scratchpad).isEmpty();
+    }
+
+    @Test
     @DisplayName("Given turn structure validator - validates alternating turns and absence of dangling tool calls")
     void testTurnStructureInvariants() throws Exception {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();

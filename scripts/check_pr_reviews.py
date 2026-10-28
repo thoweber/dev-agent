@@ -250,8 +250,13 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
             comments_conn = thread.get("comments", {})
             c_page_info = comments_conn.get("pageInfo", {})
             thread_id = thread.get("id")
+            seen_cursors = set()
             while c_page_info.get("hasNextPage") and c_page_info.get("endCursor"):
                 c_cursor = c_page_info["endCursor"]
+                if c_cursor in seen_cursors:
+                    print(f"Error: Infinite cursor loop detected in comment pagination for thread {thread_id}", file=sys.stderr)
+                    sys.exit(1)
+                seen_cursors.add(c_cursor)
                 c_query = """
                 query($threadId: ID!, $cursor: String!) {
                   node(id: $threadId) {
@@ -279,16 +284,17 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
                     "-f", f"cursor={c_cursor}",
                     "-f", f"query={c_query}",
                 ])
-                if code_c == 0 and out_c:
-                    try:
-                        c_data = json.loads(out_c)
-                        nested_conn = c_data.get("data", {}).get("node", {}).get("comments", {})
-                        thread["comments"]["nodes"].extend(nested_conn.get("nodes", []))
-                        c_page_info = nested_conn.get("pageInfo", {})
-                    except Exception:
-                        break
-                else:
-                    break
+                if code_c != 0 or not out_c:
+                    print(f"Error fetching nested comments for thread {thread_id}", file=sys.stderr)
+                    sys.exit(1)
+                try:
+                    c_data = json.loads(out_c)
+                    nested_conn = c_data.get("data", {}).get("node", {}).get("comments", {})
+                    thread["comments"]["nodes"].extend(nested_conn.get("nodes", []))
+                    c_page_info = nested_conn.get("pageInfo", {})
+                except (json.JSONDecodeError, KeyError) as e:
+                    print(f"Error parsing nested comments for thread {thread_id}: {e}", file=sys.stderr)
+                    sys.exit(1)
 
         all_threads.extend(nodes)
 
@@ -308,7 +314,7 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     query($owner: String!, $repo: String!, $pr: Int!) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $pr) {
-          reviews(first: 100) {
+          reviews(last: 100) {
             nodes {
               id
               author { login }
@@ -329,76 +335,89 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
         "-f", f"query={query}",
     ])
     if code != 0 or not out:
-        return []
+        print(f"Error fetching reviews for PR #{pr_num}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         data = json.loads(out)
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as e:
+        print(f"Error parsing reviews JSON for PR #{pr_num}: {e}", file=sys.stderr)
+        sys.exit(1)
 
     reviews = data.get("data", {}).get("repository", {}).get("pullRequest", {}).get("reviews", {}).get("nodes", [])
     findings: List[Dict[str, Any]] = []
 
-    # Iterate in reverse to locate the latest CodeRabbit review containing outside-diff comments
+    # Locate the latest CodeRabbit review
+    latest_cr_review = None
     for r in reversed(reviews):
         user = (r.get("author") or {}).get("login", "")
-        body = r.get("body") or ""
-        if "coderabbit" not in user.lower() or ("Outside diff range comments" not in body and "Outside diff comments" not in body):
-            continue
+        if "coderabbit" in user.lower():
+            latest_cr_review = r
+            break
 
-        m_section = re.search(r"Outside diff range comments.*?\n(.*?)(?:\n---|\Z)", body, re.DOTALL)
-        if not m_section:
-            continue
-        section = m_section.group(1)
+    if not latest_cr_review:
+        return []
 
-        details_pattern = re.compile(
-            r"<details>\s*<summary>(.*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+    body = latest_cr_review.get("body") or ""
+    if "Outside diff range comments" not in body and "Outside diff comments" not in body:
+        return []
+
+    m_section = re.search(r"Outside diff range comments.*?\n(.*?)(?:\n---|\Z)", body, re.DOTALL)
+    if not m_section:
+        return []
+    section = m_section.group(1)
+
+    details_pattern = re.compile(
+        r"<details>\s*<summary>(.*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+        re.DOTALL,
+    )
+    for m in details_pattern.finditer(section):
+        summary_html = m.group(1)
+        content_html = m.group(2)
+
+        sev_m = re.search(r"(Critical|Major|Minor|Info)", summary_html)
+        severity = sev_m.group(1) if sev_m else "Info"
+
+        code_m = re.search(r"<code>(.*?)</code>", summary_html)
+        target = code_m.group(1).strip() if code_m else "N/A"
+
+        clean_sum = re.sub(r"<.*?>", "", summary_html).strip()
+        parts = [p.strip() for p in clean_sum.split("·") if p.strip()]
+        if len(parts) > 1:
+            title = parts[1]
+        elif len(parts) == 1:
+            title = parts[0]
+        else:
+            title = "Outside-diff finding"
+
+        cid_m = re.search(r"<!--\s*(cr-comment:[^\s>]+)\s*-->", content_html)
+        cid = cid_m.group(1) if cid_m else latest_cr_review.get("id")
+
+        prompt_m = re.search(
+            r"```\n(?:Treat finding text.*?\n)?Review comment at.*?\n(.*?)\n\nAfter applying the fix",
+            content_html,
             re.DOTALL,
         )
-        for m in details_pattern.finditer(section):
-            summary_html = m.group(1)
-            content_html = m.group(2)
+        prompt = prompt_m.group(1).strip() if prompt_m else ""
 
-            sev_m = re.search(r"(Critical|Major|Minor|Info)", summary_html)
-            severity = sev_m.group(1) if sev_m else "Info"
+        cat_m = re.search(r"\*\*(?:[^\*]*\s)?([A-Za-z &]+)\*\*", content_html)
+        category = cat_m.group(1).strip() if cat_m else "General"
 
-            code_m = re.search(r"<code>(.*?)</code>", summary_html)
-            target = code_m.group(1).strip() if code_m else "N/A"
+        clean_body = re.sub(r"<.*?>", "", content_html).strip()
+        if "```" in clean_body:
+            clean_body = clean_body.split("```")[0].strip()
 
-            clean_sum = re.sub(r"<.*?>", "", summary_html).strip()
-            parts = [p.strip() for p in clean_sum.split("·") if p.strip()]
-            title = parts[1] if len(parts) > 1 else parts[0]
-
-            cid_m = re.search(r"<!--\s*(cr-comment:[^\s>]+)\s*-->", content_html)
-            cid = cid_m.group(1) if cid_m else r.get("id")
-
-            prompt_m = re.search(
-                r"```\n(?:Treat finding text.*?\n)?Review comment at.*?\n(.*?)\n\nAfter applying the fix",
-                content_html,
-                re.DOTALL,
-            )
-            prompt = prompt_m.group(1).strip() if prompt_m else ""
-
-            cat_m = re.search(r"\*\*(?:[^\*]*\s)?([A-Za-z &]+)\*\*", content_html)
-            category = cat_m.group(1).strip() if cat_m else "General"
-
-            clean_body = re.sub(r"<.*?>", "", content_html).strip()
-            if "```" in clean_body:
-                clean_body = clean_body.split("```")[0].strip()
-
-            findings.append({
-                "id": cid,
-                "review_id": r.get("id"),
-                "submitted_at": r.get("submittedAt"),
-                "target": target,
-                "severity": severity,
-                "category": category,
-                "title": title,
-                "action_prompt": prompt,
-                "body": clean_body[:500],
-            })
-        if findings:
-            break
+        findings.append({
+            "id": cid,
+            "review_id": latest_cr_review.get("id"),
+            "submitted_at": latest_cr_review.get("submittedAt"),
+            "target": target,
+            "severity": severity,
+            "category": category,
+            "title": title,
+            "action_prompt": prompt,
+            "body": clean_body[:500],
+        })
 
     return findings
 
