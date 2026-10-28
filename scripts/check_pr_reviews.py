@@ -311,6 +311,44 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
     return {"data": {"repository": {"pullRequest": pr_metadata}}}
 
 
+def extract_outside_diff_section(body: str) -> Optional[str]:
+    """Extract outside-diff section, terminating only at unfenced '---' or '## ' boundaries."""
+    m_start = re.search(r"Outside diff (?:range )?comments.*?\n", body)
+    if not m_start:
+        return None
+
+    remainder = body[m_start.end():]
+    section_lines = []
+    in_fence = False
+    fence_char = None
+    fence_len = 0
+
+    for line in remainder.splitlines(keepends=True):
+        stripped = line.strip()
+        m_fence = re.match(r"^(`{3,}|~{3,})", stripped)
+        if m_fence:
+            marker = m_fence.group(1)
+            char = marker[0]
+            length = len(marker)
+            if not in_fence:
+                in_fence = True
+                fence_char = char
+                fence_len = length
+            elif char == fence_char and length >= fence_len:
+                in_fence = False
+                fence_char = None
+                fence_len = 0
+            section_lines.append(line)
+            continue
+
+        if not in_fence and (re.match(r"^---\s*$", stripped) or re.match(r"^##\s+", stripped)):
+            break
+
+        section_lines.append(line)
+
+    return "".join(section_lines)
+
+
 def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict[str, Any]]:
     """Fetch review bodies from pullRequest.reviews and extract 'Outside diff range comments'."""
     query = """
@@ -365,11 +403,10 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     if "Outside diff range comments" not in body and "Outside diff comments" not in body:
         return []
 
-    m_section = re.search(r"Outside diff (?:range )?comments.*?\n(.*?)(?=\n(?:---\s*(?:\n|\Z)|##\s+)|\Z)", body, re.DOTALL)
-    if not m_section:
+    section = extract_outside_diff_section(body)
+    if section is None:
         print(f"Error: Found outside-diff comments heading in PR #{pr_num} review but failed to extract section", file=sys.stderr)
         sys.exit(1)
-    section = m_section.group(1)
 
     details_pattern = re.compile(
         r"<details>\s*<summary>(.*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
