@@ -285,4 +285,46 @@ class TaskPersistenceServiceTest {
     void testDeleteAll() {
         service.deleteAll();
     }
+
+    @Test
+    @DisplayName("Given persistEntity - handles successful persistence and defensive exception catches")
+    void testPersistEntity() {
+        TaskRunEntity mockEntity = org.mockito.Mockito.mock(TaskRunEntity.class);
+        service.persistEntity(mockEntity);
+        org.mockito.Mockito.verify(mockEntity).persist();
+
+        TaskRunEntity throwingEntity = org.mockito.Mockito.mock(TaskRunEntity.class);
+        org.mockito.Mockito.doThrow(new IllegalStateException("Panache not ready")).when(throwingEntity).persist();
+        service.persistEntity(throwingEntity);
+    }
+
+    @Test
+    @DisplayName("Given uninitialized entity findByProjectAndTask - recordStateChange and saveTask fall back cleanly")
+    void testRecordStateChangeAndSaveTaskPanacheExceptions() {
+        TaskStateChangeEvent event = TaskStateChangeEvent.builder()
+            .projectId("org/repo")
+            .taskId("TASK-EX")
+            .newStatus(TaskStatus.RED_TEST)
+            .phaseName("RED_TEST")
+            .build();
+
+        try (MockedStatic<TaskRunEntity> mockedTask = mockStatic(TaskRunEntity.class)) {
+            mockedTask.when(() -> TaskRunEntity.findByProjectAndTask("org/repo", "TASK-EX"))
+                .thenThrow(new IllegalStateException("Uninitialized Arc"));
+
+            TaskRun run = service.recordStateChange(event, null);
+            assertThat(run).isNotNull();
+            assertThat(run.taskId()).isEqualTo("TASK-EX");
+        }
+
+        try (MockedStatic<TaskRunEntity> mockedTask = mockStatic(TaskRunEntity.class)) {
+            mockedTask.when(() -> TaskRunEntity.findByProjectAndTask("org/repo", "TASK-EX"))
+                .thenThrow(new IllegalStateException("Uninitialized Arc"));
+
+            TaskRun taskToSave = TaskRun.builder().projectId("org/repo").taskId("TASK-EX").build();
+            TaskRun saved = service.saveTask(taskToSave);
+            assertThat(saved).isNotNull();
+            assertThat(saved.taskId()).isEqualTo("TASK-EX");
+        }
+    }
 }

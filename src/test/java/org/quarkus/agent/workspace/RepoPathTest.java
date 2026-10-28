@@ -159,4 +159,16 @@ class RepoPathTest {
         assertThat(repoPath.toPath()).isEqualTo(file.toRealPath());
         assertThat(repoPath.root()).isEqualTo(realDir.toRealPath());
     }
+
+    @Test
+    @DisplayName("Given relative candidate path - resolves correctly against root")
+    void testRelativeCandidatePath() throws IOException {
+        Path validFile = tempDir.resolve("src/main/Relative.java");
+        Files.createDirectories(validFile.getParent());
+        Files.writeString(validFile, "public class Relative {}");
+
+        RepoPath repoPath = RepoPath.of(Path.of("src/main/Relative.java"), tempDir);
+        assertThat(repoPath.toPath()).isEqualTo(validFile.toRealPath());
+        assertThat(repoPath.relativize()).isEqualTo(Path.of("src/main/Relative.java"));
+    }
 }

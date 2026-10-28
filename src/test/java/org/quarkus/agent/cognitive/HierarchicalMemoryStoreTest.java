@@ -342,4 +342,16 @@ class HierarchicalMemoryStoreTest {
         }
         assertThat(memory.messages().size()).isLessThanOrEqualTo(16);
     }
+
+    @Test
+    @DisplayName("Given active turn with only AiMessages following UserMessage - trims without ToolExecutionResultMessage")
+    void testActiveTurnWithOnlyAiMessages() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Prompt"));
+        for (int i = 1; i <= 20; i++) {
+            memory.add(new AiMessage("Ai step " + i));
+        }
+        assertThat(memory.messages().size()).isLessThanOrEqualTo(16);
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+    }
 }

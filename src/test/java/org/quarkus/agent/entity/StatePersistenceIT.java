@@ -194,4 +194,23 @@ class StatePersistenceIT {
         assertThat(entity.sanitizedInput).isEqualTo("git push");
         assertThat(entity.outputSummary).isEqualTo("Error: ***REDACTED_CREDENTIAL***");
     }
+
+    @Test
+    @DisplayName("Given TaskPersistenceService in live container - saves and deletes all entities")
+    void testLiveContainerPersistenceOperations() {
+        QuarkusTransaction.requiringNew().run(() -> {
+            persistenceService.deleteAll();
+            org.quarkus.agent.model.TaskRun taskRun = org.quarkus.agent.model.TaskRun.builder()
+                .projectId("it-org/it-repo")
+                .taskId("TASK-SAVE-IT")
+                .status(TaskStatus.GREEN_PATCH)
+                .currentPhase("GREEN_PATCH")
+                .build();
+            org.quarkus.agent.model.TaskRun saved = persistenceService.saveTask(taskRun);
+            assertThat(saved).isNotNull();
+            assertThat(saved.taskId()).isEqualTo("TASK-SAVE-IT");
+
+            persistenceService.deleteAll();
+        });
+    }
 }
