@@ -159,7 +159,7 @@ To ensure tests serve as resilient living documentation rather than brittle chan
 ## 6. Actionable Plan for Weaknesses 4 through 10
 
 ### Weakness 4: Repetitive Test Fixture Boilerplate & Object Mother Expansion
-* **Status:** Phase 1 Complete ([Commit `b938119`](file:///home/developer/projects/dev-agent/git/b938119)); Phase 2 Planned.
+* **Status:** Complete (Phase 1 Commit `b938119`; Phase 2 `StepAuditMother`, `TaskRunMother` expansion, and full test suite migration complete).
 * **Objective:** Expand the Object Mother pattern to all remaining domain models and test suites to completely eliminate inline builder boilerplate.
 * **Concrete Steps:**
   1. Author [`StepAuditMother.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/testutil/StepAuditMother.java) in `org.quarkus.agent.testutil`:

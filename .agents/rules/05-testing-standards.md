@@ -57,10 +57,11 @@ void testMethodName() { ... }
 
 ### 4. Canonical Test Data Builders & Object Mother Pattern
 * Domain records with 4 or more fields (such as [`TaskRun`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/model/TaskRun.java) or [`StepAudit`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/model/StepAudit.java)) must not be constructed repeatedly with ad-hoc builders inside test methods.
-* Shared test factories (e.g., `TaskRunMother`, `WorktreeTestFixture`) in `src/test/java/org/quarkus/agent/testutil/` must be used to supply valid fixtures with sensible defaults:
+* Shared test factories (e.g., `TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) in `src/test/java/org/quarkus/agent/testutil/` must be used to supply valid fixtures with sensible defaults:
 ```java
 // Preferred: Clean, descriptive, self-documenting
 TaskRun crashed = TaskRunMother.crashed("TASK-001", TaskStatus.RED_TEST);
+StepAudit step = StepAuditMother.toolExecution(1, "mvn_test", "mvn test", "SUCCESS", 0);
 
 // Forbidden: 10 lines of repetitive builder plumbing repeated across test methods
 ```

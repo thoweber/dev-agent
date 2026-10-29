@@ -29,5 +29,5 @@ This skill governs test tiering, testing pyramid compliance, and Test-Driven Dev
 
 * **Quality Gates:** Line Coverage $\ge 95.0\%$, Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.
 * **Zero-Reflection Policy:** Tests must verify observable behavior through public contracts; reflective tampering (`field.setAccessible(true)`) is prohibited.
-* **Canonical Fixtures:** Shared test factories (`TaskRunMother`, `WorktreeTestFixture`) must be used for complex records instead of duplicate inline builder setups.
+* **Canonical Fixtures:** Shared test factories (`TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) must be used for complex records instead of duplicate inline builder setups.
 * **Script Verification Parity:** Python guardrail scripts must have automated unit tests under `tests/scripts/`.

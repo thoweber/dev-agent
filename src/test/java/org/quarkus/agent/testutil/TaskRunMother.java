@@ -53,12 +53,47 @@ public final class TaskRunMother {
             .build();
     }
 
+    public static TaskRun active(String projectId, String taskId, long pid) {
+        return builder(taskId)
+            .projectId(projectId)
+            .status(TaskStatus.GREEN_PATCH)
+            .currentPhase("GREEN_PATCH")
+            .pid(pid)
+            .build();
+    }
+
     public static TaskRun active(String taskId) {
         return active(taskId, ProcessHandle.current().pid());
     }
 
+    public static TaskRun planning(String taskId) {
+        return builder(taskId)
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .pid(DEAD_PID)
+            .build();
+    }
+
+    public static TaskRun planning(String projectId, String taskId) {
+        return builder(taskId)
+            .projectId(projectId)
+            .status(TaskStatus.PLANNING)
+            .currentPhase("PLANNING")
+            .pid(DEAD_PID)
+            .build();
+    }
+
     public static TaskRun completed(String taskId) {
         return builder(taskId)
+            .status(TaskStatus.COMPLETED)
+            .currentPhase("COMPLETED")
+            .pid(DEAD_PID)
+            .build();
+    }
+
+    public static TaskRun completed(String projectId, String taskId) {
+        return builder(taskId)
+            .projectId(projectId)
             .status(TaskStatus.COMPLETED)
             .currentPhase("COMPLETED")
             .pid(DEAD_PID)

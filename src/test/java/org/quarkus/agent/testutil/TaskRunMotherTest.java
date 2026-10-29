@@ -77,6 +77,50 @@ class TaskRunMotherTest {
     }
 
     @Test
+    @DisplayName("Given custom projectId and taskId - when completed invoked - sets custom project and terminal completed status")
+    void testCompletedCustomProject() {
+        TaskRun task = TaskRunMother.completed("custom/repo", "TASK-DONE-02");
+
+        assertThat(task.projectId()).isEqualTo("custom/repo");
+        assertThat(task.taskId()).isEqualTo("TASK-DONE-02");
+        assertThat(task.status()).isEqualTo(TaskStatus.COMPLETED);
+        assertThat(task.currentPhase()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    @DisplayName("Given taskId - when planning invoked - sets planning status and phase")
+    void testPlanning() {
+        TaskRun task = TaskRunMother.planning("TASK-PLAN-01");
+
+        assertThat(task.taskId()).isEqualTo("TASK-PLAN-01");
+        assertThat(task.projectId()).isEqualTo(TaskRunMother.DEFAULT_PROJECT_ID);
+        assertThat(task.status()).isEqualTo(TaskStatus.PLANNING);
+        assertThat(task.currentPhase()).isEqualTo("PLANNING");
+    }
+
+    @Test
+    @DisplayName("Given custom projectId and taskId - when planning invoked - sets custom project and planning status")
+    void testPlanningCustomProject() {
+        TaskRun task = TaskRunMother.planning("custom/repo", "TASK-PLAN-02");
+
+        assertThat(task.projectId()).isEqualTo("custom/repo");
+        assertThat(task.taskId()).isEqualTo("TASK-PLAN-02");
+        assertThat(task.status()).isEqualTo(TaskStatus.PLANNING);
+        assertThat(task.currentPhase()).isEqualTo("PLANNING");
+    }
+
+    @Test
+    @DisplayName("Given custom projectId, taskId, and pid - when active invoked - sets custom project and running state")
+    void testActiveCustomProject() {
+        TaskRun task = TaskRunMother.active("custom/repo", "TASK-ACTIVE-03", 54321L);
+
+        assertThat(task.projectId()).isEqualTo("custom/repo");
+        assertThat(task.taskId()).isEqualTo("TASK-ACTIVE-03");
+        assertThat(task.status()).isEqualTo(TaskStatus.GREEN_PATCH);
+        assertThat(task.pid()).isEqualTo(54321L);
+    }
+
+    @Test
     @DisplayName("Given taskId - when aborted invoked - sets terminal aborted status")
     void testAborted() {
         TaskRun task = TaskRunMother.aborted("TASK-ABORT-01");

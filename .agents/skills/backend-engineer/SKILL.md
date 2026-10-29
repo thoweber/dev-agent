@@ -36,5 +36,5 @@ This skill governs the implementation of core CDI beans, Picocli CLI commands, w
 
 * **1-to-1 Test Mapping:** Author dedicated `<TargetClassName>Test.java` for every service, validator, and command.
 * **Zero-Reflection Policy:** Verify observable behaviors through public APIs; never use reflection (`field.setAccessible(true)`) to manipulate private state in tests.
-* **Canonical Fixtures:** Use `TaskRunMother` and `WorktreeTestFixture` instead of repeating inline builder code.
+* **Canonical Fixtures:** Use `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture` instead of repeating inline builder code.
 * **Programmatic Transactions:** Never annotate test methods with `@Transactional`; use `QuarkusTransaction.requiringNew()` for integration tests.
