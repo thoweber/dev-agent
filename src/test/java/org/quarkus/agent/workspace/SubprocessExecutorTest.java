@@ -132,4 +132,36 @@ class SubprocessExecutorTest {
         assertThat(resultRef.get()).isNotNull();
         assertThat(resultRef.get().timedOut()).isTrue();
     }
+
+    @Test
+    @DisplayName("Given command generating stdout exceeding max capacity - truncates stdout and flags truncated")
+    void testExecuteStdoutTruncationFlag() {
+        SubprocessExecutor executor = new SubprocessExecutor(64, 128);
+        ProcessResult result = executor.execute(
+            List.of("python3", "-c", "import sys; sys.stdout.write('A' * 256)"),
+            tempDir,
+            Duration.ofSeconds(5)
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.truncated()).isTrue();
+        assertThat(result.stdOut()).hasSize(128);
+        assertThat(result.stdOut()).isEqualTo("A".repeat(128));
+    }
+
+    @Test
+    @DisplayName("Given command generating stderr exceeding max capacity with empty stdout - truncates stderr and flags truncated")
+    void testExecuteStderrTruncationFlag() {
+        SubprocessExecutor executor = new SubprocessExecutor(64, 128);
+        ProcessResult result = executor.execute(
+            List.of("python3", "-c", "import sys; sys.stderr.write('B' * 256)"),
+            tempDir,
+            Duration.ofSeconds(5)
+        );
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.truncated()).isTrue();
+        assertThat(result.stdErr()).hasSize(128);
+        assertThat(result.stdErr()).isEqualTo("B".repeat(128));
+    }
 }

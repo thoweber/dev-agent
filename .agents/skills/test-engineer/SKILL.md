@@ -43,6 +43,6 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 
 ## 5. Behavioral Testing & Ergonomics
 
-* **Zero-Reflection Policy:** Tests must verify observable behaviors through public APIs; using reflection (`field.setAccessible(true)`) to manipulate or inspect private state is strictly prohibited.
+* **Zero-Reflection & Anti-Synthetic-Seams Policy:** Tests must verify observable behaviors through public APIs; using reflection (`field.setAccessible(true)`), weakening private methods to package-private for test access, or adding artificial subclassing seams to game coverage is strictly prohibited.
 * **Canonical Fixtures:** Complex records (4+ fields) must use `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture` instead of repeating inline builder code.
 * **Script Test Parity:** Python automation scripts in `scripts/` must have companion unit test suites under `tests/scripts/`.

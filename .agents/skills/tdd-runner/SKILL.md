@@ -32,7 +32,7 @@ This skill coordinates the fast local inner execution feedback loop during auton
 
 1. **Spotless-First:** Run `./mvnw spotless:apply` whenever touching code.
 2. **Failure Diagnosis:** Extract error messages using `SanitizedLog`.
-3. **Zero-Reflection Policy:** Verify observable behaviors through public APIs; never use reflection (`field.setAccessible(true)`) to manipulate private state in tests.
+3. **Zero-Reflection & Anti-Synthetic-Seams Policy:** Verify observable behaviors through public APIs; never use reflection (`field.setAccessible(true)`), weaken private encapsulation, or introduce artificial hooks to manipulate private state in tests.
 4. **Canonical Fixtures:** Use `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture` instead of repeating inline builder code.
 5. **Precision Modification:** Apply unified diff patches or targeted edits. Never rewrite whole files.
 6. **Re-Test:** Execute targeted test method: `./mvnw test -Dtest=TargetClassTest#testMethod`.

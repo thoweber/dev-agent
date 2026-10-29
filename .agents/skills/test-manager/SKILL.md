@@ -28,6 +28,6 @@ This skill governs test tiering, testing pyramid compliance, and Test-Driven Dev
 ## 3. Test Governance Invariants
 
 * **Quality Gates:** Line Coverage $\ge 95.0\%$, Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.
-* **Zero-Reflection Policy:** Tests must verify observable behavior through public contracts; reflective tampering (`field.setAccessible(true)`) is prohibited.
+* **Zero-Reflection & Anti-Synthetic-Seams Policy:** Tests must verify observable behavior through public contracts; reflective tampering (`field.setAccessible(true)`), weakening private encapsulation, or creating artificial seams is strictly prohibited.
 * **Canonical Fixtures:** Shared test factories (`TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) must be used for complex records instead of duplicate inline builder setups.
 * **Script Verification Parity:** Python guardrail scripts must have automated unit tests under `tests/scripts/`.

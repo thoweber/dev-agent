@@ -180,6 +180,7 @@ To ensure tests serve as resilient living documentation rather than brittle chan
 * **Verification:** Execute `./mvnw verify -Pnative` in the local Mandrel environment or CI pipeline.
 
 ### Weakness 6: Subprocess Executor Failure Boundary Verification (Edge Branch Coverage)
+* **Status:** Complete (Branch coverage elevated from 81.2% to 100.0% via black-box public API testing, without synthetic seams or encapsulation leaks).
 * **Objective:** Elevate [`SubprocessExecutor`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/workspace/SubprocessExecutor.java) branch coverage from 81.2% to $\ge 90.0\%$ by simulating edge failure conditions.
 * **Concrete Steps:**
   1. In [`SubprocessExecutorTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/workspace/SubprocessExecutorTest.java), author tests for:

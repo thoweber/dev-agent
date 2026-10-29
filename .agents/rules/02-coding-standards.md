@@ -18,7 +18,12 @@
 * Production code MUST NEVER throw raw `RuntimeException` or `Exception`. Throw specific domain exceptions (e.g., `SecurityException`, `WorkspaceException`, `BuildExecutionException`).
 * Catch low-level technical exceptions at boundaries and wrap them with rich diagnostic context.
 
-## 4. Test Engineering & Testing Standards
+## 4. Production Encapsulation & Prohibition of Synthetic Seams
+* **Strict Encapsulation Invariant:** Internal helper methods, state mutators, and stream drainers that belong strictly to class mechanics MUST remain `private`. Weakening visibility to package-private purely so a test class can invoke them directly is strictly forbidden.
+* **Prohibition of Synthetic Seams:** Never introduce artificial indirection methods (e.g., `createBuffer()`, `startProcess()`, artificial factory wrappers) whose sole purpose is allowing test subclasses to override them and inject synthetic exceptions.
+* **Unreachable Defensive Code Remediation:** If a defensive branch (such as catching an exception that cannot be thrown, or checking null on an API that never returns null) cannot be reached through the component's public contract, eliminate the dead branch or simplify the logic in production code rather than gaming coverage with synthetic test hooks.
+
+## 5. Test Engineering & Testing Standards
 * **Detailed Testing Standards:** Refer to [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full testing pyramid tiers, fixture standards, and invariants.
 * **Dedicated 1-to-1 Unit Test Files:** Every production class MUST have its own dedicated 1-to-1 unit test class (`<TargetClassName>Test.java`).
 * **Given-When-Then Display Names:** All `@Test` methods MUST use `@DisplayName("Given [precondition] - when [action/trigger] - then [expected outcome]")`.

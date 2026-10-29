@@ -50,10 +50,12 @@ void testMethodName() { ... }
 * Never use JUnit assertions (`org.junit.jupiter.api.Assertions.*`).
 * Use fluent, domain-specific assertions (e.g., `hasSize(...)`, `isRegularFile()`, `contains(...)`, `isInstanceOf(...)`).
 
-### 3. Zero-Reflection Invariant (Black-Box Behavioral Verification)
-* Tests must exercise production components strictly through public APIs and package-private contracts.
-* Using reflection (`field.setAccessible(true)` or `Method.invoke`) to read or mutate internal state (such as private message lists or caches) is **strictly prohibited**.
-* If a state cannot be set up through public methods, refactor the production component to provide a clean domain factory, or eliminate unreachable defensive branches.
+### 3. Zero-Reflection & Anti-Synthetic-Seams Invariant (Black-Box Behavioral Verification)
+* Tests must exercise production components strictly through public APIs and defined contracts.
+* **Prohibition of Reflection:** Using reflection (`field.setAccessible(true)` or `Method.invoke`) to read or mutate internal state (such as private message lists or caches) is **strictly prohibited**.
+* **Prohibition of Synthetic Seams:** Never introduce artificial indirection methods (such as `createBuffer()`, `startProcess()`, or artificial factory wrappers) into production classes whose only reason for existence is to be overridden in test subclasses to force error handling branches.
+* **Encapsulation Preservation:** Never downgrade access modifiers from `private` to package-private purely so a test class can invoke private helper methods directly. Tests must verify the component's observable output and side effects through public entry points.
+* **Dead / Defensive Branch Elimination:** If internal defensive code (e.g. null-checks on exceptions that never have null messages, or catch blocks for checked exceptions never thrown) cannot be driven through public methods, eliminate or simplify the dead defensive code in production rather than compromising production architecture with artificial test hooks.
 
 ### 4. Canonical Test Data Builders & Object Mother Pattern
 * Domain records with 4 or more fields (such as [`TaskRun`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/model/TaskRun.java) or [`StepAudit`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/model/StepAudit.java)) must not be constructed repeatedly with ad-hoc builders inside test methods.
