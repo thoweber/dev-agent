@@ -2,6 +2,7 @@ package org.quarkus.agent.cli;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,8 @@ import org.quarkus.agent.entity.TaskPersistenceService;
 import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStatus;
+import org.quarkus.agent.testutil.TaskRunMother;
+import org.quarkus.agent.testutil.WorktreeTestFixture;
 import org.quarkus.agent.workspace.CrashRecoveryDetector;
 import org.quarkus.agent.workspace.ProjectIdResolver;
 import org.quarkus.agent.workspace.WorkspaceContextResolver;
@@ -19,7 +22,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 
@@ -40,14 +42,23 @@ class ResumeCommandIT {
     @Inject
     WorkspaceContextResolver workspaceResolver;
 
+    private Path repoRoot() {
+        return workspaceResolver.resolveRepoRoot();
+    }
+
     private void createWorktree(String taskId) throws IOException {
-        Path worktree = workspaceResolver.resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
-        Files.createDirectories(worktree);
+        WorktreeTestFixture.createWorktree(repoRoot(), taskId);
     }
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException {
         persistenceService.deleteAll();
+        WorktreeTestFixture.cleanAllWorktrees(repoRoot());
+    }
+
+    @AfterEach
+    void tearDown() throws IOException {
+        WorktreeTestFixture.cleanAllWorktrees(repoRoot());
     }
 
     @Test
@@ -71,15 +82,7 @@ class ResumeCommandIT {
         createWorktree(taskId);
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        TaskRun task = TaskRun.builder()
-            .projectId(projectId.idString())
-            .taskId(taskId)
-            .status(TaskStatus.GREEN_PATCH)
-            .currentPhase("GREEN_PATCH")
-            .pid(999999999L)
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .build();
+        TaskRun task = TaskRunMother.crashed(projectId.idString(), taskId, TaskStatus.GREEN_PATCH);
         persistenceService.saveTask(task);
 
         ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
@@ -102,15 +105,7 @@ class ResumeCommandIT {
         createWorktree(taskId);
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        TaskRun task = TaskRun.builder()
-            .projectId(projectId.idString())
-            .taskId(taskId)
-            .status(TaskStatus.GREEN_PATCH)
-            .currentPhase("GREEN_PATCH")
-            .pid(999999999L)
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .build();
+        TaskRun task = TaskRunMother.crashed(projectId.idString(), taskId, TaskStatus.GREEN_PATCH);
         persistenceService.saveTask(task);
 
         ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
@@ -135,15 +130,7 @@ class ResumeCommandIT {
         createWorktree(taskId);
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        TaskRun task = TaskRun.builder()
-            .projectId(projectId.idString())
-            .taskId(taskId)
-            .status(TaskStatus.RED_TEST)
-            .currentPhase("RED_TEST")
-            .pid(999999999L)
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .build();
+        TaskRun task = TaskRunMother.crashed(projectId.idString(), taskId, TaskStatus.RED_TEST);
         persistenceService.saveTask(task);
 
         ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
@@ -166,14 +153,11 @@ class ResumeCommandIT {
         createWorktree(taskId);
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        TaskRun task = TaskRun.builder()
+        TaskRun task = TaskRunMother.builder(taskId)
             .projectId(projectId.idString())
-            .taskId(taskId)
             .status(TaskStatus.PLANNING)
             .currentPhase("PLANNING")
             .pid(ProcessHandle.current().pid())
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
             .build();
         persistenceService.saveTask(task);
 
@@ -194,15 +178,7 @@ class ResumeCommandIT {
         String taskId = "TASK-MISSING-DIR";
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        TaskRun task = TaskRun.builder()
-            .projectId(projectId.idString())
-            .taskId(taskId)
-            .status(TaskStatus.GREEN_PATCH)
-            .currentPhase("GREEN_PATCH")
-            .pid(999999999L)
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .build();
+        TaskRun task = TaskRunMother.crashed(projectId.idString(), taskId, TaskStatus.GREEN_PATCH);
         persistenceService.saveTask(task);
 
         ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
@@ -223,15 +199,7 @@ class ResumeCommandIT {
         createWorktree(taskId);
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        TaskRun task = TaskRun.builder()
-            .projectId(projectId.idString())
-            .taskId(taskId)
-            .status(TaskStatus.VERIFYING)
-            .currentPhase("VERIFYING")
-            .pid(999999999L)
-            .createdAt(Instant.now())
-            .updatedAt(Instant.now())
-            .build();
+        TaskRun task = TaskRunMother.crashed(projectId.idString(), taskId, TaskStatus.VERIFYING);
         persistenceService.saveTask(task);
 
         ResumeCommand cmd = new ResumeCommand(crashDetector, projectResolver, persistenceService, workspaceResolver);
@@ -252,22 +220,20 @@ class ResumeCommandIT {
         createWorktree("TASK-MULTI-2");
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        persistenceService.saveTask(TaskRun.builder()
+        persistenceService.saveTask(TaskRunMother.builder("TASK-MULTI-1")
             .projectId(projectId.idString())
-            .taskId("TASK-MULTI-1")
             .status(TaskStatus.PLANNING)
             .currentPhase("PLANNING")
-            .pid(999999999L)
+            .pid(TaskRunMother.DEAD_PID)
             .createdAt(Instant.now().minusSeconds(60))
             .updatedAt(Instant.now().minusSeconds(50))
             .build());
 
-        persistenceService.saveTask(TaskRun.builder()
+        persistenceService.saveTask(TaskRunMother.builder("TASK-MULTI-2")
             .projectId(projectId.idString())
-            .taskId("TASK-MULTI-2")
             .status(TaskStatus.GREEN_PATCH)
             .currentPhase("GREEN_PATCH")
-            .pid(999999999L)
+            .pid(TaskRunMother.DEAD_PID)
             .createdAt(Instant.now().minusSeconds(30))
             .updatedAt(Instant.now().minusSeconds(10))
             .build());
@@ -291,22 +257,20 @@ class ResumeCommandIT {
         createWorktree("TASK-INV-2");
         ProjectId projectId = projectResolver.resolveProjectId();
 
-        persistenceService.saveTask(TaskRun.builder()
+        persistenceService.saveTask(TaskRunMother.builder("TASK-INV-1")
             .projectId(projectId.idString())
-            .taskId("TASK-INV-1")
             .status(TaskStatus.PLANNING)
             .currentPhase("PLANNING")
-            .pid(999999999L)
+            .pid(TaskRunMother.DEAD_PID)
             .createdAt(Instant.now().minusSeconds(60))
             .updatedAt(Instant.now().minusSeconds(50))
             .build());
 
-        persistenceService.saveTask(TaskRun.builder()
+        persistenceService.saveTask(TaskRunMother.builder("TASK-INV-2")
             .projectId(projectId.idString())
-            .taskId("TASK-INV-2")
             .status(TaskStatus.GREEN_PATCH)
             .currentPhase("GREEN_PATCH")
-            .pid(999999999L)
+            .pid(TaskRunMother.DEAD_PID)
             .createdAt(Instant.now().minusSeconds(30))
             .updatedAt(Instant.now().minusSeconds(10))
             .build());

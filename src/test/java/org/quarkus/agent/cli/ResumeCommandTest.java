@@ -7,6 +7,8 @@ import org.quarkus.agent.entity.TaskPersistenceService;
 import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStatus;
+import org.quarkus.agent.testutil.TaskRunMother;
+import org.quarkus.agent.testutil.WorktreeTestFixture;
 import org.quarkus.agent.workspace.CrashRecoveryDetector;
 import org.quarkus.agent.workspace.ProjectIdResolver;
 import org.quarkus.agent.workspace.WorkspaceContextResolver;
@@ -17,7 +19,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -53,7 +54,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given single candidate in non-interactive shell - displays guidance and exits 0")
     void testSingleCandidateNonInteractive() {
-        TaskRun task = TaskRun.builder().taskId("TASK-101").status(TaskStatus.RED_TEST).currentPhase("RED_TEST").build();
+        TaskRun task = TaskRunMother.crashed("TASK-101", TaskStatus.RED_TEST);
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -77,7 +78,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given single candidate in interactive shell - prompts and accepts 'y'")
     void testSingleCandidateInteractiveAccept() {
-        TaskRun task = TaskRun.builder().taskId("TASK-102").status(TaskStatus.GREEN_PATCH).currentPhase("GREEN_PATCH").build();
+        TaskRun task = TaskRunMother.crashed("TASK-102", TaskStatus.GREEN_PATCH);
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -101,7 +102,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given single candidate in interactive shell - prompts and declines with 'n'")
     void testSingleCandidateInteractiveDecline() {
-        TaskRun task = TaskRun.builder().taskId("TASK-103").status(TaskStatus.GREEN_PATCH).build();
+        TaskRun task = TaskRunMother.crashed("TASK-103", TaskStatus.GREEN_PATCH);
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -125,8 +126,8 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given multiple candidates in non-interactive shell - lists candidates and prompts for task ID")
     void testMultiCandidatesNonInteractive() {
-        TaskRun task1 = TaskRun.builder().taskId("TASK-201").currentPhase("RED_TEST").build();
-        TaskRun task2 = TaskRun.builder().taskId("TASK-202").currentPhase("GREEN_PATCH").build();
+        TaskRun task1 = TaskRunMother.builder("TASK-201").currentPhase("RED_TEST").build();
+        TaskRun task2 = TaskRunMother.builder("TASK-202").currentPhase("GREEN_PATCH").build();
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -152,8 +153,8 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given multiple candidates in interactive shell - allows choosing option 2")
     void testMultiCandidatesInteractiveSelect() {
-        TaskRun task1 = TaskRun.builder().taskId("TASK-301").currentPhase("PLANNING").build();
-        TaskRun task2 = TaskRun.builder().taskId("TASK-302").currentPhase("REFACTOR").build();
+        TaskRun task1 = TaskRunMother.builder("TASK-301").currentPhase("PLANNING").build();
+        TaskRun task2 = TaskRunMother.builder("TASK-302").currentPhase("REFACTOR").build();
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -177,7 +178,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given multiple candidates in interactive shell - invalid number outputs error")
     void testMultiCandidatesInteractiveInvalid() {
-        TaskRun task1 = TaskRun.builder().taskId("TASK-401").currentPhase("PLANNING").build();
+        TaskRun task1 = TaskRunMother.builder("TASK-401").currentPhase("PLANNING").build();
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -201,7 +202,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given multiple candidates in interactive shell - non-numeric or out of bounds option fails")
     void testMultiCandidatesInteractiveNonNumericAndZero() {
-        TaskRun task1 = TaskRun.builder().taskId("TASK-402").currentPhase("PLANNING").build();
+        TaskRun task1 = TaskRunMother.builder("TASK-402").currentPhase("PLANNING").build();
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -235,7 +236,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given single candidate with null currentPhase - falls back to status name")
     void testSingleCandidateNullPhaseFallsBackToStatus() {
-        TaskRun task = TaskRun.builder().taskId("TASK-105").status(TaskStatus.RED_TEST).currentPhase(null).build();
+        TaskRun task = TaskRunMother.builder("TASK-105").status(TaskStatus.RED_TEST).currentPhase(null).build();
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -257,7 +258,7 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given multiple candidates in interactive shell - 'q' aborts")
     void testMultiCandidatesInteractiveAbort() {
-        TaskRun task1 = TaskRun.builder().taskId("TASK-501").currentPhase("PLANNING").build();
+        TaskRun task1 = TaskRunMother.builder("TASK-501").currentPhase("PLANNING").build();
         CrashRecoveryDetector crashDetector = new CrashRecoveryDetector() {
             @Override
             public List<TaskRun> findAllResumableTasks(ProjectId projectId) {
@@ -302,9 +303,9 @@ class ResumeCommandTest {
     @Test
     @DisplayName("Given explicit task ID - when terminal or process alive or worktree missing - fails validation")
     void testExplicitTaskValidationFailures() {
-        TaskRun terminalTask = TaskRun.builder().taskId("TASK-TERM").status(TaskStatus.COMPLETED).build();
-        TaskRun aliveTask = TaskRun.builder().taskId("TASK-ALIVE").status(TaskStatus.GREEN_PATCH).pid(ProcessHandle.current().pid()).build();
-        TaskRun missingWorktree = TaskRun.builder().taskId("TASK-NOWORKTREE").status(TaskStatus.GREEN_PATCH).pid(999999999L).build();
+        TaskRun terminalTask = TaskRunMother.completed("TASK-TERM");
+        TaskRun aliveTask = TaskRunMother.active("TASK-ALIVE");
+        TaskRun missingWorktree = TaskRunMother.crashed("TASK-NOWORKTREE", TaskStatus.GREEN_PATCH);
 
         TaskPersistenceService mockPersistence = new TaskPersistenceService() {
             @Override
@@ -338,10 +339,9 @@ class ResumeCommandTest {
     @DisplayName("Given explicit task ID - when valid and worktree present - succeeds with code 0")
     void testExplicitTaskSuccess() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
-        Path worktree = workspace.resolveWorktreeDir("TASK-OK");
-        Files.createDirectories(worktree);
+        WorktreeTestFixture.createWorktree(tempDir, "TASK-OK");
 
-        TaskRun validTask = TaskRun.builder().taskId("TASK-OK").status(TaskStatus.RED_TEST).pid(999999999L).build();
+        TaskRun validTask = TaskRunMother.crashed("TASK-OK", TaskStatus.RED_TEST);
 
         TaskPersistenceService mockPersistence = new TaskPersistenceService() {
             @Override
