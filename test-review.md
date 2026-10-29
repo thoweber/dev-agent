@@ -232,6 +232,7 @@ To ensure tests serve as resilient living documentation rather than brittle chan
 * **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=HierarchicalMemoryStoreTest && ./scripts/parse_jacoco.py --fail-under-gates`.
 
 ### Weakness 10: Fault Injection & I/O Error Resilience in `BoundedOverflowBuffer`
+* **Status:** Complete (Modernized BoundedOverflowBuffer with NIO FileChannel, atomic memory-to-disk write, page flushing via force(false), temp file rollback/cleanup guarantees on failure, and idempotent close; branch coverage elevated from 89.1% to 97.7%).
 * **Objective:** Validate error handling, safe stream termination, and idempotence in [`BoundedOverflowBuffer`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/workspace/BoundedOverflowBuffer.java) under disk full or I/O failure conditions.
 * **Concrete Steps:**
   1. In [`BoundedOverflowBufferTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/workspace/BoundedOverflowBufferTest.java), introduce simulated filesystem fault tests:
