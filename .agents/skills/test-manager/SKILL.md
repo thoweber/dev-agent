@@ -5,7 +5,7 @@ description: Governs test strategy, L1 unit, L2 integration, and L3 native CLI t
 
 # Test Manager & Quality Strategy Skill (`test-manager`)
 
-This skill governs test tiering, testing pyramid compliance, and Test-Driven Development (TDD) execution strategy across **dev-agent**.
+This skill governs test tiering, testing pyramid compliance, and Test-Driven Development (TDD) execution strategy across **dev-agent**. Consult [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full project test architecture and engineering invariants.
 
 ---
 
@@ -22,3 +22,12 @@ This skill governs test tiering, testing pyramid compliance, and Test-Driven Dev
 * Never commit production code without a pre-existing failing test (`RED`).
 * Ensure code reaches `GREEN` with minimal viable changes.
 * Complete `REFACTOR` with `./mvnw spotless:apply` and coverage checks.
+
+---
+
+## 3. Test Governance Invariants
+
+* **Quality Gates:** Line Coverage $\ge 95.0\%$, Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.
+* **Zero-Reflection Policy:** Tests must verify observable behavior through public contracts; reflective tampering (`field.setAccessible(true)`) is prohibited.
+* **Canonical Fixtures:** Shared test factories (`TaskRunMother`, `WorktreeTestFixture`) must be used for complex records instead of duplicate inline builder setups.
+* **Script Verification Parity:** Python guardrail scripts must have automated unit tests under `tests/scripts/`.

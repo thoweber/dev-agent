@@ -5,7 +5,7 @@ description: Implements Quarkus CDI services, Picocli commands, WorkspaceContext
 
 # Backend Engineer Skill (`backend-engineer`)
 
-This skill governs the implementation of core CDI beans, Picocli CLI commands, workspace auto-detection, path validation, Git worktrees, and log sanitization in **dev-agent**.
+This skill governs the implementation of core CDI beans, Picocli CLI commands, workspace auto-detection, path validation, Git worktrees, and log sanitization in **dev-agent**. All implementations must adhere to [01-architecture-invariants.md](file:///home/developer/projects/dev-agent/.agents/rules/01-architecture-invariants.md), [02-coding-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/02-coding-standards.md), and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md).
 
 ---
 
@@ -29,3 +29,12 @@ This skill governs the implementation of core CDI beans, Picocli CLI commands, w
 
 * When implementing `BackendBuildSystem` or `FrontendBuildSystem`, ensure `sanitizeOutput()` strips task execution noise and isolates error lines.
 * When implementing `BackendFrameworkConvention` or `FrontendFrameworkConvention`, keep framework-specific flags and baseline invariants declarative.
+
+---
+
+## 4. Test Engineering & Fixture Invariants
+
+* **1-to-1 Test Mapping:** Author dedicated `<TargetClassName>Test.java` for every service, validator, and command.
+* **Zero-Reflection Policy:** Verify observable behaviors through public APIs; never use reflection (`field.setAccessible(true)`) to manipulate private state in tests.
+* **Canonical Fixtures:** Use `TaskRunMother` and `WorktreeTestFixture` instead of repeating inline builder code.
+* **Programmatic Transactions:** Never annotate test methods with `@Transactional`; use `QuarkusTransaction.requiringNew()` for integration tests.

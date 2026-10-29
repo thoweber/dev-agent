@@ -5,7 +5,7 @@ description: Authors 1-to-1 unit tests, ArchUnit native compliance rules, Picocl
 
 # Test Engineer Skill (`test-engineer`)
 
-This skill governs test engineering, ArchUnit architecture rule enforcement, Picocli CLI integration tests, and AssertJ test standards in **dev-agent**.
+This skill governs test engineering, ArchUnit architecture rule enforcement, Picocli CLI integration tests, and AssertJ test standards in **dev-agent**. Consult [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full test architecture and engineering invariants.
 
 ---
 
@@ -35,6 +35,14 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 
 ---
 
-## 4. Coverage SLA
+## 4. Coverage SLA & Quality Gates
 
-* Every class and module MUST maintain AT LEAST 80% line coverage and 80% branch/condition coverage across JaCoCo reports.
+* Repository overall code coverage MUST satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`. Consult [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md).
+
+---
+
+## 5. Behavioral Testing & Ergonomics
+
+* **Zero-Reflection Policy:** Tests must verify observable behaviors through public APIs; using reflection (`field.setAccessible(true)`) to manipulate or inspect private state is strictly prohibited.
+* **Canonical Fixtures:** Complex records (4+ fields) must use `TaskRunMother` and `WorktreeTestFixture` instead of repeating inline builder code.
+* **Script Test Parity:** Python automation scripts in `scripts/` must have companion unit test suites under `tests/scripts/`.

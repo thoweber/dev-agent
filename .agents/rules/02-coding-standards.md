@@ -18,8 +18,9 @@
 * Production code MUST NEVER throw raw `RuntimeException` or `Exception`. Throw specific domain exceptions (e.g., `SecurityException`, `WorkspaceException`, `BuildExecutionException`).
 * Catch low-level technical exceptions at boundaries and wrap them with rich diagnostic context.
 
-## 4. Test Engineering & AssertJ Rules
+## 4. Test Engineering & Testing Standards
+* **Detailed Testing Standards:** Refer to [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full testing pyramid tiers, fixture standards, and invariants.
 * **Dedicated 1-to-1 Unit Test Files:** Every production class MUST have its own dedicated 1-to-1 unit test class (`<TargetClassName>Test.java`).
 * **Given-When-Then Display Names:** All `@Test` methods MUST use `@DisplayName("Given [precondition] - when [action/trigger] - then [expected outcome]")`.
 * **AssertJ Assertions:** Use AssertJ (`assertThat()`, `assertThatThrownBy()`) exclusively. `org.junit.jupiter.api.Assertions` is strictly forbidden.
-* **Mandatory 80%+ Test Coverage:** Every module and class MUST achieve AT LEAST 80% line and branch/condition coverage across JaCoCo reports.
+* **Mandatory Quality Gates:** Overall repository code coverage MUST satisfy Line $\ge 95.0\%$ and Branch $\ge 90.0\%$ (see [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md) and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md)).

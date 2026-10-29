@@ -33,6 +33,8 @@ Remote CI/CD runs are too slow for autonomous iteration. Execute these fast loca
   `./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates`
 * **Audit & Ingest PR Review Threads & CodeRabbit ($< 2\text{ s}$):**  
   `./scripts/check_pr_reviews.py --check-status`
+* **Run Python Script Unit Tests ($< 2\text{ s}$):**  
+  `python3 -m unittest discover -s tests/scripts`
 * **Full Clean Build & Verification ($< 30\text{ s}$):**  
   `./mvnw clean verify`
 * **SonarCloud Quality Gate Analysis:**  
@@ -78,3 +80,4 @@ All feature development, SPI additions, and engine enhancements MUST follow the 
 16. **Spotless-First Execution Protocol:** Whenever writing, patching, or refactoring Java source or test files, execute `./mvnw spotless:apply` before running test suites or compiler checks to eliminate Spotless formatting failures in fast iteration loops.
 17. **Mandatory Quality Gates Enforcement:** Overall repository code coverage MUST strictly satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.
 18. **Autonomous Merge Prohibition Invariant (Maintainer Authority):** Under NO circumstances may an autonomous agent execute `gh pr merge`, fast-forward `main`, or use administrative bypass flags (`--admin`) to merge a Pull Request. Merging is strictly reserved for the human maintainer (USER). The agent's workflow terminates with full CI green verification, Quality Gate compliance (Line >= 95%, Condition >= 90%), and resolved PR review threads. Once achieved, the agent must submit a hand-off summary report inviting the USER to review and merge the PR.
+19. **Test Architecture & Zero-Reflection Behavioral Standards (`05-testing-standards.md`):** All testing MUST adhere to `.agents/rules/05-testing-standards.md`. Tests must practice black-box behavioral verification; using reflection (`field.setAccessible(true)`) to mutate or inspect private state in tests is strictly prohibited. Complex records (4+ fields) must be instantiated in tests using centralized test factories (`TaskRunMother`, `WorktreeTestFixture`) rather than repetitive inline builder plumbing. Python scripts in `scripts/` must have automated unit tests under `tests/scripts/`. L3 Native CLI tests must verify the Mandrel binary cold start SLA ($<50\text{ ms}$).
