@@ -191,17 +191,18 @@ To ensure tests serve as resilient living documentation rather than brittle chan
 * **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=SubprocessExecutorTest && ./scripts/parse_jacoco.py --threshold 90.0`.
 
 ### Weakness 7: Decomposition of Monolithic `DevAgentCommandTest`
+* **Status:** Complete (Decomposed 337-line monolithic test into dedicated 1-to-1 test classes: `StatusCommandTest`, `MetricsCommandTest`, `AbortCommandTest`, `LogsCommandTest`, `PlanCommandTest`, and enhanced `FeatureCommandTest`; trimmed `DevAgentCommandTest` to focused root routing).
 * **Objective:** Decompose the 337-line monolithic [`DevAgentCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/DevAgentCommandTest.java) into cohesive, single-responsibility subcommand test classes under `org.quarkus.agent.cli`.
 * **Concrete Steps:**
   1. Author dedicated test classes per Picocli subcommand:
-     - [`StatusSubcommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/StatusSubcommandTest.java): Tests `status` formatting, `--json` flag output, and non-locking heartbeat socket reading.
-     - [`MetricsSubcommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/MetricsSubcommandTest.java): Tests token consumption and phase duration telemetry metrics display.
-     - [`AbortSubcommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/AbortSubcommandTest.java): Tests PID termination and worktree abort state transition.
-     - [`LogsSubcommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/LogsSubcommandTest.java): Tests tailing, log sanitization verification, and step audit retrieval.
-     - [`PlanSubcommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/PlanSubcommandTest.java): Tests approved plan extraction and markdown formatting.
-     - [`FeatureSubcommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/FeatureSubcommandTest.java): Tests feature branch validation and worktree provisioning.
-  2. Trim [`DevAgentCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/DevAgentCommandTest.java) to strictly test root CLI routing, `--version`, `--help`, and invalid command handling ($<70$ lines).
-* **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=*SubcommandTest,DevAgentCommandTest`.
+     - [`StatusCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/StatusCommandTest.java): Tests `status` formatting, `--json` flag output, `--all`, `--help`, and directory option.
+     - [`MetricsCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/MetricsCommandTest.java): Tests token consumption and spend summary, `--json`, `--help`, and directory option.
+     - [`AbortCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/AbortCommandTest.java): Tests valid taskId termination message, missing/blank taskId validation, `--help`, and directory option.
+     - [`LogsCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/LogsCommandTest.java): Tests streaming logs, `--follow` option, missing/blank taskId validation, `--help`, and directory option.
+     - [`PlanCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/PlanCommandTest.java): Tests phased plan generation, `--yes` / `--offline` flags, missing/blank story validation, `--help`, and directory option.
+     - [`FeatureCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/FeatureCommandTest.java): Tests feature execution, flags parsing, instruction validation, and `--help`.
+  2. Trim [`DevAgentCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/DevAgentCommandTest.java) to strictly test root CLI routing, `--version`, `--help`, invalid command error handling, and parent `--dir` option propagation.
+* **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=*CommandTest,DevAgentCommandTest`.
 
 ### Weakness 8: Robust Semantic CLI Output Assertions
 * **Objective:** Eliminate brittle substring assertions on raw terminal stdout in [`ResumeCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/ResumeCommandTest.java) and [`DevAgentCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/DevAgentCommandTest.java).
