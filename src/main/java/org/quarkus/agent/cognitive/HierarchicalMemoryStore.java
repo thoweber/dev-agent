@@ -101,7 +101,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         }
     }
 
-    int findOldestTrimmableToolInteractionIndex() {
+    private int findOldestTrimmableToolInteractionIndex() {
         if (slidingScratchpad.isEmpty()) {
             return -1;
         }
@@ -124,11 +124,11 @@ public class HierarchicalMemoryStore implements ChatMemory {
         return -1;
     }
 
-    boolean canTrimOldestToolInteraction() {
+    private boolean canTrimOldestToolInteraction() {
         return findOldestTrimmableToolInteractionIndex() != -1;
     }
 
-    void trimOldestToolInteraction() {
+    private void trimOldestToolInteraction() {
         int targetIndex = findOldestTrimmableToolInteractionIndex();
         if (targetIndex == -1) {
             return;
@@ -234,14 +234,6 @@ public class HierarchicalMemoryStore implements ChatMemory {
             }
         }
         return false;
-    }
-
-    static HierarchicalMemoryStore withScratchpad(List<ChatMessage> initialScratchpad) {
-        HierarchicalMemoryStore store = new HierarchicalMemoryStore();
-        if (initialScratchpad != null) {
-            store.slidingScratchpad.addAll(initialScratchpad);
-        }
-        return store;
     }
 
     @Override

@@ -289,8 +289,8 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given scratchpad exceeding budget but cannot trim tool interaction - loop terminates cleanly")
-    void testScratchpadExceedsBudgetCannotTrim() {
+    @DisplayName("Given single turn with active in-flight tool call exceeding budget without later AiMessage - preserves in-flight tool results")
+    void testScratchpadExceedsBudgetWithInFlightToolCallPreserved() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
             .id("call-solo")
@@ -300,140 +300,88 @@ class HierarchicalMemoryStoreTest {
 
         memory.add(new UserMessage("Prompt"));
         memory.add(AiMessage.from(req));
-        for (int i = 0; i < 25; i++) {
+        for (int i = 0; i < 26; i++) {
             memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
         }
-        assertThat(memory.messages().size()).isGreaterThan(24);
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
 
-        // Adding one more message invokes trimScratchpad(), exercising size > 24 && !canTrimOldestToolInteraction()
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-last"));
-        assertThat(memory.messages().size()).isGreaterThan(24);
+        // Total messages: 1 user + 1 AiMessage + 26 results = 28 messages (> 24).
+        // Since no subsequent AiMessage has arrived, the tool interaction is active/in-flight and cannot be trimmed.
+        assertThat(memory.messages().size()).isEqualTo(28);
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 
     @Test
-    @DisplayName("Given boundary conditions for canTrimOldestToolInteraction - covers all negative and positive branches")
-    void testCanTrimOldestToolInteractionBoundaries() {
+    @DisplayName("Given single turn with plain AI thoughts exceeding message budget without tool calls - terminates trimming cleanly")
+    void testSingleTurnPlainAiThoughtsExceedingBudget() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
+        memory.add(new UserMessage("Analyze complex architecture"));
+        for (int i = 1; i <= 26; i++) {
+            memory.add(new AiMessage("Analysis step " + i));
+        }
 
-        memory.add(new UserMessage("Hello"));
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
-
-        // Candidate at index 0 not AiMessage
-        memory.clear();
-        memory.add(new UserMessage("First"));
-        memory.add(new UserMessage("Second"));
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
-
-        // Candidate at index 0 is AiMessage without tool requests
-        memory.clear();
-        memory.add(new AiMessage("Plain text response"));
-        memory.add(new AiMessage("Second plain text"));
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
-
-        // Candidate at index 1 is AiMessage without tool requests
-        memory.clear();
-        memory.add(new UserMessage("User prompt"));
-        memory.add(new AiMessage("Plain text response"));
-        memory.add(new AiMessage("Second plain text"));
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
-
-        // Candidate has tool requests but NO later AiMessage
-        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
-            .id("call-1").name("tool").arguments("{}").build();
-        memory.clear();
-        memory.add(new UserMessage("User prompt"));
-        memory.add(AiMessage.from(req));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res"));
-        assertThat(memory.canTrimOldestToolInteraction()).isFalse();
-
-        // Candidate has tool requests and later AiMessage exists
-        memory.add(new AiMessage("Later AI message"));
-        assertThat(memory.canTrimOldestToolInteraction()).isTrue();
-        assertThat(memory.findOldestTrimmableToolInteractionIndex()).isEqualTo(1);
-
-        // Scratchpad starting with tool AiMessage without UserMessage (index 0)
-        memory.clear();
-        memory.add(AiMessage.from(req));
-        memory.add(new AiMessage("Later AI message"));
-        assertThat(memory.findOldestTrimmableToolInteractionIndex()).isEqualTo(0);
+        // All 27 messages preserved in single turn because there are no tool interactions to trim
+        assertThat(memory.messages()).hasSize(27);
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 
     @Test
-    @DisplayName("Given boundary conditions for trimOldestToolInteraction - covers early returns and while loop branches")
-    void testTrimOldestToolInteractionBoundaries() {
+    @DisplayName("Given multi-tool execution in single turn exceeding budget - trims multi-tool request and all its results atomically")
+    void testMultiToolExecutionAtomicallyTrimmed() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        // Empty scratchpad
-        memory.trimOldestToolInteraction();
-        assertThat(memory.messages()).isEmpty();
+        memory.add(new UserMessage("Execute batch tasks"));
 
-        // Only user message
-        memory.add(new UserMessage("Prompt"));
-        memory.trimOldestToolInteraction();
-        assertThat(memory.messages()).hasSize(1);
+        // Step 1: AI requests 3 tools concurrently
+        dev.langchain4j.agent.tool.ToolExecutionRequest reqA = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-a").name("tA").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest reqB = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-b").name("tB").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest reqC = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-c").name("tC").arguments("{}").build();
+        memory.add(AiMessage.from(List.of(reqA, reqB, reqC)));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqA, "resA"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqB, "resB"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqC, "resC"));
 
-        // Candidate not AiMessage with tool requests
-        memory.clear();
-        memory.add(new UserMessage("Prompt"));
-        memory.add(new UserMessage("Second user message"));
-        memory.trimOldestToolInteraction();
-        assertThat(memory.messages()).hasSize(2);
+        // Step 2..12: Sequential single tool executions followed by AI completion message
+        for (int i = 2; i <= 12; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("step-" + i)
+                .name("tool")
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+        memory.add(new AiMessage("All batch steps completed successfully."));
 
-        // Candidate is AiMessage but without tool requests
-        memory.clear();
-        memory.add(new UserMessage("Prompt"));
-        memory.add(new AiMessage("Plain response without tool requests"));
-        memory.trimOldestToolInteraction();
-        assertThat(memory.messages()).hasSize(2);
+        // Verifies scratchpad message budget trimming occurred
+        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        // Confirms that multi-tool request and its 3 results (step 1) were atomically removed together
+        assertThat(memory.messages()).noneMatch(m ->
+            m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
+            (tr.id().equals("call-a") || tr.id().equals("call-b") || tr.id().equals("call-c"))
+        );
+        // And last AI completion message is preserved
+        assertThat(memory.messages().getLast()).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) memory.messages().getLast()).text()).isEqualTo("All batch steps completed successfully.");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
 
-        // AiMessage with tool requests followed by matching result and non-matching result (from otherReq)
-        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
-            .id("call-target").name("tool").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest otherReq = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
-            .id("call-other").name("tool").arguments("{}").build();
+    @Test
+    @DisplayName("Given conversation starting with AiMessage followed by tool interactions - trims cleanly when exceeding budget")
+    void testAiMessageStartingConversationWithToolTrimming() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        for (int i = 1; i <= 15; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("ai-init-" + i)
+                .name("tool")
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "result-" + i));
+        }
+        memory.add(new AiMessage("Final resolution"));
 
-        HierarchicalMemoryStore customMemory = HierarchicalMemoryStore.withScratchpad(List.of(
-            new UserMessage("Prompt"),
-            AiMessage.from(req),
-            dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"),
-            dev.langchain4j.data.message.ToolExecutionResultMessage.from(otherReq, "non-matching"),
-            new AiMessage("Subsequent message")
-        ));
-
-        customMemory.trimOldestToolInteraction();
-        // req AiMessage and matching result should be trimmed; non-matching result and subsequent AiMessage remain
-        List<ChatMessage> trimmedMsgs = customMemory.messages();
-        assertThat(trimmedMsgs).hasSize(3);
-        assertThat(trimmedMsgs.get(0)).isInstanceOf(UserMessage.class);
-        assertThat(trimmedMsgs.get(1)).isInstanceOf(dev.langchain4j.data.message.ToolExecutionResultMessage.class);
-        assertThat(((dev.langchain4j.data.message.ToolExecutionResultMessage) trimmedMsgs.get(1)).id()).isEqualTo("call-other");
-        assertThat(trimmedMsgs.get(2)).isInstanceOf(AiMessage.class);
-
-        // AiMessage at index 0 with later AiMessage trimmed
-        memory.clear();
-        memory.add(AiMessage.from(req));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"));
-        memory.add(new AiMessage("Later AI response"));
-        memory.trimOldestToolInteraction();
-        assertThat(memory.messages()).hasSize(1);
-        assertThat(memory.messages().getFirst()).isInstanceOf(AiMessage.class);
-        assertThat(((AiMessage) memory.messages().getFirst()).text()).isEqualTo("Later AI response");
-
-        // Trimming when plain AiMessage precedes tool interaction
-        memory.clear();
-        memory.add(new UserMessage("Prompt"));
-        memory.add(new AiMessage("Plain thought"));
-        memory.add(AiMessage.from(req));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "matching"));
-        memory.add(new AiMessage("Subsequent message"));
-        memory.trimOldestToolInteraction();
-        assertThat(memory.messages()).hasSize(3);
-        assertThat(memory.messages().get(0)).isInstanceOf(UserMessage.class);
-        assertThat(memory.messages().get(1)).isInstanceOf(AiMessage.class);
-        assertThat(((AiMessage) memory.messages().get(1)).text()).isEqualTo("Plain thought");
-        assertThat(memory.messages().get(2)).isInstanceOf(AiMessage.class);
-        assertThat(((AiMessage) memory.messages().get(2)).text()).isEqualTo("Subsequent message");
+        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 
     @Test
