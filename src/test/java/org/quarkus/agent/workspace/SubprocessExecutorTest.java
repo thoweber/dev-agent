@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SubprocessExecutorTest {
 
@@ -163,5 +164,14 @@ class SubprocessExecutorTest {
         assertThat(result.truncated()).isTrue();
         assertThat(result.stdErr()).hasSize(128);
         assertThat(result.stdErr()).isEqualTo("B".repeat(128));
+    }
+
+    @Test
+    @DisplayName("Given invalid constructor thresholds - when instantiated - throws IllegalArgumentException")
+    void testConstructorValidations() {
+        assertThatThrownBy(() -> new SubprocessExecutor(0, 100))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SubprocessExecutor(100, 50))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 }

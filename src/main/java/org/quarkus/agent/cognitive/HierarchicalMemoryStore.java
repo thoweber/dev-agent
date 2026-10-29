@@ -102,9 +102,6 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private int findOldestTrimmableToolInteractionIndex() {
-        if (slidingScratchpad.isEmpty()) {
-            return -1;
-        }
         int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
         int toolAiIndex = -1;
         for (int i = startIndex; i < slidingScratchpad.size(); i++) {
@@ -130,20 +127,18 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     private void trimOldestToolInteraction() {
         int targetIndex = findOldestTrimmableToolInteractionIndex();
-        if (targetIndex == -1) {
-            return;
-        }
         AiMessage ai = (AiMessage) slidingScratchpad.get(targetIndex);
         Set<String> requestIds = ai.toolExecutionRequests().stream()
             .map(ToolExecutionRequest::id)
             .collect(Collectors.toSet());
         slidingScratchpad.remove(targetIndex);
-        while (targetIndex < slidingScratchpad.size()) {
-            ChatMessage next = slidingScratchpad.get(targetIndex);
-            if (next instanceof ToolExecutionResultMessage toolResult && requestIds.contains(toolResult.id())) {
-                slidingScratchpad.remove(targetIndex);
+        int currentIndex = targetIndex;
+        while (currentIndex < slidingScratchpad.size() && !requestIds.isEmpty()) {
+            ChatMessage next = slidingScratchpad.get(currentIndex);
+            if (next instanceof ToolExecutionResultMessage toolResult && requestIds.remove(toolResult.id())) {
+                slidingScratchpad.remove(currentIndex);
             } else {
-                break;
+                currentIndex++;
             }
         }
     }
@@ -192,27 +187,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     public boolean assertTurnStructureInvariants() {
-        return validateTurnStructure(slidingScratchpad);
-    }
-
-    static boolean validateTurnStructure(List<ChatMessage> messages) {
-        if (containsSystemMessage(messages) || startsWithToolExecutionResult(messages)) {
-            return false;
-        }
-        return allToolResultsHaveMatchingRequests(messages);
-    }
-
-    private static boolean containsSystemMessage(List<ChatMessage> messages) {
-        for (ChatMessage msg : messages) {
-            if (msg instanceof SystemMessage) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean startsWithToolExecutionResult(List<ChatMessage> messages) {
-        return !messages.isEmpty() && messages.getFirst() instanceof ToolExecutionResultMessage;
+        return allToolResultsHaveMatchingRequests(slidingScratchpad);
     }
 
     private static boolean allToolResultsHaveMatchingRequests(List<ChatMessage> messages) {

@@ -11,6 +11,8 @@ import java.util.stream.Stream;
  */
 public final class WorktreeTestFixture {
 
+    private static final java.util.Set<Path> CREATED_WORKTREES = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private WorktreeTestFixture() {}
 
     public static Path resolveWorktree(Path repoRoot, String taskId) {
@@ -20,23 +22,21 @@ public final class WorktreeTestFixture {
     public static Path createWorktree(Path repoRoot, String taskId) throws IOException {
         Path worktreeDir = resolveWorktree(repoRoot, taskId);
         Files.createDirectories(worktreeDir);
+        CREATED_WORKTREES.add(worktreeDir);
         return worktreeDir;
     }
 
     public static void deleteWorktree(Path repoRoot, String taskId) throws IOException {
         Path worktreeDir = resolveWorktree(repoRoot, taskId);
+        CREATED_WORKTREES.remove(worktreeDir);
         deleteRecursively(worktreeDir);
     }
 
     public static void cleanAllWorktrees(Path repoRoot) throws IOException {
-        Path worktreeBase = repoRoot.resolve(".git").resolve("dev-agent-worktrees");
-        if (Files.exists(worktreeBase)) {
-            try (Stream<Path> stream = Files.list(worktreeBase)) {
-                for (Path p : stream.toList()) {
-                    deleteRecursively(p);
-                }
-            }
+        for (Path p : CREATED_WORKTREES) {
+            deleteRecursively(p);
         }
+        CREATED_WORKTREES.clear();
     }
 
     private static void deleteRecursively(Path path) throws IOException {

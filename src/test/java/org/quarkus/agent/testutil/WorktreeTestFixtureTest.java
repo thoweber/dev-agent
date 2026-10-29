@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class WorktreeTestFixtureTest {
 
@@ -60,8 +61,9 @@ class WorktreeTestFixtureTest {
 
     @Test
     @DisplayName("Given non-existent worktree directory - when cleanAllWorktrees called - handles safely without exception")
-    void testCleanAllWorktreesWhenDirectoryDoesNotExist() throws IOException {
+    void testCleanAllWorktreesWhenDirectoryDoesNotExist() {
         Path nonExistent = tempRepo.resolve("no-such-repo");
-        WorktreeTestFixture.cleanAllWorktrees(nonExistent);
+        assertThatCode(() -> WorktreeTestFixture.cleanAllWorktrees(nonExistent))
+            .doesNotThrowAnyException();
     }
 }

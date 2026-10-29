@@ -305,7 +305,12 @@
                                     <systemPropertyVariables>
                                         <native.image.path>${project.build.directory}/${project.build.finalName}-runner</native.image.path>
                                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                                        <quarkus.native>true</quarkus.native>
                                     </systemPropertyVariables>
+                                    <includes>
+                                        <include>**/Native*IT.java</include>
+                                    </includes>
+                                    <excludes combine.self="override"/>
                                 </configuration>
                             </execution>
                         </executions>

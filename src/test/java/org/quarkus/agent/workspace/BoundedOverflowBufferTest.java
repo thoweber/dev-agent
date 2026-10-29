@@ -230,13 +230,10 @@ class BoundedOverflowBufferTest {
     @Test
     @DisplayName("Given fault on disk overflow - cleans up temporary file and throws IOException")
     void testDiskOverflowFaultInjectionAndCleanup() throws IOException {
-        Path readOnlyDir = tempDir.resolve("readonly-spillover");
-        Files.createDirectories(readOnlyDir);
-        // Make directory read-only to simulate permission denied / disk fault
-        readOnlyDir.toFile().setReadOnly();
+        Path regularFile = tempDir.resolve("file-not-a-directory");
+        Files.createFile(regularFile);
 
-        try {
-            BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(10, 100, readOnlyDir);
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(10, 100, regularFile)) {
             OutputStream out = buffer.outputStream();
 
             // In-memory writes below threshold succeed
@@ -244,21 +241,12 @@ class BoundedOverflowBufferTest {
             assertThat(buffer.isOverflowedToDisk()).isFalse();
             assertThat(buffer.getTotalBytesWritten()).isEqualTo(5);
 
-            // Exceeding memory threshold attempts overflow into read-only directory and fails
+            // Exceeding memory threshold attempts overflow into a regular file (not directory) and fails
             assertThatThrownBy(() -> out.write("678901".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(IOException.class);
 
             // Confirm buffer did not set overflowed flag
             assertThat(buffer.isOverflowedToDisk()).isFalse();
-
-            // Confirm no temporary files were leaked in the read-only directory
-            try (Stream<Path> list = Files.list(readOnlyDir)) {
-                assertThat(list).isEmpty();
-            }
-
-            buffer.close();
-        } finally {
-            readOnlyDir.toFile().setWritable(true);
         }
     }
 

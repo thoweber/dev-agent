@@ -32,7 +32,8 @@ class CliOutputAssertTest {
     @Test
     @DisplayName("Given non-zero exit code - when isSuccess asserted - throws AssertionError")
     void testIsSuccessFails() {
-        assertThatThrownBy(() -> assertThatCli(1, "error").isSuccess())
+        CliOutputAssert assertion = assertThatCli(1, "error");
+        assertThatThrownBy(assertion::isSuccess)
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("Expected command to succeed with exit code 0");
     }
@@ -49,7 +50,8 @@ class CliOutputAssertTest {
     @Test
     @DisplayName("Given exit code 0 - when isFailure asserted - throws AssertionError")
     void testIsFailureFails() {
-        assertThatThrownBy(() -> assertThatCli(0, "ok").isFailure())
+        CliOutputAssert assertion = assertThatCli(0, "ok");
+        assertThatThrownBy(assertion::isFailure)
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("Expected command to fail with non-zero exit code");
     }
@@ -57,7 +59,8 @@ class CliOutputAssertTest {
     @Test
     @DisplayName("Given no exit code provided - when hasExitCode asserted - throws AssertionError")
     void testHasExitCodeWithoutExitCodeProvided() {
-        assertThatThrownBy(() -> assertThatCli("just output").hasExitCode(0))
+        CliOutputAssert assertion = assertThatCli("just output");
+        assertThatThrownBy(() -> assertion.hasExitCode(0))
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("No exit code was provided");
     }
@@ -71,11 +74,12 @@ class CliOutputAssertTest {
             .containsAnsiFree("[dev-agent]", "2 interrupted tasks")
             .doesNotContainAnsiFree("Error", "FAILED");
 
-        assertThatThrownBy(() -> assertThatCli(output).containsAnsiFree("TASK-999"))
+        CliOutputAssert assertion = assertThatCli(output);
+        assertThatThrownBy(() -> assertion.containsAnsiFree("TASK-999"))
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("TASK-999");
 
-        assertThatThrownBy(() -> assertThatCli(output).doesNotContainAnsiFree("[dev-agent]"))
+        assertThatThrownBy(() -> assertion.doesNotContainAnsiFree("[dev-agent]"))
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("[dev-agent]");
     }
@@ -87,7 +91,8 @@ class CliOutputAssertTest {
 
         assertThatCli(output).containsAnsiFreeInOrder("Step 1", "Step 2", "Step 3");
 
-        assertThatThrownBy(() -> assertThatCli(output).containsAnsiFreeInOrder("Step 3", "Step 1"))
+        CliOutputAssert assertion = assertThatCli(output);
+        assertThatThrownBy(() -> assertion.containsAnsiFreeInOrder("Step 3", "Step 1"))
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("to appear in order");
     }
@@ -104,7 +109,8 @@ class CliOutputAssertTest {
             .hasTableEntry("TASK-201", "RED_TEST")
             .hasTableEntry("TASK-202", "GREEN_PATCH");
 
-        assertThatThrownBy(() -> assertThatCli(output).hasTableEntry("TASK-201", "GREEN_PATCH"))
+        CliOutputAssert assertion = assertThatCli(output);
+        assertThatThrownBy(() -> assertion.hasTableEntry("TASK-201", "GREEN_PATCH"))
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("TASK-201")
             .hasMessageContaining("GREEN_PATCH");
@@ -116,7 +122,8 @@ class CliOutputAssertTest {
         assertThatCli(1, "normal out", "Error: Process crashed")
             .hasStdErrContaining("Process crashed");
 
-        assertThatThrownBy(() -> assertThatCli(1, "out", "some error").hasStdErrContaining("Missing flag"))
+        CliOutputAssert assertion = assertThatCli(1, "out", "some error");
+        assertThatThrownBy(() -> assertion.hasStdErrContaining("Missing flag"))
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("Missing flag");
     }

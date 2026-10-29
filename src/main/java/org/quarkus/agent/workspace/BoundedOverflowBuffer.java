@@ -106,9 +106,12 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     @Override
     public synchronized void close() throws IOException {
         closed = true;
+        IOException failure = null;
         if (fileChannel != null) {
             try {
                 fileChannel.close();
+            } catch (IOException e) {
+                failure = e;
             } finally {
                 fileChannel = null;
             }
@@ -116,13 +119,18 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (diskTempFile != null) {
             try {
                 Files.deleteIfExists(diskTempFile);
-            } catch (IOException _) {
-                // Ignore failure to delete temp file on close
+            } catch (IOException e) {
+                if (failure == null) {
+                    failure = e;
+                }
             } finally {
                 diskTempFile = null;
             }
         }
         memoryBuffer = null;
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     private Path createSecureTempFile() throws IOException {
@@ -143,8 +151,9 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         }
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
+            this.diskTempFile = tempFile;
             try {
-                FileChannel channel = FileChannel.open(
+                this.fileChannel = FileChannel.open(
                     tempFile,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.WRITE,
@@ -153,17 +162,11 @@ public class BoundedOverflowBuffer implements AutoCloseable {
                 byte[] inMemoryBytes = memoryBuffer.toByteArray();
                 ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
                 while (nioBuffer.hasRemaining()) {
-                    channel.write(nioBuffer);
+                    fileChannel.write(nioBuffer);
                 }
-                this.diskTempFile = tempFile;
-                this.fileChannel = channel;
                 this.memoryBuffer = null;
-            } catch (IOException | RuntimeException e) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException _) {
-                    // ignore secondary delete failure
-                }
+            } catch (Exception e) {
+                close();
                 throw e;
             }
         }
@@ -217,8 +220,6 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     synchronized void flushSink() throws IOException {
-        if (fileChannel != null) {
-            fileChannel.force(false);
-        }
+        // No-op for FileChannel as writes directly populate the OS page cache
     }
 }

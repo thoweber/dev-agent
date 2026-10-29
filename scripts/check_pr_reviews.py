@@ -424,9 +424,10 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
 
         clean_sum = re.sub(r"<.*?>", "", summary_html).strip()
         parts = [p.strip() for p in clean_sum.split("·") if p.strip()]
-        if len(parts) >= 3:
-            title = parts[2]
-        elif len(parts) == 2:
+        remaining = [p for p in parts if p != severity and p != target]
+        if remaining:
+            title = remaining[0]
+        elif len(parts) >= 2:
             title = parts[1]
         elif len(parts) == 1:
             title = parts[0]

@@ -33,6 +33,12 @@ public class SubprocessExecutor {
     }
 
     public SubprocessExecutor(int memoryThreshold, int maxCapacity) {
+        if (memoryThreshold <= 0) {
+            throw new IllegalArgumentException("Memory threshold must be greater than 0");
+        }
+        if (maxCapacity < memoryThreshold) {
+            throw new IllegalArgumentException("Max capacity cannot be smaller than memory threshold");
+        }
         this.memoryThreshold = memoryThreshold;
         this.maxCapacity = maxCapacity;
     }

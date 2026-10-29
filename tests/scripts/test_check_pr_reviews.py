@@ -217,7 +217,7 @@ This is a regular finding without a bold headline format.
         review_body = """
 ## Outside diff range comments
 <details>
-<summary><code>src/App.java</code> · Critical · Null Pointer Risk</summary>
+<summary>Critical · Null Pointer Risk · <code>src/App.java</code></summary>
 <blockquote>
 <!-- cr-comment:prr-comment-1 -->
 **Logic Defect**

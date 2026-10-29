@@ -241,7 +241,7 @@ class HierarchicalMemoryStoreTest {
 
         // 1 user message + 15 * 2 = 31 messages.
         // MAX_SCRATCHPAD_MESSAGES is 24.
-        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(memory.messages()).hasSizeLessThanOrEqualTo(24);
         assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
@@ -257,7 +257,7 @@ class HierarchicalMemoryStoreTest {
             aiFirstMemory.add(AiMessage.from(req));
             aiFirstMemory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
         }
-        assertThat(aiFirstMemory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(aiFirstMemory.messages()).hasSizeLessThanOrEqualTo(24);
         assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
     }
 
@@ -280,7 +280,7 @@ class HierarchicalMemoryStoreTest {
 
         // 1 user message + 1 plain AI message + 15 * 2 = 32 messages.
         // MAX_SCRATCHPAD_MESSAGES is 24.
-        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(memory.messages()).hasSizeLessThanOrEqualTo(24);
         assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
         assertThat(memory.messages().get(1)).isInstanceOf(AiMessage.class);
@@ -306,7 +306,7 @@ class HierarchicalMemoryStoreTest {
 
         // Total messages: 1 user + 1 AiMessage + 26 results = 28 messages (> 24).
         // Since no subsequent AiMessage has arrived, the tool interaction is active/in-flight and cannot be trimmed.
-        assertThat(memory.messages().size()).isEqualTo(28);
+        assertThat(memory.messages()).hasSize(28);
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 
@@ -353,7 +353,7 @@ class HierarchicalMemoryStoreTest {
         memory.add(new AiMessage("All batch steps completed successfully."));
 
         // Verifies scratchpad message budget trimming occurred
-        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(memory.messages()).hasSizeLessThanOrEqualTo(24);
         // Confirms that multi-tool request and its 3 results (step 1) were atomically removed together
         assertThat(memory.messages()).noneMatch(m ->
             m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
@@ -380,7 +380,7 @@ class HierarchicalMemoryStoreTest {
         }
         memory.add(new AiMessage("Final resolution"));
 
-        assertThat(memory.messages().size()).isLessThanOrEqualTo(24);
+        assertThat(memory.messages()).hasSizeLessThanOrEqualTo(24);
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 
@@ -400,23 +400,26 @@ class HierarchicalMemoryStoreTest {
 
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
 
-        // Validate turn structure with synthetic message sequences without reflection
-        // Case 1: contains SystemMessage in scratchpad
-        assertThat(HierarchicalMemoryStore.validateTurnStructure(List.of(
-            new UserMessage("Do X"),
-            new dev.langchain4j.data.message.SystemMessage("Illegal")
-        ))).isFalse();
+        // Verify observable handling of invalid messages through public API
+        // Case 1: SystemMessage is routed to pinned invariants, not scratchpad
+        HierarchicalMemoryStore m1 = new HierarchicalMemoryStore();
+        m1.add(new UserMessage("Do X"));
+        m1.add(new dev.langchain4j.data.message.SystemMessage("Invariant"));
+        assertThat(m1.assertTurnStructureInvariants()).isTrue();
+        assertThat(m1.messages().getFirst()).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
 
-        // Case 2: starts with ToolExecutionResultMessage
-        assertThat(HierarchicalMemoryStore.validateTurnStructure(List.of(
-            dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Orphan")
-        ))).isFalse();
+        // Case 2: Orphaned ToolExecutionResultMessage is dropped by add()
+        HierarchicalMemoryStore m2 = new HierarchicalMemoryStore();
+        m2.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Orphan"));
+        assertThat(m2.assertTurnStructureInvariants()).isTrue();
+        assertThat(m2.messages()).isEmpty();
 
-        // Case 3: ToolExecutionResultMessage without preceding matching request
-        assertThat(HierarchicalMemoryStore.validateTurnStructure(List.of(
-            new UserMessage("Start"),
-            dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Dangling")
-        ))).isFalse();
+        // Case 3: ToolExecutionResultMessage without preceding matching request is dropped
+        HierarchicalMemoryStore m3 = new HierarchicalMemoryStore();
+        m3.add(new UserMessage("Start"));
+        m3.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Dangling"));
+        assertThat(m3.assertTurnStructureInvariants()).isTrue();
+        assertThat(m3.messages()).hasSize(1);
     }
 
     @Test

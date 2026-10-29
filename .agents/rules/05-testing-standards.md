@@ -1,6 +1,6 @@
 # dev-agent Test Architecture & Engineering Standards
 
-> **Master Reference:** Consult [PROJECT_CONTEXT.md](file:///home/developer/projects/dev-agent/PROJECT_CONTEXT.md), [01-architecture-invariants.md](file:///home/developer/projects/dev-agent/.agents/rules/01-architecture-invariants.md), [02-coding-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/02-coding-standards.md), and [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md).
+> **Master Reference:** Consult [PROJECT_CONTEXT.md](../../PROJECT_CONTEXT.md), [01-architecture-invariants.md](01-architecture-invariants.md), [02-coding-standards.md](02-coding-standards.md), and [03-quality-and-slas.md](03-quality-and-slas.md).
 
 ---
 
@@ -25,7 +25,7 @@ flowchart TD
 
 ### Level 2: Component Integration & Architecture Governance ($< 15\text{ s}$)
 * **Scope:** Architecture invariant checks ([`AgentArchitectureTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/AgentArchitectureTest.java)), filesystem sandbox boundary checks ([`WorkspaceJailValidatorTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/workspace/WorkspaceJailValidatorTest.java)), and in-memory H2 database persistence ([`StatePersistenceIT`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/entity/StatePersistenceIT.java)).
-* **Execution:** Executed via Surefire or Failsafe: `./mvnw test -Dtest=*IT,AgentArchitectureTest`.
+* **Execution:** Executed via Surefire or Failsafe: `./mvnw test -Dtest=*IT,!Native*IT,AgentArchitectureTest`.
 * **Programmatic Isolation:** Integration tests requiring Hibernate or Panache operations must use programmatic transaction boundaries (`QuarkusTransaction.requiringNew()`) to prevent session pollution.
 
 ### Level 3: Native Executable & Subprocess CLI Tests
