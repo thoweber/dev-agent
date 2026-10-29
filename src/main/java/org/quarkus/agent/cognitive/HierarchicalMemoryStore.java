@@ -80,7 +80,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         return false;
     }
 
-    private boolean hasMatchingId(AiMessage ai, String resultId) {
+    private static boolean hasMatchingId(AiMessage ai, String resultId) {
         for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
             if (Objects.equals(req.id(), resultId)) {
                 return true;
@@ -192,14 +192,18 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     public boolean assertTurnStructureInvariants() {
-        if (containsSystemMessage() || startsWithToolExecutionResult()) {
-            return false;
-        }
-        return allToolResultsHaveMatchingRequests();
+        return validateTurnStructure(slidingScratchpad);
     }
 
-    private boolean containsSystemMessage() {
-        for (ChatMessage msg : slidingScratchpad) {
+    static boolean validateTurnStructure(List<ChatMessage> messages) {
+        if (containsSystemMessage(messages) || startsWithToolExecutionResult(messages)) {
+            return false;
+        }
+        return allToolResultsHaveMatchingRequests(messages);
+    }
+
+    private static boolean containsSystemMessage(List<ChatMessage> messages) {
+        for (ChatMessage msg : messages) {
             if (msg instanceof SystemMessage) {
                 return true;
             }
@@ -207,29 +211,37 @@ public class HierarchicalMemoryStore implements ChatMemory {
         return false;
     }
 
-    private boolean startsWithToolExecutionResult() {
-        return !slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage;
+    private static boolean startsWithToolExecutionResult(List<ChatMessage> messages) {
+        return !messages.isEmpty() && messages.getFirst() instanceof ToolExecutionResultMessage;
     }
 
-    private boolean allToolResultsHaveMatchingRequests() {
-        for (int i = 0; i < slidingScratchpad.size(); i++) {
-            if (slidingScratchpad.get(i) instanceof ToolExecutionResultMessage toolResult
-                && !hasPrecedingRequest(toolResult.id(), i)) {
+    private static boolean allToolResultsHaveMatchingRequests(List<ChatMessage> messages) {
+        for (int i = 0; i < messages.size(); i++) {
+            if (messages.get(i) instanceof ToolExecutionResultMessage toolResult
+                && !hasPrecedingRequest(messages, toolResult.id(), i)) {
                 return false;
             }
         }
         return true;
     }
 
-    private boolean hasPrecedingRequest(String toolResultId, int currentIndex) {
+    private static boolean hasPrecedingRequest(List<ChatMessage> messages, String toolResultId, int currentIndex) {
         for (int j = 0; j < currentIndex; j++) {
-            if (slidingScratchpad.get(j) instanceof AiMessage ai
+            if (messages.get(j) instanceof AiMessage ai
                 && ai.hasToolExecutionRequests()
                 && hasMatchingId(ai, toolResultId)) {
                 return true;
             }
         }
         return false;
+    }
+
+    static HierarchicalMemoryStore withScratchpad(List<ChatMessage> initialScratchpad) {
+        HierarchicalMemoryStore store = new HierarchicalMemoryStore();
+        if (initialScratchpad != null) {
+            store.slidingScratchpad.addAll(initialScratchpad);
+        }
+        return store;
     }
 
     @Override
