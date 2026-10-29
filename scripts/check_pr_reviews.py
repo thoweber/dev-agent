@@ -424,7 +424,9 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
 
         clean_sum = re.sub(r"<.*?>", "", summary_html).strip()
         parts = [p.strip() for p in clean_sum.split("·") if p.strip()]
-        if len(parts) > 1:
+        if len(parts) >= 3:
+            title = parts[2]
+        elif len(parts) == 2:
             title = parts[1]
         elif len(parts) == 1:
             title = parts[0]
@@ -494,7 +496,15 @@ def parse_coderabbit_comment(body: str) -> Dict[str, str]:
         info["title"] = headline_match.group(1).strip()
     else:
         # Fallback to first non-empty line after badges
-        lines = [line.strip() for line in body.splitlines() if line.strip() and not line.startswith("<!--") and not line.startswith("**<picture>") and not line.startswith("<picture>")]
+        lines = [
+            line.strip()
+            for line in body.splitlines()
+            if line.strip()
+            and not line.startswith("<!--")
+            and not line.startswith("**<picture>")
+            and not line.startswith("<picture>")
+            and "·" not in line
+        ]
         if lines:
             first_line = re.sub(r"[*_`]", "", lines[0])
             info["title"] = first_line[:80]
