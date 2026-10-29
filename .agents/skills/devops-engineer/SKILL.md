@@ -12,11 +12,11 @@ This skill governs native compilation, CI automation, artifact packaging, and in
 ## 1. GraalVM Native Compilation
 
 * **Build Command:**  
-  `./mvnw clean package -Dnative -Dquarkus.native.container-build=false`
+  `./mvnw clean package -Dnative -Dquarkus.native.container-build=true`
 * **Performance Target:**  
   Binary size $<60\text{ MB}$, cold boot $<50\text{ ms}$, idle memory $<40\text{ MB}$.
 * **Level 3 Native Verification:**  
-  Verify native binary cold start and subcommand execution via `@QuarkusIntegrationTest` in the `native` Maven profile.
+  Verify native binary cold start and subcommand execution via `@QuarkusMainIntegrationTest` (`NativeDevAgentIT`) in the `native` Maven profile.
 * **Global Installation Path:**  
   Installs binary to `~/.local/bin/dev-agent`.
 

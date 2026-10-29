@@ -169,6 +169,7 @@ To ensure tests serve as resilient living documentation rather than brittle chan
 * **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=StatePersistenceIT,StateSyncServiceTest,TaskPersistenceServiceTest`.
 
 ### Weakness 5: Level 3 Native Binary Integration Testing (`@QuarkusIntegrationTest`)
+* **Status:** Complete (Implemented `DevAgentIT` with `@QuarkusMainTest` for packaged JVM CLI validation and `NativeDevAgentIT` with `@QuarkusMainIntegrationTest` verifying cold start SLA <50ms and AOT reflection safety; configured `pom.xml` failsafe exclusion in JVM mode, container-build in native profile, and failsafe native execution).
 * **Objective:** Bridge the Level 3 testing gap by introducing automated native CLI executable tests verifying cold boot SLA ($<50\text{ ms}$) and GraalVM Mandrel Ahead-of-Time (AOT) reflection safety.
 * **Concrete Steps:**
   1. Create [`NativeDevAgentIT.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/NativeDevAgentIT.java) annotated with `@QuarkusIntegrationTest`.
