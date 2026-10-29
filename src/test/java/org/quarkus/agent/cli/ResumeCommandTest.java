@@ -23,7 +23,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.quarkus.agent.testutil.CliOutputAssert.assertThatCli;
 
 class ResumeCommandTest {
 
@@ -47,8 +47,9 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString()).contains("No interrupted or crashed tasks found");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("No interrupted or crashed tasks found");
     }
 
     @Test
@@ -69,10 +70,9 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString())
-            .contains("Found interrupted task TASK-101")
-            .contains("Non-interactive environment detected");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("Found interrupted task TASK-101", "Non-interactive environment detected");
     }
 
     @Test
@@ -95,8 +95,9 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString()).contains("[dev-agent] Resuming task: TASK-102");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("[dev-agent] Resuming task: TASK-102");
     }
 
     @Test
@@ -119,8 +120,10 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(out.toString()).contains("[dev-agent] Resumption aborted.");
+        assertThatCli(exitCode, out.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("[dev-agent] Resumption aborted.");
     }
 
     @Test
@@ -142,12 +145,11 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString())
-            .contains("Found 2 interrupted tasks")
-            .contains("TASK-201")
-            .contains("TASK-202")
-            .contains("Non-interactive environment detected");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("Found 2 interrupted tasks", "Non-interactive environment detected")
+            .hasTableEntry("TASK-201", "RED_TEST")
+            .hasTableEntry("TASK-202", "GREEN_PATCH");
     }
 
     @Test
@@ -171,8 +173,9 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString()).contains("[dev-agent] Resuming task: TASK-302");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("[dev-agent] Resuming task: TASK-302");
     }
 
     @Test
@@ -195,8 +198,10 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(out.toString()).contains("[dev-agent] Invalid selection.");
+        assertThatCli(exitCode, out.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("[dev-agent] Invalid selection.");
     }
 
     @Test
@@ -219,8 +224,10 @@ class ResumeCommandTest {
         cl.setOut(new PrintWriter(out));
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(out.toString()).contains("[dev-agent] Resumption aborted.");
+        assertThatCli(exitCode, out.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("[dev-agent] Resumption aborted.");
 
         // Test out of bounds 0
         cmd.setIn(new BufferedReader(new StringReader("0\n")));
@@ -229,8 +236,10 @@ class ResumeCommandTest {
         cl2.setOut(new PrintWriter(out2));
         int exitCode2 = cl2.execute();
 
-        assertThat(exitCode2).isEqualTo(1);
-        assertThat(out2.toString()).contains("[dev-agent] Invalid selection.");
+        assertThatCli(exitCode2, out2.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("[dev-agent] Invalid selection.");
     }
 
     @Test
@@ -251,8 +260,9 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString()).contains("in phase [RED_TEST]");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("in phase [RED_TEST]");
     }
 
     @Test
@@ -275,8 +285,10 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute();
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(out.toString()).contains("[dev-agent] Resumption aborted.");
+        assertThatCli(exitCode, out.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("[dev-agent] Resumption aborted.");
     }
 
     @Test
@@ -296,8 +308,10 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute("TASK-NOTFOUND");
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(err.toString()).contains("Task not found: TASK-NOTFOUND");
+        assertThatCli(exitCode, "", err.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .hasStdErrContaining("Task not found: TASK-NOTFOUND");
     }
 
     @Test
@@ -323,16 +337,25 @@ class ResumeCommandTest {
         CommandLine cl = new CommandLine(cmd);
         cl.setErr(new PrintWriter(err));
 
-        assertThat(cl.execute("TASK-TERM")).isEqualTo(1);
-        assertThat(err.toString()).contains("Task has already completed");
+        int exit1 = cl.execute("TASK-TERM");
+        assertThatCli(exit1, "", err.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .hasStdErrContaining("Task has already completed");
 
         err.getBuffer().setLength(0);
-        assertThat(cl.execute("TASK-ALIVE")).isEqualTo(1);
-        assertThat(err.toString()).contains("is still actively running");
+        int exit2 = cl.execute("TASK-ALIVE");
+        assertThatCli(exit2, "", err.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .hasStdErrContaining("is still actively running");
 
         err.getBuffer().setLength(0);
-        assertThat(cl.execute("TASK-NOWORKTREE")).isEqualTo(1);
-        assertThat(err.toString()).contains("Worktree directory .git/dev-agent-worktrees/TASK-NOWORKTREE is missing");
+        int exit3 = cl.execute("TASK-NOWORKTREE");
+        assertThatCli(exit3, "", err.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .hasStdErrContaining("Worktree directory .git/dev-agent-worktrees/TASK-NOWORKTREE is missing");
     }
 
     @Test
@@ -357,8 +380,9 @@ class ResumeCommandTest {
 
         int exitCode = cl.execute("TASK-OK");
 
-        assertThat(exitCode).isZero();
-        assertThat(out.toString()).contains("[dev-agent] Resuming task: TASK-OK");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("[dev-agent] Resuming task: TASK-OK");
 
         // Verify run() method delegates cleanly to call()
         cmd.run();

@@ -25,7 +25,7 @@ import java.io.StringWriter;
 import java.nio.file.Path;
 import java.time.Instant;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.quarkus.agent.testutil.CliOutputAssert.assertThatCli;
 
 @QuarkusTest
 class ResumeCommandIT {
@@ -71,8 +71,9 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(sw.toString()).contains("No interrupted or crashed tasks found for this project.");
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree("No interrupted or crashed tasks found for this project.");
     }
 
     @Test
@@ -92,10 +93,12 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(sw.toString())
-            .contains("Found interrupted task TASK-AUTO-RESUME in phase [GREEN_PATCH]")
-            .contains("Non-interactive environment detected. Run 'dev-agent resume TASK-AUTO-RESUME' to resume.");
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree(
+                "Found interrupted task TASK-AUTO-RESUME in phase [GREEN_PATCH]",
+                "Non-interactive environment detected. Run 'dev-agent resume TASK-AUTO-RESUME' to resume."
+            );
     }
 
     @Test
@@ -117,10 +120,12 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(sw.toString())
-            .contains("Found interrupted task TASK-PROMPT-YES in phase [GREEN_PATCH]")
-            .contains("Resuming task: TASK-PROMPT-YES");
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree(
+                "Found interrupted task TASK-PROMPT-YES in phase [GREEN_PATCH]",
+                "Resuming task: TASK-PROMPT-YES"
+            );
     }
 
     @Test
@@ -142,8 +147,10 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(sw.toString()).contains("Resumption aborted.");
+        assertThatCli(exitCode, sw.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("Resumption aborted.");
     }
 
     @Test
@@ -168,8 +175,10 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute(taskId);
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(err.toString()).contains("Process (PID " + ProcessHandle.current().pid() + ") is still actively running.");
+        assertThatCli(exitCode, "", err.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .hasStdErrContaining("Process (PID " + ProcessHandle.current().pid() + ") is still actively running.");
     }
 
     @Test
@@ -188,8 +197,10 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute(taskId);
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(err.toString()).contains("Worktree directory .git/dev-agent-worktrees/TASK-MISSING-DIR is missing.");
+        assertThatCli(exitCode, "", err.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .hasStdErrContaining("Worktree directory .git/dev-agent-worktrees/TASK-MISSING-DIR is missing.");
     }
 
     @Test
@@ -209,8 +220,9 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute(taskId);
 
-        assertThat(exitCode).isZero();
-        assertThat(sw.toString()).contains("Resuming task: TASK-VALID-CRASH");
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree("Resuming task: TASK-VALID-CRASH");
     }
 
     @Test
@@ -246,8 +258,9 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isZero();
-        assertThat(sw.toString()).contains("Found 2 interrupted tasks:").contains("Resuming task: TASK-MULTI-2");
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree("Found 2 interrupted tasks:", "Resuming task: TASK-MULTI-2");
     }
 
     @Test
@@ -283,7 +296,9 @@ class ResumeCommandIT {
 
         int exitCode = cli.execute();
 
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(sw.toString()).contains("Invalid selection.");
+        assertThatCli(exitCode, sw.toString())
+            .isFailure()
+            .hasExitCode(1)
+            .containsAnsiFree("Invalid selection.");
     }
 }

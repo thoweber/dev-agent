@@ -205,13 +205,15 @@ To ensure tests serve as resilient living documentation rather than brittle chan
 * **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=*CommandTest,DevAgentCommandTest`.
 
 ### Weakness 8: Robust Semantic CLI Output Assertions
+* **Status:** Complete (Implemented `CliOutputAssert` with ANSI code stripping and fluent semantic matchers; verified via `CliOutputAssertTest`; migrated `ResumeCommandTest`, `ResumeCommandIT`, and `DevAgentCommandTest`).
 * **Objective:** Eliminate brittle substring assertions on raw terminal stdout in [`ResumeCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/cli/ResumeCommandTest.java) and [`DevAgentCommandTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/DevAgentCommandTest.java).
 * **Concrete Steps:**
   1. Create [`CliOutputAssert.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/testutil/CliOutputAssert.java) in `org.quarkus.agent.testutil`:
-     - Implement regex-based ANSI escape code stripping (`\u001B\[[;0-9]*m`).
+     - Implement regex-based ANSI escape code stripping (`\u001B\[[0-9;?]*[a-zA-Z]`).
      - Provide fluent AssertJ custom assertions: `assertThatCli(output).hasExitCode(0).containsAnsiFree(text).hasTableEntry(taskId, phase)`.
+     - Author companion unit test [`CliOutputAssertTest.java`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/testutil/CliOutputAssertTest.java) (11 tests).
   2. Refactor CLI tests to assert against ANSI-sanitized text and exit codes rather than fragile JAnsi color codes and exact terminal whitespace.
-* **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=ResumeCommandTest,DevAgentCommandTest`.
+* **Verification:** Run `./mvnw spotless:apply && ./mvnw test -Dtest=ResumeCommandTest,ResumeCommandIT,DevAgentCommandTest,CliOutputAssertTest`.
 
 ### Weakness 9: Encapsulate Defensive Trimming Helpers & Drive via Realistic Conversation Turns
 * **Objective:** Re-encapsulate package-private trimming helpers in [`HierarchicalMemoryStore`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/cognitive/HierarchicalMemoryStore.java) to `private`, driving all eviction and trimming paths naturally through `memory.add()`.

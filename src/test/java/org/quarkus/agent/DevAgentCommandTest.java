@@ -17,6 +17,7 @@ import java.io.StringWriter;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.quarkus.agent.testutil.CliOutputAssert.assertThatCli;
 
 class DevAgentCommandTest {
 
@@ -33,19 +34,19 @@ class DevAgentCommandTest {
 
         int exitCode = cmd.execute("--help");
 
-        assertThat(exitCode).isZero();
-        String output = sw.toString();
-        assertThat(output).contains(
-            "dev-agent",
-            "init",
-            "plan",
-            "feature",
-            "status",
-            "logs",
-            "resume",
-            "abort",
-            "metrics"
-        );
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree(
+                "dev-agent",
+                "init",
+                "plan",
+                "feature",
+                "status",
+                "logs",
+                "resume",
+                "abort",
+                "metrics"
+            );
     }
 
     @Test
@@ -58,8 +59,9 @@ class DevAgentCommandTest {
 
         int exitCode = cmd.execute("--version");
 
-        assertThat(exitCode).isZero();
-        assertThat(sw.toString()).contains("1.0.0-SNAPSHOT");
+        assertThatCli(exitCode, sw.toString())
+            .isSuccess()
+            .containsAnsiFree("1.0.0-SNAPSHOT");
     }
 
     @Test
@@ -72,7 +74,7 @@ class DevAgentCommandTest {
 
         int exitCode = cmd.execute("-v", "--dir=" + tempDir.toString());
 
-        assertThat(exitCode).isZero();
+        assertThatCli(exitCode, sw.toString()).isSuccess();
         assertThat(command.isVerbose()).isTrue();
         assertThat(command.getDir()).isEqualTo(tempDir.toString());
     }
@@ -87,8 +89,9 @@ class DevAgentCommandTest {
 
         int exitCode = cmd.execute("unrecognized-subcommand");
 
-        assertThat(exitCode).isNotZero();
-        assertThat(err.toString()).contains("Unmatched argument at index 0");
+        assertThatCli(exitCode, "", err.toString())
+            .isFailure()
+            .hasStdErrContaining("Unmatched argument at index 0");
     }
 
     @Test
