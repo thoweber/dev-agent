@@ -366,6 +366,43 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
+    @DisplayName("Given multi-tool execution with intervening reasoning message - advances index and trims matching tool results")
+    void testMultiToolExecutionWithInterveningMessageTrimmed() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Batch processing"));
+
+        // AI requests two tools: call-inter-1 and call-inter-2
+        dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-inter-1").name("tool1").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest req2 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-inter-2").name("tool2").arguments("{}").build();
+        memory.add(AiMessage.from(List.of(req1, req2)));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req1, "res1"));
+        // Intervening AI message between tool results
+        memory.add(new AiMessage("Processing intermediate step..."));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req2, "res2"));
+
+        // Subsequent steps to exceed budget
+        for (int i = 3; i <= 14; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("step-inter-" + i)
+                .name("tool")
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+        memory.add(new AiMessage("All steps done."));
+
+        assertThat(memory.messages()).hasSizeLessThanOrEqualTo(24);
+        assertThat(memory.messages()).noneMatch(m ->
+            m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
+            (tr.id().equals("call-inter-1") || tr.id().equals("call-inter-2"))
+        );
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
     @DisplayName("Given conversation starting with AiMessage followed by tool interactions - trims cleanly when exceeding budget")
     void testAiMessageStartingConversationWithToolTrimming() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();

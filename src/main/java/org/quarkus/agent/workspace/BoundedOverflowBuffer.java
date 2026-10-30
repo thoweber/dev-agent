@@ -135,14 +135,10 @@ public class BoundedOverflowBuffer implements AutoCloseable {
 
     private Path createSecureTempFile() throws IOException {
         Path parent = tempDirRoot != null ? tempDirRoot : Path.of(System.getProperty("java.io.tmpdir"));
-        try {
-            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
-                EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
-            );
-            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
-        } catch (UnsupportedOperationException _) {
-            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
-        }
+        FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
+            EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+        );
+        return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
     }
 
     private void checkOverflow(int incoming) throws IOException {

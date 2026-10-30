@@ -277,4 +277,28 @@ class BoundedOverflowBufferTest {
         buffer.close();
         buffer.close();
     }
+
+    @Test
+    @DisplayName("Given disk-overflowed buffer when file deletion fails on close - propagates IOException")
+    void testCloseThrowsWhenFileDeletionFails() throws IOException {
+        Path restrictedSubdir = Files.createDirectory(tempDir.resolve("restricted-dir"));
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, restrictedSubdir);
+        try {
+            buffer.outputStream().write("1234567890".getBytes(StandardCharsets.UTF_8));
+            assertThat(buffer.isOverflowedToDisk()).isTrue();
+
+            boolean madeNonWritable = restrictedSubdir.toFile().setWritable(false, false);
+            if (madeNonWritable) {
+                assertThatThrownBy(buffer::close).isInstanceOf(IOException.class);
+            } else {
+                buffer.close();
+            }
+        } finally {
+            restrictedSubdir.toFile().setWritable(true, false);
+            try {
+                buffer.close();
+            } catch (Exception ignored) {
+            }
+        }
+    }
 }

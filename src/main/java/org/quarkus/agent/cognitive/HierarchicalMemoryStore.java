@@ -80,7 +80,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         return false;
     }
 
-    private static boolean hasMatchingId(AiMessage ai, String resultId) {
+    private boolean hasMatchingId(AiMessage ai, String resultId) {
         for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
             if (Objects.equals(req.id(), resultId)) {
                 return true;
@@ -187,22 +187,38 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     public boolean assertTurnStructureInvariants() {
-        return allToolResultsHaveMatchingRequests(slidingScratchpad);
+        if (containsSystemMessage() || startsWithToolExecutionResult()) {
+            return false;
+        }
+        return allToolResultsHaveMatchingRequests();
     }
 
-    private static boolean allToolResultsHaveMatchingRequests(List<ChatMessage> messages) {
-        for (int i = 0; i < messages.size(); i++) {
-            if (messages.get(i) instanceof ToolExecutionResultMessage toolResult
-                && !hasPrecedingRequest(messages, toolResult.id(), i)) {
+    private boolean containsSystemMessage() {
+        for (ChatMessage msg : slidingScratchpad) {
+            if (msg instanceof SystemMessage) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean startsWithToolExecutionResult() {
+        return !slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage;
+    }
+
+    private boolean allToolResultsHaveMatchingRequests() {
+        for (int i = 0; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof ToolExecutionResultMessage toolResult
+                && !hasPrecedingRequest(toolResult.id(), i)) {
                 return false;
             }
         }
         return true;
     }
 
-    private static boolean hasPrecedingRequest(List<ChatMessage> messages, String toolResultId, int currentIndex) {
+    private boolean hasPrecedingRequest(String toolResultId, int currentIndex) {
         for (int j = 0; j < currentIndex; j++) {
-            if (messages.get(j) instanceof AiMessage ai
+            if (slidingScratchpad.get(j) instanceof AiMessage ai
                 && ai.hasToolExecutionRequests()
                 && hasMatchingId(ai, toolResultId)) {
                 return true;
