@@ -110,8 +110,6 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (fileChannel != null) {
             try {
                 fileChannel.close();
-            } catch (IOException e) {
-                failure = e;
             } finally {
                 fileChannel = null;
             }
@@ -120,9 +118,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             try {
                 Files.deleteIfExists(diskTempFile);
             } catch (IOException e) {
-                if (failure == null) {
-                    failure = e;
-                }
+                failure = e;
             } finally {
                 diskTempFile = null;
             }
@@ -142,9 +138,6 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     private void checkOverflow(int incoming) throws IOException {
-        if (closed) {
-            throw new IOException("Buffer is closed");
-        }
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
             this.diskTempFile = tempFile;
