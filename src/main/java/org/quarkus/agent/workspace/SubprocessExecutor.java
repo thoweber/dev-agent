@@ -25,6 +25,24 @@ public class SubprocessExecutor {
     public static final int DEFAULT_MEMORY_THRESHOLD = 1024 * 1024;       // 1 MB
     public static final int DEFAULT_MAX_CAPACITY = 10 * 1024 * 1024;     // 10 MB
 
+    private final int memoryThreshold;
+    private final int maxCapacity;
+
+    public SubprocessExecutor() {
+        this(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY);
+    }
+
+    public SubprocessExecutor(int memoryThreshold, int maxCapacity) {
+        if (memoryThreshold <= 0) {
+            throw new IllegalArgumentException("Memory threshold must be greater than 0");
+        }
+        if (maxCapacity < memoryThreshold) {
+            throw new IllegalArgumentException("Max capacity cannot be smaller than memory threshold");
+        }
+        this.memoryThreshold = memoryThreshold;
+        this.maxCapacity = maxCapacity;
+    }
+
     public ProcessResult execute(List<String> command, Path workingDir, Duration timeout) {
         return execute(command, workingDir, timeout, Map.of());
     }
@@ -42,12 +60,12 @@ public class SubprocessExecutor {
             closeProcessStdin(process);
         } catch (IOException e) {
             LOG.warnf(e, "Subprocess execution failed: %s", e.getMessage());
-            return failureResult(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            return failureResult(e.getMessage());
         }
 
         try (
-            BoundedOverflowBuffer stdoutBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY);
-            BoundedOverflowBuffer stderrBuffer = new BoundedOverflowBuffer(DEFAULT_MEMORY_THRESHOLD, DEFAULT_MAX_CAPACITY)
+            BoundedOverflowBuffer stdoutBuffer = new BoundedOverflowBuffer(memoryThreshold, maxCapacity);
+            BoundedOverflowBuffer stderrBuffer = new BoundedOverflowBuffer(memoryThreshold, maxCapacity)
         ) {
             Thread stdoutDrainer = Thread.ofVirtual().start(() -> drain(process.getInputStream(), stdoutBuffer.outputStream()));
             Thread stderrDrainer = Thread.ofVirtual().start(() -> drain(process.getErrorStream(), stderrBuffer.outputStream()));

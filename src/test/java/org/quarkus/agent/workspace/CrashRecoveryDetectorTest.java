@@ -7,9 +7,10 @@ import org.quarkus.agent.entity.TaskPersistenceService;
 import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStatus;
+import org.quarkus.agent.testutil.TaskRunMother;
+import org.quarkus.agent.testutil.WorktreeTestFixture;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -28,11 +29,11 @@ class CrashRecoveryDetectorTest {
 
         assertThat(detector.isTaskResumable(null)).isFalse();
 
-        TaskRun nullStatus = TaskRun.builder().taskId("TASK-1").build();
+        TaskRun nullStatus = TaskRunMother.builder("TASK-1").status(null).build();
         assertThat(detector.isTaskResumable(nullStatus)).isFalse();
 
         for (TaskStatus terminalStatus : List.of(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED)) {
-            TaskRun terminalTask = TaskRun.builder().taskId("TASK-1").status(terminalStatus).build();
+            TaskRun terminalTask = TaskRunMother.builder("TASK-1").status(terminalStatus).build();
             assertThat(detector.isTaskResumable(terminalTask)).isFalse();
         }
     }
@@ -44,11 +45,7 @@ class CrashRecoveryDetectorTest {
         CrashRecoveryDetector detector = new CrashRecoveryDetector(new ProjectIdResolver(workspace), new TaskPersistenceService(), workspace);
 
         long currentPid = ProcessHandle.current().pid();
-        TaskRun task = TaskRun.builder()
-            .taskId("TASK-ALIVE")
-            .status(TaskStatus.GREEN_PATCH)
-            .pid(currentPid)
-            .build();
+        TaskRun task = TaskRunMother.active("TASK-ALIVE", currentPid);
 
         assertThat(detector.isTaskResumable(task)).isFalse();
     }
@@ -59,14 +56,8 @@ class CrashRecoveryDetectorTest {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         CrashRecoveryDetector detector = new CrashRecoveryDetector(new ProjectIdResolver(workspace), new TaskPersistenceService(), workspace);
 
-        Path worktree = workspace.resolveWorktreeDir("TASK-DEAD");
-        Files.createDirectories(worktree);
-
-        TaskRun task = TaskRun.builder()
-            .taskId("TASK-DEAD")
-            .status(TaskStatus.GREEN_PATCH)
-            .pid(999999999L) // Highly unlikely to exist
-            .build();
+        WorktreeTestFixture.createWorktree(tempDir, "TASK-DEAD");
+        TaskRun task = TaskRunMother.crashed("TASK-DEAD", TaskStatus.GREEN_PATCH);
 
         assertThat(detector.isTaskResumable(task)).isTrue();
     }
@@ -77,11 +68,7 @@ class CrashRecoveryDetectorTest {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         CrashRecoveryDetector detector = new CrashRecoveryDetector(new ProjectIdResolver(workspace), new TaskPersistenceService(), workspace);
 
-        TaskRun task = TaskRun.builder()
-            .taskId("TASK-NO-WORKTREE")
-            .status(TaskStatus.GREEN_PATCH)
-            .pid(999999999L)
-            .build();
+        TaskRun task = TaskRunMother.crashed("TASK-NO-WORKTREE", TaskStatus.GREEN_PATCH);
 
         assertThat(detector.isTaskResumable(task)).isFalse();
     }
@@ -90,25 +77,11 @@ class CrashRecoveryDetectorTest {
     @DisplayName("Given candidate list from persistence - filters strictly resumable tasks")
     void testFindAllResumableTasksFiltering() throws IOException {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
-        Path worktree = workspace.resolveWorktreeDir("TASK-RESUMABLE");
-        Files.createDirectories(worktree);
+        Path worktree = WorktreeTestFixture.createWorktree(tempDir, "TASK-RESUMABLE");
 
-        TaskRun resumable = TaskRun.builder()
-            .taskId("TASK-RESUMABLE")
-            .status(TaskStatus.GREEN_PATCH)
-            .pid(999999999L)
-            .build();
-
-        TaskRun terminal = TaskRun.builder()
-            .taskId("TASK-COMPLETED")
-            .status(TaskStatus.COMPLETED)
-            .build();
-
-        TaskRun noWorktree = TaskRun.builder()
-            .taskId("TASK-GHOST")
-            .status(TaskStatus.RED_TEST)
-            .pid(999999999L)
-            .build();
+        TaskRun resumable = TaskRunMother.crashed("TASK-RESUMABLE", TaskStatus.GREEN_PATCH);
+        TaskRun terminal = TaskRunMother.completed("TASK-COMPLETED");
+        TaskRun noWorktree = TaskRunMother.crashed("TASK-GHOST", TaskStatus.RED_TEST);
 
         TaskPersistenceService mockPersistence = new TaskPersistenceService() {
             @Override
@@ -154,11 +127,9 @@ class CrashRecoveryDetectorTest {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         CrashRecoveryDetector detector = new CrashRecoveryDetector(new ProjectIdResolver(workspace), new TaskPersistenceService(), workspace);
 
-        Path worktree = workspace.resolveWorktreeDir("TASK-NULL-PID");
-        Files.createDirectories(worktree);
+        WorktreeTestFixture.createWorktree(tempDir, "TASK-NULL-PID");
 
-        TaskRun task = TaskRun.builder()
-            .taskId("TASK-NULL-PID")
+        TaskRun task = TaskRunMother.builder("TASK-NULL-PID")
             .status(TaskStatus.PLANNING)
             .pid(null)
             .build();

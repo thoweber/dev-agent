@@ -6,7 +6,9 @@ import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStatus;
+import org.quarkus.agent.testutil.TaskRunMother;
 import org.quarkus.agent.workspace.ProjectIdResolver;
 
 import java.time.Instant;
@@ -200,9 +202,8 @@ class StatePersistenceIT {
     void testLiveContainerPersistenceOperations() {
         QuarkusTransaction.requiringNew().run(() -> {
             persistenceService.deleteAll();
-            org.quarkus.agent.model.TaskRun taskRun = org.quarkus.agent.model.TaskRun.builder()
+            TaskRun taskRun = TaskRunMother.builder("TASK-SAVE-IT")
                 .projectId("it-org/it-repo")
-                .taskId("TASK-SAVE-IT")
                 .status(TaskStatus.GREEN_PATCH)
                 .currentPhase("GREEN_PATCH")
                 .build();

@@ -7,6 +7,7 @@ import org.quarkus.agent.model.ProjectId;
 import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStateChangeEvent;
 import org.quarkus.agent.model.TaskStatus;
+import org.quarkus.agent.testutil.TaskRunMother;
 import org.quarkus.agent.workspace.SanitizedOutput;
 
 import java.time.Instant;
@@ -219,9 +220,8 @@ class TaskPersistenceServiceTest {
     @DisplayName("Given saveTask with new and existing domain objects - handles timestamps and persists")
     void testSaveTask() {
         Instant now = Instant.parse("2026-10-25T14:00:00Z");
-        TaskRun domainWithTimestamps = TaskRun.builder()
+        TaskRun domainWithTimestamps = TaskRunMother.builder("TASK-2")
             .projectId("org/repo")
-            .taskId("TASK-2")
             .status(TaskStatus.GREEN_PATCH)
             .currentPhase("GREEN")
             .branch("feature/TASK-2")
@@ -264,11 +264,10 @@ class TaskPersistenceServiceTest {
             mockedTask.when(() -> TaskRunEntity.findByProjectAndTask("org/repo", "TASK-2"))
                 .thenReturn(existing);
 
-            TaskRun domainWithoutTimestamps = TaskRun.builder()
-                .projectId("org/repo")
-                .taskId("TASK-2")
-                .status(TaskStatus.COMPLETED)
-                .currentPhase("COMPLETED")
+            TaskRun domainWithoutTimestamps = TaskRunMother.completed("org/repo", "TASK-2")
+                .toBuilder()
+                .createdAt(null)
+                .updatedAt(null)
                 .build();
 
             TaskRun savedExisting = service.saveTask(domainWithoutTimestamps);
@@ -317,7 +316,7 @@ class TaskPersistenceServiceTest {
             mockedTask.when(() -> TaskRunEntity.findByProjectAndTask("org/repo", "TASK-EX"))
                 .thenThrow(new IllegalStateException("Uninitialized Arc"));
 
-            TaskRun taskToSave = TaskRun.builder().projectId("org/repo").taskId("TASK-EX").build();
+            TaskRun taskToSave = TaskRunMother.builder("TASK-EX").projectId("org/repo").build();
             TaskRun saved = service.saveTask(taskToSave);
             assertThat(saved).isNotNull();
             assertThat(saved.taskId()).isEqualTo("TASK-EX");

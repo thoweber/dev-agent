@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
@@ -93,6 +95,51 @@ public class HierarchicalMemoryStore implements ChatMemory {
         }
         while (countTurns() > 1 && slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES) {
             evictOldestTurn();
+        }
+        while (slidingScratchpad.size() > MAX_SCRATCHPAD_MESSAGES && canTrimOldestToolInteraction()) {
+            trimOldestToolInteraction();
+        }
+    }
+
+    private int findOldestTrimmableToolInteractionIndex() {
+        int startIndex = (slidingScratchpad.getFirst() instanceof UserMessage) ? 1 : 0;
+        int toolAiIndex = -1;
+        for (int i = startIndex; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
+                toolAiIndex = i;
+                break;
+            }
+        }
+        if (toolAiIndex == -1) {
+            return -1;
+        }
+        for (int i = toolAiIndex + 1; i < slidingScratchpad.size(); i++) {
+            if (slidingScratchpad.get(i) instanceof AiMessage) {
+                return toolAiIndex;
+            }
+        }
+        return -1;
+    }
+
+    private boolean canTrimOldestToolInteraction() {
+        return findOldestTrimmableToolInteractionIndex() != -1;
+    }
+
+    private void trimOldestToolInteraction() {
+        int targetIndex = findOldestTrimmableToolInteractionIndex();
+        AiMessage ai = (AiMessage) slidingScratchpad.get(targetIndex);
+        Set<String> requestIds = ai.toolExecutionRequests().stream()
+            .map(ToolExecutionRequest::id)
+            .collect(Collectors.toSet());
+        slidingScratchpad.remove(targetIndex);
+        int currentIndex = targetIndex;
+        while (currentIndex < slidingScratchpad.size() && !requestIds.isEmpty()) {
+            ChatMessage next = slidingScratchpad.get(currentIndex);
+            if (next instanceof ToolExecutionResultMessage toolResult && requestIds.remove(toolResult.id())) {
+                slidingScratchpad.remove(currentIndex);
+            } else {
+                currentIndex++;
+            }
         }
     }
 

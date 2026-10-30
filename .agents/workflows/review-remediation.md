@@ -1,6 +1,6 @@
 # Workflow: Autonomous SonarCloud & CodeRabbit Remediation Loop
 
-This workflow defines the standardized 5-step loop for autonomous agents to ingest, triage, patch, and verify SonarCloud Quality Gate issues and CodeRabbit AI review comments.
+This workflow defines the standardized 6-step loop for autonomous agents to ingest, triage, patch, and verify SonarCloud Quality Gate issues and CodeRabbit AI review comments.
 
 ---
 
@@ -155,3 +155,15 @@ Before pushing any commit, verify that all local checks pass in accordance with 
    * Query `gh api "repos/{owner}/{repo}/pulls/<PR_ID>/comments"` to inspect for any new review comments on the latest commit.
    * If new actionable comments exist, re-enter **Step 2 (Classification)**.
    * If no new actionable comments exist (or the recent review section notes *"No actionable comments were generated in the recent review"*), the remediation workflow terminates with **100% Quality Gate & Review Approval**.
+
+---
+
+## Step 6: Completion & Hand-Off (Strictly No Autonomous Merge)
+
+* **Mandatory Merge Prohibition:** Under NO circumstances may the agent execute `gh pr merge`, run fast-forward merges into `main`, or use administrative bypasses (`--admin`). PR merging is exclusively reserved for the human user.
+* **Hand-Off Protocol:**
+  1. Confirm all CI checks are green (`gh pr checks`).
+  2. Confirm SonarCloud Quality Gate passes (`status == "OK"`).
+  3. Confirm JaCoCo quality gates pass (`./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates`).
+  4. Confirm all inline and outside-diff CodeRabbit review findings are resolved (`./scripts/check_pr_reviews.py --details`).
+  5. Present a concise markdown hand-off summary linking all modified files and test results, and invite the user to inspect and merge the pull request.

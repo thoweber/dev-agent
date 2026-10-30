@@ -9,6 +9,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
  * ArchUnit architecture governance verifying native GraalVM Mandrel compliance and CDI scoping.
@@ -64,4 +65,14 @@ public class AgentArchitectureTest {
         classes()
             .that(CONTAIN_TEST_OR_LIFECYCLE_METHODS)
             .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+
+    @ArchTest
+    public static final ArchRule testsMustNotUseReflectionToBypassEncapsulation =
+        noClasses()
+            .that().haveSimpleNameEndingWith("Test")
+            .or().haveSimpleNameEndingWith("IT")
+            .should().callMethodWhere(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
+                com.tngtech.archunit.core.domain.properties.HasName.Predicates.name("setAccessible")
+            ))
+            .as("Test classes must practice black-box behavioral verification and not use setAccessible(true)");
 }

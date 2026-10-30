@@ -2,15 +2,23 @@ package org.quarkus.agent.workspace;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BoundedOverflowBufferTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     @DisplayName("Given small output below threshold - buffers purely in memory and exposes segregated streams")
@@ -36,7 +44,7 @@ class BoundedOverflowBufferTest {
         int memoryLimit = 100;
         int maxCapacity = 1000;
 
-        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(memoryLimit, maxCapacity)) {
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(memoryLimit, maxCapacity, tempDir)) {
             OutputStream out = buffer.outputStream();
             byte[] chunk1 = "A".repeat(80).getBytes(StandardCharsets.UTF_8);
             byte[] chunk2 = "B".repeat(50).getBytes(StandardCharsets.UTF_8);
@@ -118,7 +126,7 @@ class BoundedOverflowBufferTest {
             assertThat(buffer.getTotalBytesWritten()).isZero();
 
             // Null array throws NPE
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(null, 0, 0))
+            assertThatThrownBy(() -> out.write(null, 0, 0))
                 .isInstanceOf(NullPointerException.class);
 
             // Zero length write is no-op
@@ -126,15 +134,15 @@ class BoundedOverflowBufferTest {
             assertThat(buffer.getTotalBytesWritten()).isZero();
 
             // Negative length throws IndexOutOfBoundsException
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 0, -1))
+            assertThatThrownBy(() -> out.write(new byte[10], 0, -1))
                 .isInstanceOf(IndexOutOfBoundsException.class);
 
             // Negative offset throws IndexOutOfBoundsException
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], -1, 5))
+            assertThatThrownBy(() -> out.write(new byte[10], -1, 5))
                 .isInstanceOf(IndexOutOfBoundsException.class);
 
             // Offset + length exceeding buffer throws IndexOutOfBoundsException
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[10], 6, 5))
+            assertThatThrownBy(() -> out.write(new byte[10], 6, 5))
                 .isInstanceOf(IndexOutOfBoundsException.class);
 
             out.write("default-buffer-test".getBytes(StandardCharsets.UTF_8));
@@ -148,13 +156,13 @@ class BoundedOverflowBufferTest {
     @Test
     @DisplayName("Given invalid constructor thresholds - throws IllegalArgumentException")
     void testConstructorValidations() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(0, 100))
+        assertThatThrownBy(() -> new BoundedOverflowBuffer(0, 100))
             .isInstanceOf(IllegalArgumentException.class);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(100, 0))
+        assertThatThrownBy(() -> new BoundedOverflowBuffer(100, 0))
             .isInstanceOf(IllegalArgumentException.class);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new BoundedOverflowBuffer(200, 100))
+        assertThatThrownBy(() -> new BoundedOverflowBuffer(200, 100))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -166,11 +174,13 @@ class BoundedOverflowBufferTest {
         out.write("test".getBytes(StandardCharsets.UTF_8));
         buffer.close();
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write('a'))
+        assertThatThrownBy(() -> out.write('a'))
             .isInstanceOf(IOException.class);
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> out.write(new byte[]{1, 2, 3}))
+        assertThatThrownBy(() -> out.write(new byte[]{1, 2, 3}))
             .isInstanceOf(IOException.class);
-        org.assertj.core.api.Assertions.assertThatThrownBy(buffer::inputStream)
+        assertThatThrownBy(buffer::inputStream)
+            .isInstanceOf(IOException.class);
+        assertThatThrownBy(buffer::asString)
             .isInstanceOf(IOException.class);
     }
 
@@ -214,6 +224,81 @@ class BoundedOverflowBufferTest {
             assertThat(diskBuffer.isTruncated()).isFalse();
             out.write('X');
             assertThat(diskBuffer.isTruncated()).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("Given fault on disk overflow - cleans up temporary file and throws IOException")
+    void testDiskOverflowFaultInjectionAndCleanup() throws IOException {
+        Path regularFile = tempDir.resolve("file-not-a-directory");
+        Files.createFile(regularFile);
+
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(10, 100, regularFile)) {
+            OutputStream out = buffer.outputStream();
+
+            // In-memory writes below threshold succeed
+            out.write("12345".getBytes(StandardCharsets.UTF_8));
+            assertThat(buffer.isOverflowedToDisk()).isFalse();
+            assertThat(buffer.getTotalBytesWritten()).isEqualTo(5);
+
+            // Exceeding memory threshold attempts overflow into a regular file (not directory) and fails
+            assertThatThrownBy(() -> out.write("678901".getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(IOException.class);
+
+            // Confirm buffer did not set overflowed flag
+            assertThat(buffer.isOverflowedToDisk()).isFalse();
+        }
+    }
+
+    @Test
+    @DisplayName("Given disk-overflowed buffer - close deletes temporary file from filesystem and is idempotent")
+    void testOverflowFileDeletedOnCloseAndIdempotentClose() throws IOException {
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(10, 100, tempDir);
+        OutputStream out = buffer.outputStream();
+
+        // Write enough data to overflow to disk
+        out.write("123456789012345".getBytes(StandardCharsets.UTF_8));
+        assertThat(buffer.isOverflowedToDisk()).isTrue();
+
+        // Verify a temporary file exists on disk
+        try (Stream<Path> list = Files.list(tempDir)) {
+            assertThat(list.anyMatch(p -> p.getFileName().toString().startsWith("dev-agent-proc-"))).isTrue();
+        }
+
+        // Close buffer
+        buffer.close();
+
+        // Verify all temporary files in tempDir are deleted
+        try (Stream<Path> list = Files.list(tempDir)) {
+            assertThat(list.filter(p -> p.getFileName().toString().startsWith("dev-agent-proc-"))).isEmpty();
+        }
+
+        // Multiple subsequent closes are idempotent no-ops
+        buffer.close();
+        buffer.close();
+    }
+
+    @Test
+    @DisplayName("Given disk-overflowed buffer when file deletion fails on close - propagates IOException")
+    void testCloseThrowsWhenFileDeletionFails() throws IOException {
+        Path restrictedSubdir = Files.createDirectory(tempDir.resolve("restricted-dir"));
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, restrictedSubdir);
+        try {
+            buffer.outputStream().write("1234567890".getBytes(StandardCharsets.UTF_8));
+            assertThat(buffer.isOverflowedToDisk()).isTrue();
+
+            boolean madeNonWritable = restrictedSubdir.toFile().setWritable(false, false);
+            if (madeNonWritable) {
+                assertThatThrownBy(buffer::close).isInstanceOf(IOException.class);
+            } else {
+                buffer.close();
+            }
+        } finally {
+            restrictedSubdir.toFile().setWritable(true, false);
+            try {
+                buffer.close();
+            } catch (Exception ignored) {
+            }
         }
     }
 }
