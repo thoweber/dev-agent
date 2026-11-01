@@ -5,25 +5,75 @@ verify_markdown_links.py - Validate that Markdown files contain only valid relat
 Enforces:
 1. Prohibits 'file://' URI schemes.
 2. Prohibits machine-specific absolute filesystem paths (/home/, /Users/, etc.).
-3. Verifies that relative internal links resolve to existing files or directories.
+3. Verifies that relative internal links resolve to paths within repo_root.
+4. Verifies that relative internal links resolve to existing files or directories.
+5. Validates both inline links [text](url) and reference-style links [text][ref].
+6. Strictly matches opening code fence character and length before closing blocks.
 """
 
 import argparse
 import re
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 IGNORED_DIRS = {".git", "target", ".idea", "node_modules", ".system_generated", "venv", "__pycache__"}
 
-# Match markdown links: [text](url)
-# Avoid false positives in inline code or images when possible
+# Match markdown inline links: [text](url)
 LINK_PATTERN = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
+# Match reference definitions: [label]: url "optional title"
+REF_DEF_PATTERN = re.compile(r"^\s*\[([^\]]+)\]:\s*(\S+)(?:\s+[\"'(].*[\"')])?\s*$")
 
-def strip_code_blocks(content: str) -> str:
-    """Removes fenced code blocks to prevent parsing code snippets as links."""
-    return re.sub(r"```[\s\S]*?```", "", content)
+# Match reference-style links: [text][ref] or [ref][]
+REF_LINK_PATTERN = re.compile(r"(?<!!)\[([^\]]+)\]\[([^\]]*)\]")
+
+
+def validate_target_url(
+    raw_url: str,
+    file_path: Path,
+    repo_root: Path,
+    line_idx: int,
+) -> List[Tuple[int, str, str]]:
+    """Validates a single raw target URL against repository link standards."""
+    errors: List[Tuple[int, str, str]] = []
+    clean_url = raw_url.strip()
+
+    # 1. Prohibit file:// scheme
+    if clean_url.lower().startswith("file:"):
+        errors.append((line_idx, clean_url, "Absolute 'file://' URI scheme is strictly prohibited"))
+        return errors
+
+    # 2. Skip external web/email links and pure page anchors
+    if clean_url.lower().startswith(("http://", "https://", "mailto:")) or clean_url.startswith("#"):
+        return errors
+
+    # 3. Prohibit absolute filesystem paths
+    if clean_url.startswith(("/", "\\")) or (len(clean_url) > 2 and clean_url[1] == ":" and clean_url[0].isalpha()):
+        errors.append((line_idx, clean_url, "Absolute filesystem path is prohibited; use relative paths"))
+        return errors
+
+    # 4. Extract path part (strip anchors and query params)
+    path_part = clean_url.split("#")[0].split("?")[0]
+    if not path_part:
+        return errors
+
+    try:
+        target_path = (file_path.parent / path_part).resolve()
+    except Exception as e:
+        errors.append((line_idx, clean_url, f"Failed to resolve link path: {e}"))
+        return errors
+
+    # 5. Target must stay within repository root boundary
+    if not target_path.is_relative_to(repo_root):
+        errors.append((line_idx, clean_url, f"Link targets path outside repository boundary: {path_part}"))
+        return errors
+
+    # 6. Verify target exists
+    if not target_path.exists():
+        errors.append((line_idx, clean_url, f"Relative link targets non-existent path: {path_part}"))
+
+    return errors
 
 
 def check_markdown_file(file_path: Path, repo_root: Path) -> List[Tuple[int, str, str]]:
@@ -38,46 +88,62 @@ def check_markdown_file(file_path: Path, repo_root: Path) -> List[Tuple[int, str
         return [(0, "", f"Could not read file: {e}")]
 
     lines = raw_text.splitlines()
+
+    # Pass 1: Parse code blocks & collect reference definitions
+    ref_defs: Dict[str, Tuple[int, str]] = {}
+    non_code_lines: List[Tuple[int, str]] = []
+
     in_code_block = False
+    current_fence_char = None
+    current_fence_len = 0
 
     for line_idx, line in enumerate(lines, 1):
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_code_block = not in_code_block
-            continue
+        fence_match = re.match(r"^(`{3,}|~{3,})", stripped)
+        if fence_match:
+            fence = fence_match.group(1)
+            if not in_code_block:
+                in_code_block = True
+                current_fence_char = fence[0]
+                current_fence_len = len(fence)
+                continue
+            elif fence[0] == current_fence_char and len(fence) >= current_fence_len:
+                in_code_block = False
+                current_fence_char = None
+                current_fence_len = 0
+                continue
 
         if in_code_block:
             continue
 
+        ref_match = REF_DEF_PATTERN.match(line)
+        if ref_match:
+            ref_label = ref_match.group(1).strip().lower()
+            ref_url = ref_match.group(2).strip()
+            ref_defs[ref_label] = (line_idx, ref_url)
+            # Also validate the target defined in the reference
+            errors.extend(validate_target_url(ref_url, file_path, repo_root, line_idx))
+        else:
+            non_code_lines.append((line_idx, line))
+
+    # Pass 2: Check inline links and reference usages
+    for line_idx, line in non_code_lines:
         # Strip inline code spans to avoid checking illustrative syntax examples
         line_clean = re.sub(r"`[^`]*`", "", line)
 
+        # Check inline links: [text](url)
         for match in LINK_PATTERN.finditer(line_clean):
-            link_text = match.group(1)
             raw_url = match.group(2).strip()
+            errors.extend(validate_target_url(raw_url, file_path, repo_root, line_idx))
 
-            # 1. Prohibit file:// scheme
-            if raw_url.lower().startswith("file:"):
-                errors.append((line_idx, raw_url, "Absolute 'file://' URI scheme is strictly prohibited"))
-                continue
+        # Check reference-style links: [text][ref] or [text][]
+        for match in REF_LINK_PATTERN.finditer(line_clean):
+            text_part = match.group(1).strip()
+            ref_part = match.group(2).strip()
+            ref_key = (ref_part if ref_part else text_part).lower()
 
-            # 2. Skip external web/email links and pure page anchors
-            if raw_url.lower().startswith(("http://", "https://", "mailto:")) or raw_url.startswith("#"):
-                continue
-
-            # 3. Prohibit absolute filesystem paths
-            if raw_url.startswith(("/", "\\")) or (len(raw_url) > 2 and raw_url[1] == ":" and raw_url[0].isalpha()):
-                errors.append((line_idx, raw_url, "Absolute filesystem path is prohibited; use relative paths"))
-                continue
-
-            # 4. Verify relative internal path exists
-            path_part = raw_url.split("#")[0].split("?")[0]
-            if not path_part:
-                continue
-
-            target_path = (file_path.parent / path_part).resolve()
-            if not target_path.exists():
-                errors.append((line_idx, raw_url, f"Relative link targets non-existent path: {path_part}"))
+            if ref_key not in ref_defs:
+                errors.append((line_idx, f"[{text_part}][{ref_part}]", f"Unresolved reference link label: '{ref_key}'"))
 
     return errors
 

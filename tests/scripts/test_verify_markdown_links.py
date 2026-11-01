@@ -112,6 +112,69 @@ class TestVerifyMarkdownLinks(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0], self.root / "valid.md")
 
+    def test_code_block_fence_matching_preserves_code_within_nested_fences(self):
+        source = self.root / "nested_fences.md"
+        # 4 backticks opener should not be closed by 3 backticks
+        source.write_text(
+            """````carousel
+[Slide Link](file:///home/bad/slide1.md)
+```python
+print("nested code")
+```
+````
+""",
+            encoding="utf-8",
+        )
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(errors, [])
+
+    def test_flags_links_escaping_repo_root(self):
+        source = self.root / "escape.md"
+        source.write_text("See [Passwd](../../../../../../etc/passwd).\n", encoding="utf-8")
+
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(len(errors), 1)
+        line_no, link, msg = errors[0]
+        self.assertEqual(line_no, 1)
+        self.assertIn("outside repository boundary", msg)
+
+    def test_valid_reference_style_links_pass(self):
+        target = self.root / "target.md"
+        target.write_text("# Target\n", encoding="utf-8")
+
+        source = self.root / "ref_links.md"
+        source.write_text(
+            """See [Target Guide][guide] and [target][] for details.
+
+[guide]: target.md "Target Title"
+[target]: target.md
+""",
+            encoding="utf-8",
+        )
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(errors, [])
+
+    def test_flags_broken_reference_style_links(self):
+        source = self.root / "broken_ref.md"
+        source.write_text(
+            """See [Broken Guide][missing_file].
+
+[missing_file]: nonexistent.md
+""",
+            encoding="utf-8",
+        )
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("non-existent path", errors[0][2])
+
+    def test_flags_unresolved_reference_labels(self):
+        source = self.root / "unresolved_ref.md"
+        source.write_text("See [Broken Reference][undefined_label].\n", encoding="utf-8")
+
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Unresolved reference link label", errors[0][2])
+
     def test_main_cli_success(self):
         target = self.root / "valid.md"
         target.write_text("# Valid doc\n", encoding="utf-8")
