@@ -450,6 +450,7 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
         clean_body = re.sub(r"<.*?>", "", content_html).strip()
         if "```" in clean_body:
             clean_body = clean_body.split("```")[0].strip()
+        redacted_body = redact_sensitive_text(clean_body)
 
         findings.append({
             "id": cid,
@@ -460,7 +461,7 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
             "category": category,
             "title": title,
             "action_prompt": prompt,
-            "body": clean_body[:500],
+            "body": redacted_body[:500],
         })
 
     return findings
@@ -754,7 +755,7 @@ def main() -> None:
             print(f"[{i}] {status_flag} Thread ID: {tid}")
             print(f"    Target:   {path}:{line}")
             print(f"    Severity: {meta['severity']} | Category: {meta['category']}" + (f" | {meta['cwe']}" if meta['cwe'] else ""))
-            print(f"    Finding:  {sanitize_untrusted_text(meta['title'], prefix='')}")
+            print(f"    Finding:  {sanitize_untrusted_text(redact_sensitive_text(meta['title']), prefix='')}")
             print(f"    History:  {len(comments)} comment(s). Last author: @{last_comment.get('author', {}).get('login', 'unknown')}")
 
             if args.details:
@@ -765,10 +766,10 @@ def main() -> None:
                 print("    --- Comments ---")
                 for c in comments:
                     author = c.get("author", {}).get("login", "unknown")
-                    raw_lines = c.get("body", "").splitlines()
+                    redacted_body = redact_sensitive_text(c.get("body", ""))
+                    raw_lines = redacted_body.splitlines()
                     truncated_raw = "\n".join(raw_lines[:10])
-                    redacted_body = redact_sensitive_text(truncated_raw)
-                    body_clean = sanitize_untrusted_text(redacted_body, prefix="      | ")
+                    body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
                     print(f"      [@{author}]:\n{body_clean}")
                     if len(raw_lines) > 10:
                         print("      ... [truncated]")
@@ -782,16 +783,16 @@ def main() -> None:
         for j, od in enumerate(outside_diff_comments, 1):
             print(f"[{j}] [OUTSIDE-DIFF] Target: {od['target']}")
             print(f"    Severity: {od['severity']} | Category: {od['category']}")
-            print(f"    Finding:  {sanitize_untrusted_text(od['title'], prefix='')}")
+            print(f"    Finding:  {sanitize_untrusted_text(redact_sensitive_text(od['title']), prefix='')}")
             if od.get("action_prompt"):
                 redacted_action = redact_sensitive_text(od['action_prompt'])
                 sanitized_action = sanitize_untrusted_text(redacted_action, prefix="    | ")
                 print(f"    Action:\n{sanitized_action}")
             if args.details and od.get("body"):
-                raw_lines = od["body"].splitlines()
+                redacted_body = redact_sensitive_text(od.get("body", ""))
+                raw_lines = redacted_body.splitlines()
                 truncated_raw = "\n".join(raw_lines[:10])
-                redacted_body = redact_sensitive_text(truncated_raw)
-                body_clean = sanitize_untrusted_text(redacted_body, prefix="      | ")
+                body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
                 print(f"    Body:\n{body_clean}")
                 if len(raw_lines) > 10:
                     print("      ... [truncated]")

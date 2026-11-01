@@ -287,6 +287,40 @@ Verify null safety.
         findings = check_pr_reviews.fetch_outside_diff_comments("owner", "repo", 1)
         self.assertEqual(findings, [])
 
+    @patch("check_pr_reviews.run_gh_cmd")
+    def test_fetch_outside_diff_comments_redacts_secrets_in_body(self, mock_gh):
+        response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "id": "PRR_kwDO123",
+                                    "submittedAt": "2026-11-01T12:00:00Z",
+                                    "author": {"login": "coderabbitai"},
+                                    "body": """## Outside diff comments
+<details>
+<summary><code>src/App.java</code> · Critical · Password Leak</summary>
+<blockquote>
+password = "SuperSecretPassword12345"
+</blockquote>
+</details>
+""",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        mock_gh.return_value = (0, json.dumps(response), "")
+        findings = check_pr_reviews.fetch_outside_diff_comments("owner", "repo", 1)
+        self.assertEqual(len(findings), 1)
+        self.assertNotIn("SuperSecretPassword12345", findings[0]["body"])
+        self.assertIn("[REDACTED]", findings[0]["body"])
+
+
     # -------------------------------------------------------------------------
     # detect_repo_and_pr tests
     # -------------------------------------------------------------------------
