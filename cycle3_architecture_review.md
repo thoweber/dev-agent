@@ -9,9 +9,9 @@
 
 ## 1. Executive Summary
 
-Cycle 3 successfully introduces the core cognitive foundations required for zero-JNI semantic discovery, memoized architectural verification, and error loop governance in `dev-agent`. The implementation satisfies strict quality gates (Line Coverage: **96.38%**, Branch Coverage: **92.16%**), achieves zero-reflection behavioral test compliance, and avoids C++ native dependencies for Ahead-of-Time (AOT) GraalVM compilation.
+Cycle 3 successfully introduces the core cognitive foundations required for zero-JNI semantic discovery, memoized architectural verification, and error loop governance in `dev-agent`. Following the architectural remediation cycles, the final implementation satisfies strict quality gates (Line Coverage: **96.35%**, Branch Coverage: **91.12%** across 354 automated tests), achieves zero-reflection behavioral test compliance, and avoids C++ native dependencies for Ahead-of-Time (AOT) GraalVM compilation.
 
-However, a rigorous architectural inspection reveals **3 critical architectural mismatches** and **7 code design clumsiness patterns / smells** that threaten multi-task concurrency, production LLM execution, zero-knowledge engine separation, and filesystem safety.
+However, a rigorous architectural inspection of the initial baseline revealed **3 critical architectural mismatches** and **7 code design clumsiness patterns / smells** that threatened multi-task concurrency, production LLM execution, zero-knowledge engine separation, and filesystem safety.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -34,7 +34,7 @@ However, a rigorous architectural inspection reveals **3 critical architectural 
 
 ---
 
-## 2. Critical Architecture Mismatches
+## 2. Critical Architecture Mismatches (Pre-Remediation Diagnoses)
 
 ### [M-1] Production LLM Bypass in `UniversalArchitectGatekeeperAiService`
 * **File:** [`src/main/java/guru/thomasweber/devagent/cognitive/UniversalArchitectGatekeeperAiService.java`](src/main/java/guru/thomasweber/devagent/cognitive/UniversalArchitectGatekeeperAiService.java) and [`src/main/java/guru/thomasweber/devagent/cognitive/GatekeeperChatModelSupplier.java`](src/main/java/guru/thomasweber/devagent/cognitive/GatekeeperChatModelSupplier.java)
@@ -100,7 +100,7 @@ However, a rigorous architectural inspection reveals **3 critical architectural 
 
 ---
 
-## 3. Code Design Clumsiness & Architectural Smells
+## 3. Code Design Clumsiness & Architectural Smells (Pre-Remediation Diagnoses)
 
 ### [C-1] Domain Rule Leak in Generic Engine: Hardcoded `REM-\d+`
 * **File:** [`src/main/java/guru/thomasweber/devagent/cognitive/AdrDiscoveryService.java`](src/main/java/guru/thomasweber/devagent/cognitive/AdrDiscoveryService.java)
@@ -262,19 +262,19 @@ All critical architectural mismatches (P0) and key design clumsiness smells (P1,
 | :--- | :--- | :--- | :--- |
 | **M-1: Production LLM Bypass** | CRITICAL | **RESOLVED** | `GatekeeperChatModelSupplier` dynamically resolves `ChatModel` from Arc CDI; falls back to offline stub only when no provider bean exists. |
 | **M-2: Cross-Task State Pollution** | CRITICAL | **RESOLVED** | `LoopCircuitBreaker` scopes state to `taskId` / worktree paths via `ConcurrentMap<String, TaskBreakerState>`, eliminating cross-task leaks. |
-| **M-3: Worktree Rollback Safety** | CRITICAL | **RESOLVED** | `LoopCircuitBreaker.rollbackIfPossible` verifies target directory is strictly within `/dev-agent-worktrees/` (throwing `SecurityException` otherwise); preserves error state on `TRIP_AND_HALT`. |
+| **M-3: Worktree Rollback Safety** | CRITICAL | **RESOLVED** | `LoopCircuitBreaker.rollback` verifies target directory is strictly within the canonical `/.git/dev-agent-worktrees/` directory (throwing `SecurityException` otherwise); synchronizes state per `TaskBreakerState` to isolate worktree operations; preserves error state on `TRIP_AND_HALT`. |
 | **C-1: Domain Rule Leak (`REM-`)** | MEDIUM | **RESOLVED** | Replaced with generic `[A-Z0-9]+-\\d+` regex in `AdrDiscoveryService` (Directive 1). |
-| **C-2: Naive Substring Tag Matching** | MEDIUM | **RESOLVED** | Tightened tag detection to word boundary regex matching (`(?i)(?:^|/)(?:adr|adrs)(?:/|[-_.]|$)`). |
-| **C-3: Glob I/O Traversal Overhead** | MEDIUM | **RESOLVED** | `scanPattern` extracts search root prefix before first wildcard, avoiding scanning the entire repository root. |
+| **C-2: Naive Substring Tag Matching** | MEDIUM | **RESOLVED** | Tightened tag detection to word boundary regex matching (`(?i)(?:^\|/)(?:adr\|adrs)(?:/\|[-_.]\|$)`). |
+| **C-3: Glob I/O Traversal Overhead** | MEDIUM | **RESOLVED** | Introduced `WorkspaceFileScanner` port and `NioWorkspaceFileScanner` extracting search root prefix before first wildcard, avoiding scanning the entire repository root. |
 | **C-4: BM25 Thread Safety Asymmetry** | MEDIUM | **RESOLVED** | Refactored `Bm25Retriever` to an immutable snapshot record (`IndexSnapshot`) swapped via `AtomicReference`, providing 100% lock-free reads. |
-| **C-5: Gatekeeper Architectural Inversion** | MEDIUM | **RESOLVED** | `ArchitectGatekeeper` accepts `List<ArchitecturalRecord>`, and `GatekeeperCacheKeyGenerator` sorts IDs deterministically for SHA-256 caching. |
-| **C-6: URL Port Coordinate Masking** | MEDIUM | **RESOLVED** | Refined line/col regex in `ErrorSignatureExtractor` to match source file extensions, preserving HTTP ports like `localhost:8080`. |
-| **C-7: Fragile YAML Parser** | MEDIUM | **RESOLVED** | Enhanced `AdrDiscoveryService.readConfiguredRulesPaths` with bracketed inline and multiline array parsing and inline comment stripping. |
+| **C-5: Gatekeeper Architectural Inversion** | MEDIUM | **RESOLVED** | `ArchitectGatekeeper` accepts `List<ArchitecturalRecord>`, formats full title, status, summary, and content, and `GatekeeperCacheKeyGenerator` computes composite SHA-256 caching. |
+| **C-6: URL Port Coordinate Masking** | MEDIUM | **RESOLVED** | Refined line/col regex in `ErrorSignatureExtractor` to mask source line/col coordinates before path replacement, preserving HTTP ports like `localhost:8080`. |
+| **C-7: Fragile YAML Parser** | MEDIUM | **RESOLVED** | Replaced custom parser with Quarkus SmallRye config-yaml and dedicated `DevAgentConfigLoader` modeling `DevAgentConfig`. |
 
 ### Final Verification Results
-* **Tests:** 308 tests run, 0 failures, 0 errors, 0 skipped.
-* **Line Coverage:** **96.27%** (Quality Gate: $\ge 95.0\%$).
-* **Condition/Branch Coverage:** **91.13%** (Quality Gate: $\ge 90.0\%$).
+* **Tests:** 354 tests run, 0 failures, 0 errors, 0 skipped.
+* **Line Coverage:** **96.35%** (Quality Gate: $\ge 95.0\%$).
+* **Condition/Branch Coverage:** **91.12%** (Quality Gate: $\ge 90.0\%$).
 * **ArchUnit Native Compliance:** 6/6 rules passed.
 * **Java Import Hygiene:** 0 inline FQN violations.
 * **Markdown Links:** 36 files scanned, 0 broken links.

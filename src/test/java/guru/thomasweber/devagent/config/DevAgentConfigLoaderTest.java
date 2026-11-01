@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assumptions.assumeThat;
 
 class DevAgentConfigLoaderTest {
 
@@ -237,12 +238,13 @@ class DevAgentConfigLoaderTest {
     void givenUnreadableFile_whenLoad_thenThrowsUncheckedIOException(@TempDir Path tempDir) throws IOException {
         Path unreadableFile = tempDir.resolve("unreadable.yaml");
         Files.createFile(unreadableFile);
-        unreadableFile.toFile().setReadable(false);
+        boolean unreadableSet = unreadableFile.toFile().setReadable(false);
 
-        // If OS allows setting unreadable
-        if (!unreadableFile.toFile().canRead()) {
-            assertThatThrownBy(() -> loader.load(unreadableFile))
-                .isInstanceOf(UncheckedIOException.class);
-        }
+        assumeThat(unreadableSet && !unreadableFile.toFile().canRead())
+            .as("File system honors read permission changes")
+            .isTrue();
+
+        assertThatThrownBy(() -> loader.load(unreadableFile))
+            .isInstanceOf(UncheckedIOException.class);
     }
 }

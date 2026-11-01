@@ -2,6 +2,7 @@ package guru.thomasweber.devagent.cognitive;
 
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.model.GateVerdict;
+import guru.thomasweber.devagent.testutil.ArchitecturalRecordMother;
 import guru.thomasweber.devagent.testutil.GateVerdictMother;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,20 +42,11 @@ class ArchitectGatekeeperTest {
         GateVerdict expected = GateVerdictMother.approved("All rules pass");
         when(mockAiService.evaluate(eq("diff-content"), any(String.class))).thenReturn(expected);
 
-        ArchitecturalRecord rec1 = ArchitecturalRecord.builder()
-            .id("ADR-001")
-            .title("Title 1")
-            .status("Accepted")
-            .summary("Summary 1")
-            .build();
-        ArchitecturalRecord rec2 = ArchitecturalRecord.builder()
-            .id("ADR-002")
-            .title("Title 2")
-            .status("Accepted")
-            .summary("")
-            .build();
+        ArchitecturalRecord rec1 = ArchitecturalRecordMother.adr001();
+        ArchitecturalRecord rec2 = ArchitecturalRecordMother.adr003();
+        ArchitecturalRecord rec3 = rec1.toBuilder().summary(null).content("   ").build();
 
-        GateVerdict actual = gatekeeper.evaluate("diff-content", List.of(rec1, rec2));
+        GateVerdict actual = gatekeeper.evaluate("diff-content", List.of(rec1, rec2, rec3));
         assertThat(actual).isEqualTo(expected);
 
         // Edge case: null or empty records

@@ -43,6 +43,9 @@ public class ArchitectGatekeeper {
             if (record.summary() != null && !record.summary().isBlank()) {
                 sb.append("  Summary: ").append(record.summary().strip()).append("\n");
             }
+            if (record.content() != null && !record.content().isBlank()) {
+                sb.append("  Content: ").append(record.content().strip()).append("\n");
+            }
         }
         return sb.toString();
     }

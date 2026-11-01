@@ -201,57 +201,82 @@ class LoopCircuitBreakerTest {
         // Following failure should be treated as a fresh first failure
         LoopAction nextAction = circuitBreaker.recordFailure("error A", worktreeDir);
         assertThat(nextAction).isEqualTo(LoopAction.CONTINUE);
+    }
 
-        // Test manual reset all
+    @Test
+    @DisplayName("Given failures across tasks - when manual reset is called - then clears all task states")
+    void givenFailuresAcrossTasks_whenManualReset_thenClearsAllTaskStates() {
+        circuitBreaker.recordFailure("error A", worktreeDir);
         circuitBreaker.reset();
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.NORMAL);
+    }
 
-        // Test recordFailure without workingDir (defaults to default task)
+    @Test
+    @DisplayName("Given failure without working directory - when recordFailure called - then associates with default task")
+    void givenFailureWithoutWorkingDir_whenRecordFailure_thenAssociatesWithDefaultTask() {
         LoopAction actionNoDir = circuitBreaker.recordFailure("error X");
         assertThat(actionNoDir).isEqualTo(LoopAction.CONTINUE);
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.NORMAL);
         circuitBreaker.recordSuccess();
+    }
 
-        // Test recordFailure with null rawOutput
+    @Test
+    @DisplayName("Given null rawOutput - when recordFailure called - then handles safely without exceptions")
+    void givenNullRawOutput_whenRecordFailure_thenHandlesSafely() {
         LoopAction actionNull = circuitBreaker.recordFailure(null);
         assertThat(actionNull).isEqualTo(LoopAction.CONTINUE);
+    }
 
-        // Test three distinct errors (A -> B -> C)
-        circuitBreaker.reset();
+    @Test
+    @DisplayName("Given three distinct sequential errors - when recordFailure called - then remains in NORMAL state")
+    void givenThreeDistinctErrors_whenRecordFailure_thenRemainsInNormalState() {
         circuitBreaker.recordFailure("error 1", worktreeDir);
         circuitBreaker.recordFailure("error 2", worktreeDir);
         LoopAction action3 = circuitBreaker.recordFailure("error 3", worktreeDir);
+
         assertThat(action3).isEqualTo(LoopAction.CONTINUE);
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.NORMAL);
+    }
 
-        // Test oscillation with workingDir == null -> cannot rollback, so trips breaker
-        circuitBreaker.reset();
+    @Test
+    @DisplayName("Given oscillating errors without working directory - when recordFailure called - then trips breaker immediately")
+    void givenOscillatingErrorsWithoutWorkingDir_whenRecordFailure_thenTripsBreaker() {
         circuitBreaker.recordFailure("error 1");
         circuitBreaker.recordFailure("error 2");
         circuitBreaker.recordFailure("error 1");
         LoopAction actionOscNoDir = circuitBreaker.recordFailure("error 2");
+
         assertThat(actionOscNoDir).isEqualTo(LoopAction.TRIP_AND_HALT);
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.TRIPPED);
+    }
 
-        // Test exceeding MAX_HISTORY_SIZE
-        circuitBreaker.reset();
+    @Test
+    @DisplayName("Given failures exceeding maximum history size - when recordFailure called - then trims history safely")
+    void givenFailuresExceedingHistorySize_whenRecordFailure_thenTrimsHistorySafely() {
         for (int i = 0; i < 60; i++) {
             circuitBreaker.recordFailure("unique error " + i);
         }
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.NORMAL);
+    }
 
-        // Test null and blank task IDs
+    @Test
+    @DisplayName("Given null or blank task IDs - when accessing breaker - then delegates to default task state")
+    void givenNullOrBlankTaskIds_whenAccessingBreaker_thenDelegatesToDefaultTask() {
         assertThat(circuitBreaker.getState(null)).isEqualTo(CircuitBreakerState.NORMAL);
         assertThat(circuitBreaker.getState("")).isEqualTo(CircuitBreakerState.NORMAL);
         assertThat(circuitBreaker.getPostPivotFailures(null)).isZero();
         assertThat(circuitBreaker.getPostPivotFailures("")).isZero();
+
         circuitBreaker.recordSuccess(null);
         circuitBreaker.recordSuccess("");
         circuitBreaker.reset(null);
         circuitBreaker.recordFailure(null, "error null task", null);
         circuitBreaker.recordFailure("", "error blank task", null);
+    }
 
-        // Test nested worktree subdirectory
+    @Test
+    @DisplayName("Given nested subdirectory within worktree - when recordFailure called - then resolves parent worktree task ID")
+    void givenNestedWorktreeSubdir_whenRecordFailure_thenResolvesParentTaskId() {
         Path subDir = worktreeDir.resolve("src/main/java");
         circuitBreaker.recordFailure("error sub", subDir);
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.NORMAL);

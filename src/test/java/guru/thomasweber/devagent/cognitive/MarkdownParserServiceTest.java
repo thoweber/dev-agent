@@ -144,7 +144,7 @@ class MarkdownParserServiceTest {
     }
 
     @Test
-    @DisplayName("Given null collections in ParsedMarkdown - then falls back to empty immutable collections")
+    @DisplayName("Given null collections in ParsedMarkdown - when constructing - then falls back to empty immutable collections")
     void givenNullCollections_whenConstructingParsedMarkdown_thenDefaultsToEmpty() {
         MarkdownParserService.ParsedMarkdown parsed = new MarkdownParserService.ParsedMarkdown(null, null);
         assertThat(parsed.metadata()).isEmpty();

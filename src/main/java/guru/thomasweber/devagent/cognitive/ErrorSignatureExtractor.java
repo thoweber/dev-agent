@@ -36,10 +36,10 @@ public class ErrorSignatureExtractor {
         s = ISO_TIMESTAMP_PATTERN.matcher(s).replaceAll("<TIME>");
         s = CLOCK_TIME_PATTERN.matcher(s).replaceAll("<TIME>");
         s = DURATION_PATTERN.matcher(s).replaceAll("<DURATION>");
-        s = LINUX_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
-        s = WINDOWS_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
         s = LINE_COL_BRACKET_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
         s = SOURCE_LINE_COL_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
+        s = LINUX_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
+        s = WINDOWS_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
         s = WHITESPACE_PATTERN.matcher(s).replaceAll(" ").trim();
 
         return s;

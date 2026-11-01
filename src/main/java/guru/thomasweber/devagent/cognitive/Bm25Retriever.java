@@ -293,7 +293,7 @@ public class Bm25Retriever {
         if (w.endsWith("sses")) {
             w = w.substring(0, w.length() - 2);
         } else if (w.endsWith("ies")) {
-            w = w.substring(0, w.length() - 3) + "i";
+            w = w.substring(0, w.length() - 3) + "y";
         } else if (w.endsWith("ss") || w.endsWith("us") || w.endsWith("is")) {
             // Keep unchanged
         } else if (w.endsWith("s")) {

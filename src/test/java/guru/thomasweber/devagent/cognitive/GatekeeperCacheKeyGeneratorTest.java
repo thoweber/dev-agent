@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.cognitive;
 
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.testutil.ArchitecturalRecordMother;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -100,20 +101,30 @@ class GatekeeperCacheKeyGeneratorTest {
     void givenListOfRecordsInDifferentOrder_whenGenerating_thenProducesIdenticalKey() throws NoSuchMethodException {
         Method method = Object.class.getMethod("toString");
         String diff = "+line 1";
-        ArchitecturalRecord rec1 = ArchitecturalRecord.builder().id("ADR-001").title("Title 1").build();
-        ArchitecturalRecord rec2 = ArchitecturalRecord.builder().id("ADR-005").title("Title 5").build();
+        ArchitecturalRecord rec1 = ArchitecturalRecordMother.adr001();
+        ArchitecturalRecord rec2 = ArchitecturalRecordMother.adr005();
 
         Object key1 = generator.generate(method, diff, List.of(rec1, rec2));
         Object key2 = generator.generate(method, diff, List.of(rec2, rec1));
 
         assertThat(key1).isEqualTo(key2);
 
+        // Record with same ID but different summary produces different cache key
+        ArchitecturalRecord rec1Modified = rec1.toBuilder().summary("Updated summary content").build();
+        Object keyModified = generator.generate(method, diff, List.of(rec1Modified, rec2));
+        assertThat(keyModified).isNotEqualTo(key1);
+
         // Also test with list containing strings or nulls
-        List<Object> mixed = new ArrayList<>();
-        mixed.add("ADR-005");
-        mixed.add("ADR-001");
-        mixed.add(null);
-        Object keyMixed = generator.generate(method, diff, mixed);
-        assertThat(keyMixed).isEqualTo(key1);
+        List<Object> mixed1 = new ArrayList<>();
+        mixed1.add("ADR-005");
+        mixed1.add("ADR-001");
+        mixed1.add(null);
+        List<Object> mixed2 = new ArrayList<>();
+        mixed2.add(null);
+        mixed2.add("ADR-001");
+        mixed2.add("ADR-005");
+        Object keyMixed1 = generator.generate(method, diff, mixed1);
+        Object keyMixed2 = generator.generate(method, diff, mixed2);
+        assertThat(keyMixed1).isEqualTo(keyMixed2);
     }
 }

@@ -35,6 +35,11 @@ class ErrorSignatureExtractorTest {
         String winTrace = "[ERROR] C:\\Users\\developer\\projects\\dev-agent\\src\\main\\java\\App.java:[42,15] cannot find symbol\n  symbol:   class Foo\n  location: class App";
         String winSig = extractor.extractSignature(winTrace);
         assertThat(winSig).isEqualTo(sig1);
+
+        // Raw colon line/col without brackets (tsc, gcc, standard javac)
+        String rawColon1 = "/home/developer/projects/dev-agent/src/main/java/App.java:42:15: error: cannot find symbol Foo";
+        String rawColon2 = "/tmp/ci-agent-worktree/src/main/java/App.java:108:30: error: cannot find symbol Foo";
+        assertThat(extractor.extractSignature(rawColon1)).isEqualTo(extractor.extractSignature(rawColon2));
     }
 
     @Test

@@ -35,16 +35,18 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
             if (methodParams.length > 1 && methodParams[1] != null) {
                 Object second = methodParams[1];
                 if (second instanceof List<?> list) {
-                    List<String> ids = new ArrayList<>();
+                    List<String> items = new ArrayList<>();
                     for (Object item : list) {
                         if (item instanceof ArchitecturalRecord record) {
-                            ids.add(record.id());
+                            items.add(record.id() + ":" + record.title() + ":" + record.status() + ":"
+                                + (record.summary() != null ? record.summary().strip() : "") + ":"
+                                + (record.content() != null ? record.content().strip() : ""));
                         } else if (item != null) {
-                            ids.add(item.toString());
+                            items.add(item.toString().strip());
                         }
                     }
-                    Collections.sort(ids);
-                    adrs = String.join(",", ids);
+                    Collections.sort(items);
+                    adrs = String.join("\n---\n", items);
                 } else {
                     adrs = second.toString().strip();
                 }
