@@ -452,6 +452,47 @@ Close file stream properly.
         self.assertEqual(f["category"], "Resource Management")
         self.assertEqual(f["action_prompt"], "Close file stream")
 
+    @patch("check_pr_reviews.run_gh_cmd")
+    def test_fetch_outside_diff_comments_newest_review_without_findings_no_fallback(self, mock_gh):
+        response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "id": "PRR_old",
+                                    "submittedAt": "2026-11-01T10:00:00Z",
+                                    "author": {"login": "coderabbitai"},
+                                    "state": "COMMENTED",
+                                    "body": """
+## Outside diff range comments
+<details>
+<summary>Critical · Null Pointer Risk · <code>src/Old.java</code></summary>
+<blockquote>
+<!-- cr-comment:prr-comment-old -->
+Fix old bug
+</blockquote>
+</details>
+""",
+                                },
+                                {
+                                    "id": "PRR_new",
+                                    "submittedAt": "2026-11-01T11:00:00Z",
+                                    "author": {"login": "coderabbitai"},
+                                    "state": "COMMENTED",
+                                    "body": "All previous findings resolved. LGTM!",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        mock_gh.return_value = (0, json.dumps(response), "")
+        findings = check_pr_reviews.fetch_outside_diff_comments("owner", "repo", 1)
+        self.assertEqual(findings, [])
+
 
     # -------------------------------------------------------------------------
     # detect_repo_and_pr tests

@@ -389,17 +389,24 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     reviews = data.get("data", {}).get("repository", {}).get("pullRequest", {}).get("reviews", {}).get("nodes", [])
     findings: List[Dict[str, Any]] = []
 
-    # Locate the latest CodeRabbit review containing outside-diff comments
-    latest_cr_review = None
-    for r in reversed(reviews):
+    # Locate the newest submitted CodeRabbit review before checking for outside-diff markers
+    cr_reviews = []
+    for r in reviews:
         user = (r.get("author") or {}).get("login", "")
         if "coderabbit" in user.lower():
-            body = r.get("body") or ""
-            if "Outside diff range comments" in body or "Outside diff comments" in body or 'alt="Outside diff"' in body:
-                latest_cr_review = r
-                break
+            state = (r.get("state") or "").upper()
+            if state != "PENDING":
+                cr_reviews.append(r)
 
-    if not latest_cr_review:
+    if not cr_reviews:
+        return []
+
+    # Sort chronologically by submittedAt if available, otherwise preserve order
+    cr_reviews.sort(key=lambda r: r.get("submittedAt") or "")
+    latest_cr_review = cr_reviews[-1]
+
+    body = latest_cr_review.get("body") or ""
+    if not ("Outside diff range comments" in body or "Outside diff comments" in body or 'alt="Outside diff"' in body):
         return []
 
     body = latest_cr_review.get("body") or ""
@@ -822,7 +829,11 @@ def main() -> None:
     if outside_diff_comments:
         print(f"\nListing outside-diff review findings ({len(outside_diff_comments)}):\n")
         for j, od in enumerate(outside_diff_comments, 1):
-            print(f"[{j}] [OUTSIDE-DIFF] Target: {od['target']}")
+            target = sanitize_untrusted_text(
+                redact_sensitive_text(od.get("target", "")),
+                prefix="",
+            )
+            print(f"[{j}] [OUTSIDE-DIFF] Target: {target}")
             print(f"    Severity: {od['severity']} | Category: {od['category']}")
             print(f"    Finding:  {sanitize_untrusted_text(redact_sensitive_text(od['title']), prefix='')}")
             if od.get("action_prompt"):
