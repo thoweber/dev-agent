@@ -139,7 +139,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     private void checkOverflow(int incoming) throws IOException {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
-            FileChannel channel = FileChannel.open(
+            this.fileChannel = FileChannel.open(
                 tempFile,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE,
@@ -148,9 +148,8 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             byte[] inMemoryBytes = memoryBuffer.toByteArray();
             ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
             while (nioBuffer.hasRemaining()) {
-                channel.write(nioBuffer);
+                fileChannel.write(nioBuffer);
             }
-            this.fileChannel = channel;
             this.diskTempFile = tempFile;
             this.memoryBuffer = null;
         }
