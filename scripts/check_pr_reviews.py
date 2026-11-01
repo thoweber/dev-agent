@@ -424,13 +424,21 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     if 'alt="Outside diff"' in body:
         unquoted_body = re.sub(r"(?m)^>\s?", "", body)
         badge_pattern = re.compile(
-            r"<details>\s*<summary>(.*?alt=[\"']Outside diff[\"'].*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+            r"<details>\s*<summary>((?:(?!</summary>).)*?alt=[\"']Outside diff[\"'](?:(?!</summary>).)*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
             re.DOTALL,
         )
         for m in badge_pattern.finditer(unquoted_body):
-            raw_findings.append((m.group(1), m.group(2)))
+            if (m.group(1), m.group(2)) not in raw_findings:
+                raw_findings.append((m.group(1), m.group(2)))
 
+    seen_cids = set()
     for summary_html, content_html in raw_findings:
+        cid_m = re.search(r"<!--\s*(cr-comment:[^\s>]+)\s*-->", content_html)
+        cid = cid_m.group(1) if cid_m else None
+        if cid:
+            if cid in seen_cids:
+                continue
+            seen_cids.add(cid)
         clean_s = re.sub(r"<.*?>", "", summary_html).strip()
         clean_c = re.sub(r"<.*?>", "", content_html).strip()
 

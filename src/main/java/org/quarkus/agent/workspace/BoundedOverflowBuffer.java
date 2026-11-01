@@ -130,32 +130,52 @@ public class BoundedOverflowBuffer implements AutoCloseable {
 
     private Path createSecureTempFile() throws IOException {
         Path parent = tempDirRoot != null ? tempDirRoot : Path.of(System.getProperty("java.io.tmpdir"));
-        try {
-            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
-                EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
-            );
-            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
-        } catch (UnsupportedOperationException _) {
-            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
-        }
+        FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
+            EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+        );
+        return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
     }
 
     private void checkOverflow(int incoming) throws IOException {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
-            Path tempFile = createSecureTempFile();
-            this.diskTempFile = tempFile;
-            this.fileChannel = FileChannel.open(
-                tempFile,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.READ
-            );
-            byte[] inMemoryBytes = memoryBuffer.toByteArray();
-            ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
-            while (nioBuffer.hasRemaining()) {
-                fileChannel.write(nioBuffer);
+            Path tempFile = null;
+            FileChannel channel = null;
+            try {
+                tempFile = createSecureTempFile();
+                channel = FileChannel.open(
+                    tempFile,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.READ
+                );
+                byte[] inMemoryBytes = memoryBuffer.toByteArray();
+                ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
+                while (nioBuffer.hasRemaining()) {
+                    channel.write(nioBuffer);
+                }
+                this.fileChannel = channel;
+                this.diskTempFile = tempFile;
+                this.memoryBuffer = null;
+            } catch (Exception e) {
+                if (channel != null) {
+                    try {
+                        channel.close();
+                    } catch (IOException _) {
+                        // Suppress secondary exception during cleanup
+                    }
+                }
+                if (tempFile != null) {
+                    try {
+                        Files.deleteIfExists(tempFile);
+                    } catch (IOException _) {
+                        // Suppress secondary exception during cleanup
+                    }
+                }
+                if (e instanceof IOException ioEx) {
+                    throw ioEx;
+                }
+                throw (RuntimeException) e;
             }
-            this.memoryBuffer = null;
         }
     }
 

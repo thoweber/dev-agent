@@ -117,10 +117,8 @@ public class HierarchicalMemoryStore implements ChatMemory {
             return;
         }
         ChatMessage first = slidingScratchpad.removeFirst();
-        if (first instanceof UserMessage) {
+        if (first instanceof UserMessage || first instanceof AiMessage) {
             evictUntilNextUserMessage();
-        } else if (first instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
-            purgeLeadingToolResults();
         }
     }
 

@@ -41,7 +41,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given memory store - when id and clear called - behaves as expected")
+    @DisplayName("Given memory store - when id and clear called - then behaves as expected")
     void testStoreIdAndClear() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         assertThat(memory.id()).isEqualTo("hierarchical-memory");
@@ -54,7 +54,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given system message added directly - then updates pinned invariants")
+    @DisplayName("Given system message - when added directly - then updates pinned invariants")
     void testDirectSystemMessageUpdate() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new dev.langchain4j.data.message.SystemMessage("Direct System Invariant"));
@@ -65,7 +65,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given blank or null inputs to pin methods - handles gracefully")
+    @DisplayName("Given blank or null inputs to pin methods - when passed - then handles gracefully")
     void testPinNullAndBlankInputs() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants(null);
@@ -74,7 +74,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given pinned invariants - when SystemMessage added via add() - does not overwrite pinned invariants")
+    @DisplayName("Given pinned invariants - when SystemMessage added via add() - then does not overwrite pinned invariants")
     void testAddSystemMessageDoesNotOverwritePinnedInvariants() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Pinned Invariants");
@@ -87,7 +87,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given tool request and execution result - when scratchpad trimmed - evicts tool result with request")
+    @DisplayName("Given tool request and execution result - when scratchpad trimmed - then evicts tool result with request")
     void testAtomicToolCallAndResultEviction() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
@@ -116,7 +116,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multiple tool execution results - does not self-evict during addition and drops orphaned results")
+    @DisplayName("Given multiple tool execution results - when added - then does not self-evict during addition and drops orphaned results")
     void testMultipleToolResultsAndOrphanRejection() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
@@ -143,7 +143,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given memory with all tiers - when clear called - removes all tiers; clearScratchpad only clears scratchpad")
+    @DisplayName("Given memory with all tiers - when clear called - then removes all tiers")
     void testClearAllTiersVsScratchpad() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Invariants");
@@ -160,7 +160,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given conversation turns - when scratchpad trimmed - evicts user message and ai response together atomically")
+    @DisplayName("Given conversation turns - when scratchpad trimmed - then evicts user message and ai response together atomically")
     void testAtomicUserAndAiTurnEviction() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
@@ -183,7 +183,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given duplicate SystemMessage via add() - ignores duplicates and does not grow Tier 1")
+    @DisplayName("Given duplicate SystemMessage via add() - when added - then ignores duplicates and does not grow Tier 1")
     void testDuplicateSystemMessageIgnored() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Base Invariant");
@@ -199,7 +199,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given secondary SystemMessage via add() - preserves in Tier 1 and keeps scratchpad free of SystemMessages")
+    @DisplayName("Given secondary SystemMessage via add() - when added - then preserves in Tier 1 and keeps scratchpad free of SystemMessages")
     void testSystemMessageQuarantinedToTier1() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Primary Invariants");
@@ -224,7 +224,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given single active turn with many tool executions exceeding message budget - preserves full turn in-flight without mid-turn severance")
+    @DisplayName("Given single active turn with many tool executions - when exceeding message budget - then preserves full turn in-flight without mid-turn severance")
     void testSingleTurnToolBudgetTrimming() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Root prompt for single long turn"));
@@ -267,14 +267,14 @@ class HierarchicalMemoryStoreTest {
         assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
 
         aiFirstMemory.add(new UserMessage("Subsequent turn"));
-        assertThat(aiFirstMemory.messages()).hasSizeLessThanOrEqualTo(24);
+        assertThat(aiFirstMemory.messages()).hasSize(1);
         assertThat(aiFirstMemory.messages().getLast()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) aiFirstMemory.messages().getLast()).singleText()).isEqualTo("Subsequent turn");
         assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
     }
 
     @Test
-    @DisplayName("Given single active turn with plain AiMessage before tool executions - preserves user prompt and thoughts in-flight")
+    @DisplayName("Given single active turn with plain AiMessage before tool executions - when exceeding message budget - then preserves user prompt and thoughts in-flight")
     void testSingleTurnWithPlainAiMessageBeforeToolInteractionsTrimming() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Root prompt for single long turn"));
@@ -305,7 +305,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given single turn with active in-flight tool call exceeding budget without later AiMessage - preserves in-flight tool results")
+    @DisplayName("Given single turn with active in-flight tool call - when exceeding budget without later AiMessage - then preserves in-flight tool results")
     void testScratchpadExceedsBudgetWithInFlightToolCallPreserved() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
@@ -327,7 +327,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given single turn with plain AI thoughts exceeding message budget without tool calls - terminates trimming cleanly")
+    @DisplayName("Given single turn with plain AI thoughts - when exceeding message budget without tool calls - then terminates trimming cleanly")
     void testSingleTurnPlainAiThoughtsExceedingBudget() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Analyze complex architecture"));
@@ -342,7 +342,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multi-tool execution in older turn - when message budget exceeded - evicts multi-tool request and all results atomically")
+    @DisplayName("Given multi-tool execution in older turn - when message budget exceeded - then evicts multi-tool request and all results atomically")
     void testMultiToolExecutionAtomicallyTrimmed() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Execute batch tasks"));
@@ -384,7 +384,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multi-tool execution with intervening reasoning message in older turn - evicts all tool results and thoughts atomically")
+    @DisplayName("Given multi-tool execution with intervening reasoning message in older turn - when message budget exceeded - then evicts all tool results and thoughts atomically")
     void testMultiToolExecutionWithInterveningMessageTrimmed() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Batch processing"));
@@ -423,7 +423,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given conversation starting with AiMessage followed by tool interactions - evicts cleanly when new turn exceeds budget")
+    @DisplayName("Given conversation starting with AiMessage followed by tool interactions - when new turn exceeds budget - then evicts cleanly")
     void testAiMessageStartingConversationWithToolTrimming() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         for (int i = 1; i <= 15; i++) {
@@ -439,14 +439,14 @@ class HierarchicalMemoryStoreTest {
 
         // New turn exceeding budget
         memory.add(new UserMessage("Next user turn"));
-        assertThat(memory.messages()).hasSizeLessThanOrEqualTo(24);
+        assertThat(memory.messages()).hasSize(1);
         assertThat(memory.messages().getLast()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) memory.messages().getLast()).singleText()).isEqualTo("Next user turn");
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 
     @Test
-    @DisplayName("Given turn structure validator - validates alternating turns and absence of dangling tool calls")
+    @DisplayName("Given turn structure validator - when verifying memory - then validates alternating turns and absence of dangling tool calls")
     void testTurnStructureInvariants() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Rules");
@@ -484,7 +484,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given null story and plan in pinTaskSpecification - uses fallback values")
+    @DisplayName("Given null story and plan in pinTaskSpecification - when pinned - then uses fallback values")
     void testPinTaskSpecificationNullDefaults() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinTaskSpecification(null, null);
@@ -497,7 +497,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given AiMessage without tool requests - evicts cleanly when turn count exceeds capacity")
+    @DisplayName("Given AiMessage without tool requests - when turn count exceeds capacity - then evicts cleanly")
     void testEvictScratchpadStartingWithAiMessage() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new AiMessage("Leading Ai turn"));
@@ -516,7 +516,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given ToolExecutionResultMessage with non-matching request ID - dropped by store")
+    @DisplayName("Given ToolExecutionResultMessage with non-matching request ID - when added - then dropped by store")
     void testNonMatchingToolExecutionRequestIdDropped() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
@@ -536,7 +536,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multiple turns with many messages - evicts complete older turns to respect message budget")
+    @DisplayName("Given multiple turns with many messages - when message budget exceeded - then evicts complete older turns")
     void testMessageBudgetEvictsOlderTurns() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Turn 1"));
@@ -562,7 +562,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multiple turns below message budget - preserves all turns")
+    @DisplayName("Given multiple turns below message budget - when added - then preserves all turns")
     void testMultipleTurnsBelowMessageBudget() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Turn 1"));

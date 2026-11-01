@@ -397,6 +397,61 @@ password = "SuperSecretPassword12345"
         self.assertNotIn("SuperSecretPassword12345", findings[0]["body"])
         self.assertIn("[REDACTED]", findings[0]["body"])
 
+    @patch("check_pr_reviews.run_gh_cmd")
+    def test_fetch_outside_diff_comments_style2_with_preceding_details(self, mock_gh):
+        review_body = """
+<details>
+<summary>Prompt to fix review comments</summary>
+<blockquote>
+Some generic bot prompt here that must not be swallowed.
+</blockquote>
+</details>
+
+<details>
+<summary><picture><img src="https://example.com/icon.svg" alt="Outside diff"></picture> <code>src/Service.java:55</code> · Minor · Memory leak</summary>
+<blockquote>
+<!-- cr-comment:prr-comment-style2 -->
+**Resource Management**
+
+```
+Review comment at src/Service.java:55
+Close file stream
+```
+Close file stream properly.
+</blockquote>
+</details>
+"""
+        response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "id": "PRR_kwDOStyle2",
+                                    "author": {"login": "coderabbitai[bot]"},
+                                    "body": review_body,
+                                    "submittedAt": "2026-11-01T12:00:00Z",
+                                    "state": "COMMENTED",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        mock_gh.return_value = (0, json.dumps(response), "")
+        findings = check_pr_reviews.fetch_outside_diff_comments("owner", "repo", 1)
+        self.assertEqual(len(findings), 1)
+        f = findings[0]
+        self.assertEqual(f["id"], "cr-comment:prr-comment-style2")
+        self.assertEqual(f["review_id"], "PRR_kwDOStyle2")
+        self.assertEqual(f["target"], "src/Service.java:55")
+        self.assertEqual(f["severity"], "Minor")
+        self.assertEqual(f["title"], "Memory leak")
+        self.assertEqual(f["category"], "Resource Management")
+        self.assertEqual(f["action_prompt"], "Close file stream")
+
 
     # -------------------------------------------------------------------------
     # detect_repo_and_pr tests

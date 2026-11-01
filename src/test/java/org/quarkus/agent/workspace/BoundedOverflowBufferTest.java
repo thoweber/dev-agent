@@ -228,7 +228,7 @@ class BoundedOverflowBufferTest {
     }
 
     @Test
-    @DisplayName("Given fault on disk overflow - cleans up temporary file and throws IOException")
+    @DisplayName("Given fault on disk overflow - when write exceeds memory threshold - then cleans up temporary file and preserves in-memory buffer")
     void testDiskOverflowFaultInjectionAndCleanup() throws IOException {
         Path regularFile = tempDir.resolve("file-not-a-directory");
         Files.createFile(regularFile);
@@ -245,8 +245,9 @@ class BoundedOverflowBufferTest {
             assertThatThrownBy(() -> out.write("678901".getBytes(StandardCharsets.UTF_8)))
                 .isInstanceOf(IOException.class);
 
-            // Confirm buffer did not set overflowed flag
+            // Confirm buffer did not set overflowed flag and preserves in-memory content
             assertThat(buffer.isOverflowedToDisk()).isFalse();
+            assertThat(buffer.asString()).isEqualTo("12345");
         }
     }
 
