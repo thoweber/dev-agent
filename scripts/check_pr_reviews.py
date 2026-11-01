@@ -543,6 +543,51 @@ def sanitize_untrusted_text(text: Optional[str], max_length: int = 4000, prefix:
     return escaped
 
 
+SENSITIVE_JSON_KEYS = {"body", "title", "text", "comment", "action_prompt"}
+
+
+def sanitize_json_untrusted_text(obj: Any) -> Any:
+    """
+    Recursively sanitize or redact free-text fields in JSON structures to prevent
+    untrusted review comments from poisoning downstream LLM automation context.
+    """
+    if isinstance(obj, dict):
+        sanitized = {}
+        for k, v in obj.items():
+            if k in SENSITIVE_JSON_KEYS and isinstance(v, str):
+                sanitized[k] = "[REDACTED_UNTRUSTED_TEXT]"
+            else:
+                sanitized[k] = sanitize_json_untrusted_text(v)
+        return sanitized
+    elif isinstance(obj, list):
+        return [sanitize_json_untrusted_text(item) for item in obj]
+    return obj
+
+
+REDACTED_SENSITIVE_PATTERNS = [
+    re.compile(r"\bgh[pousr]_[a-zA-Z0-9]{36,255}\b"),
+    re.compile(r"\bgithub_pat_\w{82,120}\b"),
+    re.compile(r"\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b"),
+    re.compile(r"(?i)\bbearer\s+[a-zA-Z0-9_\-.=]{15,}"),
+    re.compile(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----"),
+    re.compile(r"(?i)([\"']?[\w-]*(?:pass(?:word|wd)?|secret|token|key)[\"']?\s*[:=]\s*)([\"'][^\"']*[\"']|[^\s\"',;]+)"),
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+]
+
+
+def redact_sensitive_text(text: Optional[str]) -> str:
+    """Mask common credential, secret, and PII patterns in text."""
+    if not text:
+        return ""
+    result = str(text)
+    for pattern in REDACTED_SENSITIVE_PATTERNS:
+        if pattern.groups == 2:
+            result = pattern.sub(r"\1[REDACTED]", result)
+        else:
+            result = pattern.sub("[REDACTED]", result)
+    return result
+
+
 def reply_to_thread(thread_id: str, body: str) -> None:
     """Add a reply to an existing PR review thread."""
     mutation = """
@@ -667,8 +712,8 @@ def main() -> None:
                 "unresolved": len(unresolved_threads),
                 "outside_diff_count": len(outside_diff_comments),
             },
-            "threads": active_list,
-            "outside_diff_comments": outside_diff_comments,
+            "threads": sanitize_json_untrusted_text(active_list),
+            "outside_diff_comments": sanitize_json_untrusted_text(outside_diff_comments),
         }
         print(json.dumps(result, indent=2))
         if args.fail_on_unresolved and (unresolved_threads or outside_diff_comments):
@@ -714,14 +759,16 @@ def main() -> None:
 
             if args.details:
                 if meta.get("action_prompt"):
-                    sanitized_action = sanitize_untrusted_text(meta['action_prompt'], prefix="    | ")
+                    redacted_action = redact_sensitive_text(meta['action_prompt'])
+                    sanitized_action = sanitize_untrusted_text(redacted_action, prefix="    | ")
                     print(f"    Action:\n{sanitized_action}")
                 print("    --- Comments ---")
                 for c in comments:
                     author = c.get("author", {}).get("login", "unknown")
                     raw_lines = c.get("body", "").splitlines()
                     truncated_raw = "\n".join(raw_lines[:10])
-                    body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
+                    redacted_body = redact_sensitive_text(truncated_raw)
+                    body_clean = sanitize_untrusted_text(redacted_body, prefix="      | ")
                     print(f"      [@{author}]:\n{body_clean}")
                     if len(raw_lines) > 10:
                         print("      ... [truncated]")
@@ -737,12 +784,14 @@ def main() -> None:
             print(f"    Severity: {od['severity']} | Category: {od['category']}")
             print(f"    Finding:  {sanitize_untrusted_text(od['title'], prefix='')}")
             if od.get("action_prompt"):
-                sanitized_action = sanitize_untrusted_text(od['action_prompt'], prefix="    | ")
+                redacted_action = redact_sensitive_text(od['action_prompt'])
+                sanitized_action = sanitize_untrusted_text(redacted_action, prefix="    | ")
                 print(f"    Action:\n{sanitized_action}")
             if args.details and od.get("body"):
                 raw_lines = od["body"].splitlines()
                 truncated_raw = "\n".join(raw_lines[:10])
-                body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
+                redacted_body = redact_sensitive_text(truncated_raw)
+                body_clean = sanitize_untrusted_text(redacted_body, prefix="      | ")
                 print(f"    Body:\n{body_clean}")
                 if len(raw_lines) > 10:
                     print("      ... [truncated]")
