@@ -23,7 +23,7 @@ Establish deterministic RFC 4122 UUIDv3 project identifiers derived from canonic
    - Offline or non-git workspaces resolve to `local:<canonicalRealPath>`.
 
 2. **Deterministic UUIDv3 Derivation & Domain Value Object (`ProjectId`):**
-   - Domain value object `ProjectId` in `org.quarkus.agent.model` wraps an immutable `java.util.UUID`.
+   - Domain value object `ProjectId` in `guru.thomasweber.devagent.model` wraps an immutable `java.util.UUID`.
    - Projects derive a deterministic RFC 4122 Version 3 UUID via standard JDK `UUID.nameUUIDFromBytes(coordinate.getBytes(StandardCharsets.UTF_8))`.
    - Factory methods are strictly decoupled:
      - `ProjectId.fromCoordinate(String coordinate)`: Hashes coordinate to UUIDv3.

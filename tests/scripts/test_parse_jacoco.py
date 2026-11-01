@@ -63,7 +63,7 @@ class TestParseJacoco(unittest.TestCase):
     def test_parse_csv_valid_file(self):
         with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as f:
             f.write("GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED\n")
-            f.write("dev-agent,org.quarkus.agent,DevAgent,5,95\n")
+            f.write("dev-agent,guru.thomasweber.devagent,DevAgent,5,95\n")
             temp_path = Path(f.name)
 
         try:

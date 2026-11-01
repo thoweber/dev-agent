@@ -22,7 +22,7 @@ This skill governs test engineering, ArchUnit architecture rule enforcement, Pic
 All tests in `AgentArchitectureTest` verify native GraalVM safety and architecture invariants:
 1. All methods annotated with `@Tool` must be declared in classes annotated with `@ApplicationScoped`.
 2. All non-interface classes in packages `..model..`, `..entity..`, `..remote..`, and `..gui..` must be annotated with `@RegisterForReflection`.
-3. Panache entities annotated with `@Entity` must only be accessed by classes in `org.quarkus.agent.entity..`.
+3. Panache entities annotated with `@Entity` must only be accessed by classes in `guru.thomasweber.devagent.entity..`.
 4. Test methods (`@Test`, `@BeforeEach`, `@AfterEach`) must not be annotated with `@Transactional`.
 
 ---

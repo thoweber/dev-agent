@@ -435,7 +435,7 @@ When resuming interrupted background sessions:
 
 ### Panache Entity Encapsulation & Domain Decoupling (`TaskPersistenceService`)
 To protect architectural boundaries and ensure thread-safe multi-tenant persistence:
-* Panache entities (`TaskRunEntity`, `StepAuditEntity`, `MetricLogEntity`) are strictly quarantined inside `org.quarkus.agent.entity` (ADR-012).
+* Panache entities (`TaskRunEntity`, `StepAuditEntity`, `MetricLogEntity`) are strictly quarantined inside `guru.thomasweber.devagent.entity` (ADR-012).
 * External services in `cli`, `workspace`, or `cognitive` consume decoupled immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
 * `TaskPersistenceService` manages transactional boundaries (`@Transactional`) and provides defensive fallbacks for unit test environments where Panache runtimes are uninitialized.
 
@@ -664,7 +664,7 @@ CLI Execution: $ dev-agent feature "Add Auth Health Check" --gui
 To prevent GraalVM native binary crashes, maintain strict domain encapsulation, and avoid transaction deadlock traps:
 
 ```java
-@AnalyzeClasses(packages = "org.quarkus.agent")
+@AnalyzeClasses(packages = "guru.thomasweber.devagent")
 public class AgentArchitectureTest {
 
     @ArchTest
@@ -688,7 +688,7 @@ public class AgentArchitectureTest {
     public static final ArchRule entitiesMustNotBeAccessedOutsideTheirPackage =
         classes()
             .that().areAnnotatedWith(jakarta.persistence.Entity.class)
-            .should().onlyBeAccessed().byClassesThat().resideInAPackage("org.quarkus.agent.entity..");
+            .should().onlyBeAccessed().byClassesThat().resideInAPackage("guru.thomasweber.devagent.entity..");
 
     @ArchTest
     public static final ArchRule testMethodsMustNotBeAnnotatedWithTransactional =

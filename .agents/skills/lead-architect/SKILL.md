@@ -31,5 +31,5 @@ Every architectural modification must satisfy the following ArchUnit rules:
 1. **Tool CDI Scoping:** Methods annotated with `@Tool` must be declared in classes annotated with `@ApplicationScoped`.
 2. **Reflection Registration:** Classes and records residing in `..model..`, `..entity..`, `..remote..`, or `..gui..` must be annotated with `@RegisterForReflection`.
 3. **Complex Record Builder Standard:** Records with 4 or more fields must be annotated with `@Builder(toBuilder = true)`.
-4. **Entity Encapsulation:** Panache entities (`@Entity`) must strictly reside in `org.quarkus.agent.entity` and never be accessed outside.
+4. **Entity Encapsulation:** Panache entities (`@Entity`) must strictly reside in `guru.thomasweber.devagent.entity` and never be accessed outside.
 5. **Programmatic Test Transaction Scope:** Test and lifecycle methods (`@Test`, `@BeforeEach`, `@AfterEach`) must not be annotated with `@Transactional`. Integration tests use `QuarkusTransaction.requiringNew()`.

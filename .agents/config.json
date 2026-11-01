@@ -5,7 +5,7 @@
     "version": "1.0.0-SNAPSHOT",
     "javaVersion": "25",
     "quarkusVersion": "3.40.1",
-    "groupId": "org.quarkus.agent",
+    "groupId": "guru.thomasweber",
     "architectureStyle": "Quarkus Picocli Native CLI & Orchestrator"
   },
   "qualityGoalsAndSLA": {

@@ -24,7 +24,7 @@ flowchart TD
 * **1-to-1 Mapping:** Every production class in `src/main/java` MUST have a dedicated test class in `src/test/java` matching the exact package structure and named `<TargetClassName>Test.java`.
 
 ### Level 2: Component Integration & Architecture Governance ($< 15\text{ s}$)
-* **Scope:** Architecture invariant checks ([`AgentArchitectureTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/AgentArchitectureTest.java)), filesystem sandbox boundary checks ([`WorkspaceJailValidatorTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/workspace/WorkspaceJailValidatorTest.java)), and in-memory H2 database persistence ([`StatePersistenceIT`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/entity/StatePersistenceIT.java)).
+* **Scope:** Architecture invariant checks ([`AgentArchitectureTest`](file:///home/developer/projects/dev-agent/src/test/java/guru/thomasweber/devagent/AgentArchitectureTest.java)), filesystem sandbox boundary checks ([`WorkspaceJailValidatorTest`](file:///home/developer/projects/dev-agent/src/test/java/guru/thomasweber/devagent/workspace/WorkspaceJailValidatorTest.java)), and in-memory H2 database persistence ([`StatePersistenceIT`](file:///home/developer/projects/dev-agent/src/test/java/guru/thomasweber/devagent/entity/StatePersistenceIT.java)).
 * **Execution:** Executed via Surefire or Failsafe: `./mvnw test '-Dtest=*IT,!Native*IT,AgentArchitectureTest'`.
 * **Programmatic Isolation:** Integration tests requiring Hibernate or Panache operations must use programmatic transaction boundaries (`QuarkusTransaction.requiringNew()`) to prevent session pollution.
 
@@ -58,8 +58,8 @@ void testMethodName() { ... }
 * **Dead / Defensive Branch Elimination:** If internal defensive code (e.g. null-checks on exceptions that never have null messages, or catch blocks for checked exceptions never thrown) cannot be driven through public methods, eliminate or simplify the dead defensive code in production rather than compromising production architecture with artificial test hooks.
 
 ### 4. Canonical Test Data Builders & Object Mother Pattern
-* Domain records with 4 or more fields (such as [`TaskRun`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/model/TaskRun.java) or [`StepAudit`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/model/StepAudit.java)) must not be constructed repeatedly with ad-hoc builders inside test methods.
-* Shared test factories (e.g., `TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) in `src/test/java/org/quarkus/agent/testutil/` must be used to supply valid fixtures with sensible defaults:
+* Domain records with 4 or more fields (such as [`TaskRun`](file:///home/developer/projects/dev-agent/src/main/java/guru/thomasweber/devagent/model/TaskRun.java) or [`StepAudit`](file:///home/developer/projects/dev-agent/src/main/java/guru/thomasweber/devagent/model/StepAudit.java)) must not be constructed repeatedly with ad-hoc builders inside test methods.
+* Shared test factories (e.g., `TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) in `src/test/java/guru/thomasweber/devagent/testutil/` must be used to supply valid fixtures with sensible defaults:
 ```java
 // Preferred: Clean, descriptive, self-documenting
 TaskRun crashed = TaskRunMother.crashed("TASK-001", TaskStatus.RED_TEST);
@@ -93,19 +93,19 @@ void setUp() {
   1. Jailbreak attempts with parent directory traversal (`../../etc/passwd`).
   2. Forbidden write targets (e.g., `.git/**`, `~/.config/dev-agent/**`).
   3. Intermediate and direct symbolic links (must throw `SecurityException`).
-  4. Strongly-typed [`RepoPath`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/workspace/RepoPath.java) wrapping and canonical root relativization.
+  4. Strongly-typed [`RepoPath`](file:///home/developer/projects/dev-agent/src/main/java/guru/thomasweber/devagent/workspace/RepoPath.java) wrapping and canonical root relativization.
 
 ### 2. Subprocess & Overflow Buffer Testing
-* Tests verifying process forks must use [`SubprocessExecutor`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/workspace/SubprocessExecutor.java) with explicit short timeouts (`Duration.ofMillis(...)`).
+* Tests verifying process forks must use [`SubprocessExecutor`](file:///home/developer/projects/dev-agent/src/main/java/guru/thomasweber/devagent/workspace/SubprocessExecutor.java) with explicit short timeouts (`Duration.ofMillis(...)`).
 * Must test process destruction (`destroyForcibly()`) upon timeout or thread interruption.
-* Two-tier stream buffer tests ([`BoundedOverflowBufferTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/workspace/BoundedOverflowBufferTest.java)) must verify:
+* Two-tier stream buffer tests ([`BoundedOverflowBufferTest`](file:///home/developer/projects/dev-agent/src/test/java/guru/thomasweber/devagent/workspace/BoundedOverflowBufferTest.java)) must verify:
   * In-memory tier ($< 1\text{ MB}$).
   * Temporary disk spillover ($1\text{ MB} - 10\text{ MB}$).
   * Content truncation beyond max capacity ceiling ($10\text{ MB}$).
 
 ### 3. Secret Redaction Quarantine Sinks
 * Secret scrub tests must ensure sensitive tokens (GitHub PATs, OpenAI keys, Gemini tokens, Bearer tokens, private PEM keys) are replaced with `***REDACTED_CREDENTIAL***`.
-* Persistence sinks must strictly verify that audit entities accept only [`SanitizedOutput`](file:///home/developer/projects/dev-agent/src/main/java/org/quarkus/agent/workspace/SanitizedOutput.java) value objects.
+* Persistence sinks must strictly verify that audit entities accept only [`SanitizedOutput`](file:///home/developer/projects/dev-agent/src/main/java/guru/thomasweber/devagent/workspace/SanitizedOutput.java) value objects.
 
 ---
 
