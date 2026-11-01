@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 class SubprocessExecutorTest {
 
@@ -125,7 +126,7 @@ class SubprocessExecutorTest {
         });
 
         t.start();
-        Thread.sleep(150);
+        await().atMost(Duration.ofSeconds(2)).until(() -> t.getState() == Thread.State.TIMED_WAITING);
         t.interrupt();
         t.join(2000);
 

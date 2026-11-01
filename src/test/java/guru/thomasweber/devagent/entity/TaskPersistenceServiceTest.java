@@ -15,7 +15,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verify;
 
 class TaskPersistenceServiceTest {
 
@@ -284,12 +287,12 @@ class TaskPersistenceServiceTest {
     @Test
     @DisplayName("Given persistEntity - handles successful persistence and defensive exception catches")
     void testPersistEntity() {
-        TaskRunEntity mockEntity = org.mockito.Mockito.mock(TaskRunEntity.class);
+        TaskRunEntity mockEntity = mock(TaskRunEntity.class);
         service.persistEntity(mockEntity);
-        org.mockito.Mockito.verify(mockEntity).persist();
+        verify(mockEntity).persist();
 
-        TaskRunEntity throwingEntity = org.mockito.Mockito.mock(TaskRunEntity.class);
-        org.mockito.Mockito.doThrow(new IllegalStateException("Panache not ready")).when(throwingEntity).persist();
+        TaskRunEntity throwingEntity = mock(TaskRunEntity.class);
+        doThrow(new IllegalStateException("Panache not ready")).when(throwingEntity).persist();
         service.persistEntity(throwingEntity);
     }
 

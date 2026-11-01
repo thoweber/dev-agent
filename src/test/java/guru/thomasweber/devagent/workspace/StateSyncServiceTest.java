@@ -224,7 +224,7 @@ class StateSyncServiceTest {
     @Test
     @DisplayName("Given active transaction registry - schedules post-commit synchronization and runs callbacks")
     @SuppressWarnings("unchecked")
-    void testScheduleMarkdownProjectionWithActiveTransaction() throws IOException {
+    void testScheduleMarkdownProjectionWithActiveTransaction() {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
 
