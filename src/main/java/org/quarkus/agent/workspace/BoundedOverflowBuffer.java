@@ -117,10 +117,9 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (diskTempFile != null) {
             try {
                 Files.deleteIfExists(diskTempFile);
+                diskTempFile = null;
             } catch (IOException e) {
                 failure = e;
-            } finally {
-                diskTempFile = null;
             }
         }
         memoryBuffer = null;

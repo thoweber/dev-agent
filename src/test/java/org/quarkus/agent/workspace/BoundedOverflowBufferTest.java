@@ -279,22 +279,45 @@ class BoundedOverflowBufferTest {
     }
 
     @Test
-    @DisplayName("Given disk-overflowed buffer when file deletion fails on close - propagates IOException")
+    @DisplayName("Given disk-overflowed buffer when file deletion fails on close - retains path and deletes on retry")
     void testCloseThrowsWhenFileDeletionFails() throws IOException {
         Path restrictedSubdir = Files.createDirectory(tempDir.resolve("restricted-dir"));
         BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, restrictedSubdir);
+        Path probe = Files.createFile(restrictedSubdir.resolve("probe.tmp"));
         try {
             buffer.outputStream().write("1234567890".getBytes(StandardCharsets.UTF_8));
             assertThat(buffer.isOverflowedToDisk()).isTrue();
 
             boolean madeNonWritable = restrictedSubdir.toFile().setWritable(false, false);
+            boolean deletionBlocked = false;
             if (madeNonWritable) {
+                try {
+                    Files.delete(probe);
+                } catch (IOException e) {
+                    deletionBlocked = true;
+                }
+            }
+
+            if (deletionBlocked) {
                 assertThatThrownBy(buffer::close).isInstanceOf(IOException.class);
+                assertThat(buffer.isOverflowedToDisk()).isTrue();
+
+                restrictedSubdir.toFile().setWritable(true, false);
+                Files.deleteIfExists(probe);
+                buffer.close();
+                assertThat(buffer.isOverflowedToDisk()).isFalse();
+
+                try (Stream<Path> list = Files.list(restrictedSubdir)) {
+                    assertThat(list.filter(p -> p.getFileName().toString().startsWith("dev-agent-proc-"))).isEmpty();
+                }
             } else {
+                restrictedSubdir.toFile().setWritable(true, false);
+                Files.deleteIfExists(probe);
                 buffer.close();
             }
         } finally {
             restrictedSubdir.toFile().setWritable(true, false);
+            Files.deleteIfExists(probe);
             try {
                 buffer.close();
             } catch (Exception ignored) {

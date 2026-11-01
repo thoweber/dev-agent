@@ -25,7 +25,7 @@ flowchart TD
 
 ### Level 2: Component Integration & Architecture Governance ($< 15\text{ s}$)
 * **Scope:** Architecture invariant checks ([`AgentArchitectureTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/AgentArchitectureTest.java)), filesystem sandbox boundary checks ([`WorkspaceJailValidatorTest`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/workspace/WorkspaceJailValidatorTest.java)), and in-memory H2 database persistence ([`StatePersistenceIT`](file:///home/developer/projects/dev-agent/src/test/java/org/quarkus/agent/entity/StatePersistenceIT.java)).
-* **Execution:** Executed via Surefire or Failsafe: `./mvnw test -Dtest=*IT,!Native*IT,AgentArchitectureTest`.
+* **Execution:** Executed via Surefire or Failsafe: `./mvnw test '-Dtest=*IT,!Native*IT,AgentArchitectureTest'`.
 * **Programmatic Isolation:** Integration tests requiring Hibernate or Panache operations must use programmatic transaction boundaries (`QuarkusTransaction.requiringNew()`) to prevent session pollution.
 
 ### Level 3: Native Executable & Subprocess CLI Tests

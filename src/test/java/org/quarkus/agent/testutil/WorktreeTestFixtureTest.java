@@ -10,6 +10,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorktreeTestFixtureTest {
 
@@ -65,5 +66,32 @@ class WorktreeTestFixtureTest {
         Path nonExistent = tempRepo.resolve("no-such-repo");
         assertThatCode(() -> WorktreeTestFixture.cleanAllWorktrees(nonExistent))
             .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("Given existing worktree directory - when createWorktree called again - throws exception and prevents overwrite")
+    void testCreateWorktreeThrowsWhenDirectoryExists() throws IOException {
+        WorktreeTestFixture.createWorktree(tempRepo, "TASK-EXISTING");
+
+        assertThatThrownBy(() -> WorktreeTestFixture.createWorktree(tempRepo, "TASK-EXISTING"))
+            .isInstanceOf(java.nio.file.FileAlreadyExistsException.class);
+    }
+
+    @Test
+    @DisplayName("Given worktrees in distinct repositories - when cleanAllWorktrees called for one repo - preserves other repo worktrees")
+    void testCleanAllWorktreesPreservesOtherRepositories(@TempDir Path repoB) throws IOException {
+        Path wtA = WorktreeTestFixture.createWorktree(tempRepo, "TASK-A");
+        Path wtB = WorktreeTestFixture.createWorktree(repoB, "TASK-B");
+
+        assertThat(Files.exists(wtA)).isTrue();
+        assertThat(Files.exists(wtB)).isTrue();
+
+        WorktreeTestFixture.cleanAllWorktrees(tempRepo);
+
+        assertThat(Files.exists(wtA)).isFalse();
+        assertThat(Files.exists(wtB)).isTrue();
+
+        WorktreeTestFixture.cleanAllWorktrees(repoB);
+        assertThat(Files.exists(wtB)).isFalse();
     }
 }

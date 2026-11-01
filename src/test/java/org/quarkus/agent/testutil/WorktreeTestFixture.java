@@ -21,7 +21,8 @@ public final class WorktreeTestFixture {
 
     public static Path createWorktree(Path repoRoot, String taskId) throws IOException {
         Path worktreeDir = resolveWorktree(repoRoot, taskId);
-        Files.createDirectories(worktreeDir);
+        Files.createDirectories(worktreeDir.getParent());
+        Files.createDirectory(worktreeDir);
         CREATED_WORKTREES.add(worktreeDir);
         return worktreeDir;
     }
@@ -33,10 +34,18 @@ public final class WorktreeTestFixture {
     }
 
     public static void cleanAllWorktrees(Path repoRoot) throws IOException {
-        for (Path p : CREATED_WORKTREES) {
-            deleteRecursively(p);
+        if (repoRoot == null) {
+            return;
         }
-        CREATED_WORKTREES.clear();
+        Path normalizedRepo = repoRoot.toAbsolutePath().normalize();
+        var it = CREATED_WORKTREES.iterator();
+        while (it.hasNext()) {
+            Path p = it.next();
+            if (p.toAbsolutePath().normalize().startsWith(normalizedRepo)) {
+                deleteRecursively(p);
+                it.remove();
+            }
+        }
     }
 
     private static void deleteRecursively(Path path) throws IOException {
