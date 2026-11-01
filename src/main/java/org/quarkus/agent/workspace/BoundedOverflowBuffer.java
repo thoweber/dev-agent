@@ -2,7 +2,6 @@ package org.quarkus.agent.workspace;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -137,11 +136,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             );
             return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
         } catch (UnsupportedOperationException _) {
-            Path tempFile = Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
-            File file = tempFile.toFile();
-            file.setReadable(true, true);
-            file.setWritable(true, true);
-            return tempFile;
+            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
         }
     }
 
@@ -149,23 +144,18 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
             this.diskTempFile = tempFile;
-            try {
-                this.fileChannel = FileChannel.open(
-                    tempFile,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.WRITE,
-                    StandardOpenOption.READ
-                );
-                byte[] inMemoryBytes = memoryBuffer.toByteArray();
-                ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
-                while (nioBuffer.hasRemaining()) {
-                    fileChannel.write(nioBuffer);
-                }
-                this.memoryBuffer = null;
-            } catch (Exception e) {
-                close();
-                throw e;
+            this.fileChannel = FileChannel.open(
+                tempFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.READ
+            );
+            byte[] inMemoryBytes = memoryBuffer.toByteArray();
+            ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
+            while (nioBuffer.hasRemaining()) {
+                fileChannel.write(nioBuffer);
             }
+            this.memoryBuffer = null;
         }
     }
 
