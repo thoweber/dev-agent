@@ -83,4 +83,13 @@ class ErrorSignatureExtractorTest {
 
         assertThat(sig1).isNotEqualTo(sig2);
     }
+
+    @Test
+    @DisplayName("Given network URL with port number - when extracting - then does not erroneously mask port as line coordinate")
+    void givenUrlWithPort_whenExtracting_thenPreservesPortWithoutMaskingAsLineCol() {
+        String trace = "Connection refused to http://localhost:8080/api/v1/resource";
+        String normalized = extractor.extractNormalizedText(trace);
+        assertThat(normalized).contains("localhost:8080");
+        assertThat(normalized).doesNotContain("<LINE>");
+    }
 }

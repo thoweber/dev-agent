@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.cognitive;
 
+import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import io.quarkus.cache.CacheKeyGenerator;
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -7,11 +8,15 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
+import java.util.List;
 
 /**
  * Deterministic cache key generator for Architectural Gatekeeper evaluations (ADR-009).
  * Computes: SHA-256(UnifiedDiff + RetrievedAdrsDigest)
+ * When passed a List of ArchitecturalRecord, extracts and sorts rule IDs deterministically.
  */
 @ApplicationScoped
 public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
@@ -28,7 +33,21 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
                 diff = methodParams[0].toString().strip();
             }
             if (methodParams.length > 1 && methodParams[1] != null) {
-                adrs = methodParams[1].toString().strip();
+                Object second = methodParams[1];
+                if (second instanceof List<?> list) {
+                    List<String> ids = new ArrayList<>();
+                    for (Object item : list) {
+                        if (item instanceof ArchitecturalRecord record) {
+                            ids.add(record.id());
+                        } else if (item != null) {
+                            ids.add(item.toString());
+                        }
+                    }
+                    Collections.sort(ids);
+                    adrs = String.join(",", ids);
+                } else {
+                    adrs = second.toString().strip();
+                }
             }
         }
 

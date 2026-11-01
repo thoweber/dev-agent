@@ -1,9 +1,12 @@
 package guru.thomasweber.devagent.cognitive;
 
+import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -90,5 +93,27 @@ class GatekeeperCacheKeyGeneratorTest {
         Object keyNullSecondParam = generator.generate(method, "only-diff", null);
         assertThat(keyNullSecondParam).isNotNull();
         assertThat(((String) keyNullSecondParam)).hasSize(64);
+    }
+
+    @Test
+    @DisplayName("Given list of ArchitecturalRecord in different orders - when generating cache key - then produces identical deterministic key")
+    void givenListOfRecordsInDifferentOrder_whenGenerating_thenProducesIdenticalKey() throws NoSuchMethodException {
+        Method method = Object.class.getMethod("toString");
+        String diff = "+line 1";
+        ArchitecturalRecord rec1 = ArchitecturalRecord.builder().id("ADR-001").title("Title 1").build();
+        ArchitecturalRecord rec2 = ArchitecturalRecord.builder().id("ADR-005").title("Title 5").build();
+
+        Object key1 = generator.generate(method, diff, List.of(rec1, rec2));
+        Object key2 = generator.generate(method, diff, List.of(rec2, rec1));
+
+        assertThat(key1).isEqualTo(key2);
+
+        // Also test with list containing strings or nulls
+        List<Object> mixed = new ArrayList<>();
+        mixed.add("ADR-005");
+        mixed.add("ADR-001");
+        mixed.add(null);
+        Object keyMixed = generator.generate(method, diff, mixed);
+        assertThat(keyMixed).isEqualTo(key1);
     }
 }

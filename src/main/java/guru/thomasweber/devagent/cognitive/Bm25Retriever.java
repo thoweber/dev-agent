@@ -13,10 +13,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
  * Pure-Java lexical inverted index retrieval engine implementing Okapi BM25 ranking.
+ * Backed by an immutable snapshot architecture for lock-free concurrent reads.
  * Provides zero-JNI native safety for GraalVM Mandrel Ahead-of-Time (AOT) compilation.
  */
 @ApplicationScoped
@@ -42,14 +44,21 @@ public class Bm25Retriever {
         "why", "with", "would", "you", "your", "yours", "yourself", "yourselves"
     )));
 
+    private record IndexSnapshot(
+        Map<String, ArchitecturalRecord> documents,
+        Map<String, Integer> documentLengths,
+        Map<String, Map<String, Integer>> invertedIndex,
+        double avgDocLength,
+        int totalDocs
+    ) {
+        static IndexSnapshot empty() {
+            return new IndexSnapshot(Map.of(), Map.of(), Map.of(), 0.0, 0);
+        }
+    }
+
     private final double k1;
     private final double b;
-
-    private final Map<String, ArchitecturalRecord> documents = new LinkedHashMap<>();
-    private final Map<String, Integer> documentLengths = new LinkedHashMap<>();
-    private final Map<String, Map<String, Integer>> invertedIndex = new LinkedHashMap<>();
-    private double avgDocLength = 0.0;
-    private int totalDocs = 0;
+    private final AtomicReference<IndexSnapshot> snapshot = new AtomicReference<>(IndexSnapshot.empty());
 
     public Bm25Retriever() {
         this(DEFAULT_K1, DEFAULT_B);
@@ -66,20 +75,19 @@ public class Bm25Retriever {
         this.b = b;
     }
 
-    public synchronized void index(List<ArchitecturalRecord> records) {
-        documents.clear();
-        documentLengths.clear();
-        invertedIndex.clear();
-        avgDocLength = 0.0;
-        totalDocs = 0;
-
+    public void index(List<ArchitecturalRecord> records) {
         if (records == null || records.isEmpty()) {
+            snapshot.set(IndexSnapshot.empty());
             return;
         }
 
+        Map<String, ArchitecturalRecord> newDocs = new LinkedHashMap<>();
+        Map<String, Integer> newLengths = new LinkedHashMap<>();
+        Map<String, Map<String, Integer>> newInvertedIndex = new LinkedHashMap<>();
+
         long totalTokens = 0;
         for (ArchitecturalRecord record : records) {
-            documents.put(record.id(), record);
+            newDocs.put(record.id(), record);
             String fullText = String.join(" ",
                 Objects.toString(record.title(), ""),
                 Objects.toString(record.summary(), ""),
@@ -89,7 +97,7 @@ public class Bm25Retriever {
 
             List<String> tokens = tokenize(fullText);
             int docLength = tokens.size();
-            documentLengths.put(record.id(), docLength);
+            newLengths.put(record.id(), docLength);
             totalTokens += docLength;
 
             Map<String, Integer> freqs = new LinkedHashMap<>();
@@ -98,17 +106,31 @@ public class Bm25Retriever {
             }
 
             for (Map.Entry<String, Integer> entry : freqs.entrySet()) {
-                invertedIndex.computeIfAbsent(entry.getKey(), _ -> new LinkedHashMap<>())
+                newInvertedIndex.computeIfAbsent(entry.getKey(), _ -> new LinkedHashMap<>())
                     .put(record.id(), entry.getValue());
             }
         }
 
-        totalDocs = documents.size();
-        avgDocLength = totalDocs > 0 ? (double) totalTokens / totalDocs : 0.0;
+        int totalDocs = newDocs.size();
+        double avgDocLength = totalDocs > 0 ? (double) totalTokens / totalDocs : 0.0;
+
+        Map<String, Map<String, Integer>> frozenIndex = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Integer>> e : newInvertedIndex.entrySet()) {
+            frozenIndex.put(e.getKey(), Collections.unmodifiableMap(e.getValue()));
+        }
+
+        snapshot.set(new IndexSnapshot(
+            Collections.unmodifiableMap(newDocs),
+            Collections.unmodifiableMap(newLengths),
+            Collections.unmodifiableMap(frozenIndex),
+            avgDocLength,
+            totalDocs
+        ));
     }
 
     public double computeIdf(String term) {
-        if (totalDocs == 0) {
+        IndexSnapshot current = snapshot.get();
+        if (current.totalDocs() == 0) {
             return 0.0;
         }
         List<String> tokens = tokenize(term);
@@ -116,17 +138,18 @@ public class Bm25Retriever {
             return 0.0;
         }
         String stem = tokens.getFirst();
-        Map<String, Integer> postings = invertedIndex.get(stem);
+        Map<String, Integer> postings = current.invertedIndex().get(stem);
         int docFreq = (postings != null) ? postings.size() : 0;
 
         // Robertson-Spärck Jones / Lucene non-negative IDF: ln(1 + (N - n(t) + 0.5) / (n(t) + 0.5))
-        double numerator = totalDocs - docFreq + 0.5;
+        double numerator = current.totalDocs() - docFreq + 0.5;
         double denominator = docFreq + 0.5;
         return Math.log(1.0 + (numerator / denominator));
     }
 
     public double scoreDocument(String docId, String query) {
-        if (totalDocs == 0 || query == null || !documents.containsKey(docId)) {
+        IndexSnapshot current = snapshot.get();
+        if (current.totalDocs() == 0 || query == null || !current.documents().containsKey(docId)) {
             return 0.0;
         }
         List<String> queryTokens = tokenize(query);
@@ -134,12 +157,12 @@ public class Bm25Retriever {
             return 0.0;
         }
 
-        int docLength = documentLengths.getOrDefault(docId, 0);
-        double lenNorm = (avgDocLength > 0.0) ? (1.0 - b + b * (docLength / avgDocLength)) : 1.0;
+        int docLength = current.documentLengths().getOrDefault(docId, 0);
+        double lenNorm = (current.avgDocLength() > 0.0) ? (1.0 - b + b * (docLength / current.avgDocLength())) : 1.0;
 
         double totalScore = 0.0;
         for (String token : queryTokens) {
-            Map<String, Integer> postings = invertedIndex.get(token);
+            Map<String, Integer> postings = current.invertedIndex().get(token);
             if (postings != null && postings.containsKey(docId)) {
                 int freq = postings.get(docId);
                 double idf = computeIdf(token);
@@ -150,8 +173,9 @@ public class Bm25Retriever {
         return totalScore;
     }
 
-    public synchronized List<ArchitecturalRecord> search(String query, int topK) {
-        if (query == null || query.isBlank() || totalDocs == 0 || topK <= 0) {
+    public List<ArchitecturalRecord> search(String query, int topK) {
+        IndexSnapshot current = snapshot.get();
+        if (query == null || query.isBlank() || current.totalDocs() == 0 || topK <= 0) {
             return Collections.emptyList();
         }
 
@@ -163,7 +187,7 @@ public class Bm25Retriever {
         Map<String, Double> scores = new LinkedHashMap<>();
 
         for (String token : queryTokens) {
-            Map<String, Integer> postings = invertedIndex.get(token);
+            Map<String, Integer> postings = current.invertedIndex().get(token);
             if (postings == null) {
                 continue;
             }
@@ -172,8 +196,8 @@ public class Bm25Retriever {
             for (Map.Entry<String, Integer> entry : postings.entrySet()) {
                 String docId = entry.getKey();
                 int freq = entry.getValue();
-                int docLength = documentLengths.getOrDefault(docId, 0);
-                double lenNorm = (avgDocLength > 0.0) ? (1.0 - b + b * (docLength / avgDocLength)) : 1.0;
+                int docLength = current.documentLengths().getOrDefault(docId, 0);
+                double lenNorm = (current.avgDocLength() > 0.0) ? (1.0 - b + b * (docLength / current.avgDocLength())) : 1.0;
                 double tfPart = (freq * (k1 + 1.0)) / (freq + k1 * lenNorm);
                 scores.merge(docId, idf * tfPart, Double::sum);
             }
@@ -195,7 +219,7 @@ public class Bm25Retriever {
         List<ArchitecturalRecord> results = new ArrayList<>();
         int count = Math.min(topK, sorted.size());
         for (int i = 0; i < count; i++) {
-            results.add(documents.get(sorted.get(i).getKey()));
+            results.add(current.documents().get(sorted.get(i).getKey()));
         }
 
         return Collections.unmodifiableList(results);

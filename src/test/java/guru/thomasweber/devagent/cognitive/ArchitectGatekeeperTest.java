@@ -1,12 +1,17 @@
 package guru.thomasweber.devagent.cognitive;
 
+import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.model.GateVerdict;
 import guru.thomasweber.devagent.testutil.GateVerdictMother;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,5 +30,35 @@ class ArchitectGatekeeperTest {
 
         assertThat(actual).isEqualTo(expected);
         verify(mockAiService).evaluate("diff-content", "adrs-content");
+    }
+
+    @Test
+    @DisplayName("Given ArchitectGatekeeper with List of records - when evaluate called - then formats prompt and delegates")
+    void givenGatekeeperWithRecords_whenEvaluate_thenFormatsAndDelegates() {
+        UniversalArchitectGatekeeperAiService mockAiService = Mockito.mock(UniversalArchitectGatekeeperAiService.class);
+        ArchitectGatekeeper gatekeeper = new ArchitectGatekeeper(mockAiService);
+
+        GateVerdict expected = GateVerdictMother.approved("All rules pass");
+        when(mockAiService.evaluate(eq("diff-content"), any(String.class))).thenReturn(expected);
+
+        ArchitecturalRecord rec1 = ArchitecturalRecord.builder()
+            .id("ADR-001")
+            .title("Title 1")
+            .status("Accepted")
+            .summary("Summary 1")
+            .build();
+        ArchitecturalRecord rec2 = ArchitecturalRecord.builder()
+            .id("ADR-002")
+            .title("Title 2")
+            .status("Accepted")
+            .summary("")
+            .build();
+
+        GateVerdict actual = gatekeeper.evaluate("diff-content", List.of(rec1, rec2));
+        assertThat(actual).isEqualTo(expected);
+
+        // Edge case: null or empty records
+        gatekeeper.evaluate("diff-content", (List<ArchitecturalRecord>) null);
+        gatekeeper.evaluate("diff-content", List.of());
     }
 }

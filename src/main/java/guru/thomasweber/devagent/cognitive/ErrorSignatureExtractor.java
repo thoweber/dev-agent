@@ -22,7 +22,7 @@ public class ErrorSignatureExtractor {
     private static final Pattern LINUX_PATH_PATTERN = Pattern.compile("(?:/[a-zA-Z0-9_.-]+)+/[a-zA-Z0-9_.-]+\\.[a-zA-Z0-9]+");
     private static final Pattern WINDOWS_PATH_PATTERN = Pattern.compile("[a-zA-Z]:\\\\\\S+\\.[a-zA-Z0-9]+");
     private static final Pattern LINE_COL_BRACKET_PATTERN = Pattern.compile(":\\[\\d+,\\s*\\d+\\]|\\[\\d+,\\s*\\d+\\]");
-    private static final Pattern LINE_COL_COLON_PATTERN = Pattern.compile("(?::|\\bline\\s+)\\d+(?::|,?\\s*col(?:umn)?\\s*\\d+)?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SOURCE_LINE_COL_PATTERN = Pattern.compile("(?i)(?:(?<=\\.[a-zA-Z][a-zA-Z0-9_]{0,7}):\\d+(?::\\d+)?|\\bline\\s+\\d+(?:,?\\s*col(?:umn)?\\s*\\d+)?)");
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     public String extractNormalizedText(String rawTrace) {
@@ -38,7 +38,7 @@ public class ErrorSignatureExtractor {
         s = LINUX_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
         s = WINDOWS_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
         s = LINE_COL_BRACKET_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
-        s = LINE_COL_COLON_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
+        s = SOURCE_LINE_COL_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
         s = WHITESPACE_PATTERN.matcher(s).replaceAll(" ").trim();
 
         return s;

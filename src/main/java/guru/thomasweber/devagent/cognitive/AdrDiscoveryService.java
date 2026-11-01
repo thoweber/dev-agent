@@ -39,8 +39,8 @@ public class AdrDiscoveryService {
 
     private static final Pattern TITLE_PATTERN = Pattern.compile("^#\\s+(.+)$", Pattern.MULTILINE);
     private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([A-Za-z0-9_-]+)");
-    private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b(ADR-\\d+|REM-\\d+|[A-Z0-9]+-\\d+)\\b");
-    private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^(ADR-\\d+|REM-\\d+|[A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
+    private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b([A-Z0-9]+-\\d+)\\b");
+    private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^([A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
     private static final Pattern SUMMARY_SECTION_PATTERN = Pattern.compile("(?is)##\\s*(?:summary|context)\\s*\\n+([^#\\n][^#]*?)(?=\\n##|\\Z)");
 
     private final WorkspaceContextResolver contextResolver;
@@ -165,11 +165,16 @@ public class AdrDiscoveryService {
         }
 
         if (normalizedPattern.contains("*")) {
-            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + normalizedPattern);
-            if (!Files.exists(root)) {
+            int firstStar = normalizedPattern.indexOf('*');
+            int lastSlash = normalizedPattern.lastIndexOf('/', firstStar);
+            String prefix = (lastSlash >= 0) ? normalizedPattern.substring(0, lastSlash) : "";
+            Path searchRoot = prefix.isEmpty() ? root : root.resolve(prefix);
+            if (!Files.exists(searchRoot)) {
                 return;
             }
-            try (Stream<Path> stream = Files.walk(root)) {
+
+            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + normalizedPattern);
+            try (Stream<Path> stream = Files.walk(searchRoot)) {
                 stream.filter(Files::isRegularFile)
                     .filter(p -> p.getFileName().toString().endsWith(".md"))
                     .filter(p -> !isIgnored(root, p))
@@ -183,7 +188,7 @@ public class AdrDiscoveryService {
                         }
                     });
             } catch (IOException e) {
-                throw new UncheckedIOException("Failed to walk workspace root: " + root, e);
+                throw new UncheckedIOException("Failed to walk workspace root: " + searchRoot, e);
             }
         } else {
             Path path = root.resolve(normalizedPattern);
@@ -215,7 +220,7 @@ public class AdrDiscoveryService {
     private boolean isIgnored(Path root, Path file) {
         Path rel = root.relativize(file);
         String relStr = rel.toString().replace('\\', '/');
-        return relStr.startsWith(".git/") || relStr.startsWith("target-agent/") || relStr.startsWith("target/");
+        return relStr.startsWith(".git/") || relStr.startsWith("target-agent/") || relStr.startsWith("target/") || relStr.contains("/node_modules/");
     }
 
     private ArchitecturalRecord parseRecord(RepoPath repoPath) {
@@ -285,10 +290,10 @@ public class AdrDiscoveryService {
     private List<String> deriveTags(RepoPath repoPath) {
         List<String> tags = new ArrayList<>();
         String rel = repoPath.relativize().toString().toLowerCase().replace('\\', '/');
-        if (rel.contains("adr")) {
+        if (rel.matches(".*(?i)(?:^|/)(?:adr|adrs)(?:/|[-_.]|$).*")) {
             tags.add("adr");
         }
-        if (rel.contains("rule")) {
+        if (rel.matches(".*(?i)(?:^|/)(?:rule|rules)(?:/|[-_.]|$).*")) {
             tags.add("rule");
         }
         return Collections.unmodifiableList(tags);
