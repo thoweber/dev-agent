@@ -9,8 +9,11 @@ import org.commonmark.node.AbstractVisitor;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.Code;
 import org.commonmark.node.FencedCodeBlock;
+import org.commonmark.node.HardLineBreak;
 import org.commonmark.node.Heading;
 import org.commonmark.node.Node;
+import org.commonmark.node.Paragraph;
+import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
 
@@ -115,6 +118,24 @@ public class MarkdownParserService {
         public void visit(BlockQuote blockQuote) {
             buffer.append("> ");
             super.visit(blockQuote);
+        }
+
+        @Override
+        public void visit(Paragraph paragraph) {
+            super.visit(paragraph);
+            buffer.append("\n\n");
+        }
+
+        @Override
+        public void visit(SoftLineBreak softLineBreak) {
+            buffer.append("\n");
+            super.visit(softLineBreak);
+        }
+
+        @Override
+        public void visit(HardLineBreak hardLineBreak) {
+            buffer.append("\n");
+            super.visit(hardLineBreak);
         }
 
         void flush() {

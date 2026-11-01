@@ -541,4 +541,39 @@ class AdrDiscoveryServiceTest {
         List<ArchitecturalRecord> records = service.discoverRecords();
         assertThat(records).isNotNull();
     }
+
+    @Test
+    @DisplayName("Given explicit adrParser constructor - when discovering - then executes properly")
+    void givenExplicitAdrParserConstructor_whenDiscovering_thenExecutesProperly() {
+        AdrDiscoveryService service = new AdrDiscoveryService(
+            contextResolver,
+            jailValidator,
+            new MarkdownParserService(),
+            new DevAgentConfigLoader(),
+            new NioWorkspaceFileScanner(),
+            new AdrParser()
+        );
+        List<ArchitecturalRecord> records = service.discoverRecords();
+        assertThat(records).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given four-arg constructor - when discovering - then executes properly")
+    void givenFourArgConstructor_whenDiscovering_thenExecutesProperly() {
+        AdrDiscoveryService service = new AdrDiscoveryService(
+            contextResolver,
+            new DevAgentConfigLoader(),
+            new NioWorkspaceFileScanner(),
+            new AdrParser()
+        );
+        List<ArchitecturalRecord> records = service.discoverRecords();
+        assertThat(records).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given null root - when discovering - then returns empty list safely")
+    void givenNullRoot_whenDiscovering_thenReturnsEmptyList() {
+        List<ArchitecturalRecord> records = discoveryService.discoverRecords(null);
+        assertThat(records).isEmpty();
+    }
 }
