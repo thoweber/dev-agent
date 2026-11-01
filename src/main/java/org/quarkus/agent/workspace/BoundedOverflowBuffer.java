@@ -107,30 +107,28 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     public synchronized void close() throws IOException {
         closed = true;
         IOException failure = null;
-        closeChannelSilently();
+        if (fileChannel != null) {
+            try {
+                fileChannel.close();
+            } catch (IOException e) {
+                failure = e;
+            } finally {
+                fileChannel = null;
+            }
+        }
         if (diskTempFile != null) {
             try {
                 Files.deleteIfExists(diskTempFile);
                 diskTempFile = null;
             } catch (IOException e) {
-                failure = e;
+                if (failure == null) {
+                    failure = e;
+                }
             }
         }
         memoryBuffer = null;
         if (failure != null) {
             throw failure;
-        }
-    }
-
-    private void closeChannelSilently() {
-        if (fileChannel != null) {
-            try {
-                fileChannel.close();
-            } catch (IOException _) {
-                // Suppress secondary exception during channel close
-            } finally {
-                fileChannel = null;
-            }
         }
     }
 
@@ -160,7 +158,15 @@ public class BoundedOverflowBuffer implements AutoCloseable {
                 this.diskTempFile = tempFile;
                 this.memoryBuffer = null;
             } catch (Throwable t) {
-                closeChannelSilently();
+                if (fileChannel != null) {
+                    try {
+                        fileChannel.close();
+                    } catch (IOException _) {
+                        // Suppress secondary exception
+                    } finally {
+                        fileChannel = null;
+                    }
+                }
                 Files.deleteIfExists(tempFile);
                 throw t;
             }

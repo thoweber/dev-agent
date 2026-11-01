@@ -252,6 +252,32 @@ class BoundedOverflowBufferTest {
     }
 
     @Test
+    @DisplayName("Given read-only default ACL directory - when overflow occurs - then deletes temporary file and preserves in-memory buffer")
+    void testSpillTransitionFailureCleansUpTempFile() throws Exception {
+        Path aclDir = Files.createDirectory(tempDir.resolve("acl-restricted-dir"));
+        Process setfacl = new ProcessBuilder("setfacl", "-d", "-m", "u::r,g::r,o::r", aclDir.toString()).start();
+        if (setfacl.waitFor() != 0) {
+            return;
+        }
+
+        try (BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, aclDir)) {
+            OutputStream out = buffer.outputStream();
+            out.write("12345".getBytes(StandardCharsets.UTF_8));
+            assertThat(buffer.isOverflowedToDisk()).isFalse();
+
+            assertThatThrownBy(() -> out.write('6'))
+                .isInstanceOf(IOException.class);
+
+            assertThat(buffer.isOverflowedToDisk()).isFalse();
+            assertThat(buffer.asString()).isEqualTo("12345");
+
+            try (Stream<Path> list = Files.list(aclDir)) {
+                assertThat(list).isEmpty();
+            }
+        }
+    }
+
+    @Test
     @DisplayName("Given disk-overflowed buffer - close deletes temporary file from filesystem and is idempotent")
     void testOverflowFileDeletedOnCloseAndIdempotentClose() throws IOException {
         BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(10, 100, tempDir);
