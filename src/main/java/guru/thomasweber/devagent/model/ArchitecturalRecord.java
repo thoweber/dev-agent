@@ -19,4 +19,8 @@ public record ArchitecturalRecord(
     RepoPath path,
     String summary,
     String content
-) {}
+) {
+    public ArchitecturalRecord {
+        tags = (tags != null) ? List.copyOf(tags) : List.of();
+    }
+}

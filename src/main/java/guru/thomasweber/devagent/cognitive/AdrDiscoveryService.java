@@ -92,6 +92,8 @@ public class AdrDiscoveryService {
             List<String> paths = new ArrayList<>();
             boolean inKnowledge = false;
             boolean inRulesPaths = false;
+            boolean inBracketArray = false;
+            StringBuilder bracketBuffer = new StringBuilder();
             int rulesPathsIndent = -1;
 
             for (String line : lines) {
@@ -106,8 +108,29 @@ public class AdrDiscoveryService {
                     continue;
                 }
                 if (inKnowledge && trimmed.startsWith("rules-paths:")) {
+                    String rest = stripComment(trimmed.substring("rules-paths:".length())).trim();
+                    if (rest.startsWith("[")) {
+                        inBracketArray = true;
+                        bracketBuffer.append(rest);
+                        if (rest.contains("]")) {
+                            inBracketArray = false;
+                            parseBracketArray(bracketBuffer.toString(), paths);
+                            bracketBuffer.setLength(0);
+                        }
+                        continue;
+                    }
                     inRulesPaths = true;
                     rulesPathsIndent = indent;
+                    continue;
+                }
+                if (inBracketArray) {
+                    String clean = stripComment(trimmed);
+                    bracketBuffer.append(" ").append(clean);
+                    if (clean.contains("]")) {
+                        inBracketArray = false;
+                        parseBracketArray(bracketBuffer.toString(), paths);
+                        bracketBuffer.setLength(0);
+                    }
                     continue;
                 }
                 if (inRulesPaths) {
@@ -117,7 +140,7 @@ public class AdrDiscoveryService {
                             inKnowledge = false;
                         }
                     } else if (trimmed.startsWith("-")) {
-                        String item = stripQuotes(trimmed.substring(1).trim());
+                        String item = stripQuotes(stripComment(trimmed.substring(1)).trim());
                         paths.add(item);
                     }
                 }
@@ -126,6 +149,25 @@ public class AdrDiscoveryService {
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read config file: " + configFile, e);
         }
+    }
+
+    private static void parseBracketArray(String text, List<String> paths) {
+        int start = text.indexOf('[');
+        int end = text.lastIndexOf(']');
+        if (start >= 0 && end > start) {
+            String inner = text.substring(start + 1, end);
+            for (String part : inner.split(",")) {
+                String item = stripQuotes(part.trim());
+                if (!item.isEmpty()) {
+                    paths.add(item);
+                }
+            }
+        }
+    }
+
+    private static String stripComment(String s) {
+        int hashIdx = s.indexOf('#');
+        return hashIdx >= 0 ? s.substring(0, hashIdx) : s;
     }
 
     private static String stripQuotes(String s) {

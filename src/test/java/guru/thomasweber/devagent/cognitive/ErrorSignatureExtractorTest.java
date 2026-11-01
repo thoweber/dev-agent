@@ -92,4 +92,12 @@ class ErrorSignatureExtractorTest {
         assertThat(normalized).contains("localhost:8080");
         assertThat(normalized).doesNotContain("<LINE>");
     }
+
+    @Test
+    @DisplayName("Given massive error trace exceeding max chars - when extracting - then truncates safely and extracts signature")
+    void givenMassiveErrorTrace_whenExtracting_thenTruncatesSafely() {
+        String massive = "massive error trace line ".repeat(3000);
+        String sig = extractor.extractSignature(massive);
+        assertThat(sig).hasSize(64);
+    }
 }

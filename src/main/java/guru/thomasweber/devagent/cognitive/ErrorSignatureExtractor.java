@@ -24,13 +24,14 @@ public class ErrorSignatureExtractor {
     private static final Pattern LINE_COL_BRACKET_PATTERN = Pattern.compile(":\\[\\d+,\\s*\\d+\\]|\\[\\d+,\\s*\\d+\\]");
     private static final Pattern SOURCE_LINE_COL_PATTERN = Pattern.compile("(?i)(?:(?<=\\.[a-zA-Z][a-zA-Z0-9_]{0,7}):\\d+(?::\\d+)?|\\bline\\s+\\d+(?:,?\\s*col(?:umn)?\\s*\\d+)?)");
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
+    public static final int MAX_INPUT_CHARS = 65536;
 
     public String extractNormalizedText(String rawTrace) {
         if (rawTrace == null || rawTrace.isBlank()) {
             return "";
         }
 
-        String s = rawTrace;
+        String s = (rawTrace.length() > MAX_INPUT_CHARS) ? rawTrace.substring(0, MAX_INPUT_CHARS) : rawTrace;
         s = MEMORY_ADDR_PATTERN.matcher(s).replaceAll("@<ADDR>");
         s = ISO_TIMESTAMP_PATTERN.matcher(s).replaceAll("<TIME>");
         s = CLOCK_TIME_PATTERN.matcher(s).replaceAll("<TIME>");

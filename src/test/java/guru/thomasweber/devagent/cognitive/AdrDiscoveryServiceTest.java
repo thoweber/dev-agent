@@ -365,4 +365,25 @@ class AdrDiscoveryServiceTest {
         assertThat(records.getFirst().id()).isEqualTo("team-guidelines");
         assertThat(records.getFirst().title()).isEqualTo("Team Conventions and Style");
     }
+
+    @Test
+    @DisplayName("Given dev-agent.yaml with inline array and comments - when discovering - then parses inline array properly")
+    void givenYamlWithInlineArrayAndComments_whenDiscovering_thenParsesCorrectly() throws IOException {
+        Path agentsDir = tempDir.resolve(".agents");
+        Files.createDirectories(agentsDir);
+        Files.writeString(agentsDir.resolve("dev-agent.yaml"), """
+            agent:
+              knowledge:
+                rules-paths: [ "inline/adrs/*.md" # inline comment
+                             , "specs/*.md" ]
+            """);
+
+        Path inlineDir = tempDir.resolve("inline/adrs");
+        Files.createDirectories(inlineDir);
+        Files.writeString(inlineDir.resolve("INLINE-01.md"), "# INLINE-01: Inline Rule\n\nInline content.");
+
+        List<ArchitecturalRecord> records = discoveryService.discoverRecords();
+        assertThat(records).hasSize(1);
+        assertThat(records.getFirst().id()).isEqualTo("INLINE-01");
+    }
 }

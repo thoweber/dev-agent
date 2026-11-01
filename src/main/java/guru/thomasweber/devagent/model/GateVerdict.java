@@ -14,4 +14,9 @@ public record GateVerdict(
     String summary,
     List<String> violations,
     List<String> recommendations
-) {}
+) {
+    public GateVerdict {
+        violations = (violations != null) ? List.copyOf(violations) : List.of();
+        recommendations = (recommendations != null) ? List.copyOf(recommendations) : List.of();
+    }
+}
