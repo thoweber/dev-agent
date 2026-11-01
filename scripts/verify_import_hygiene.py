@@ -11,20 +11,27 @@ import argparse
 import os
 import re
 import sys
-from typing import List, Tuple
+from typing import Dict, List, Set, Tuple
 
-# Pattern matching common fully qualified class references (package prefix + Capitalized Class Name)
+# Pattern matching any fully qualified Java class reference (package path + Capitalized Class Name)
+# e.g., com.fasterxml.jackson.databind.ObjectMapper, jakarta.persistence.Entity, java.util.List
 FQN_PATTERN = re.compile(
-    r'\b(?:java\.[a-z0-9_.]+|guru\.thomasweber\.[a-z0-9_.]+|org\.[a-z0-9_.]+|io\.[a-z0-9_.]+)\.[A-Z][a-zA-Z0-9_]*'
+    r'\b([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+\.[A-Z][a-zA-Z0-9_]*(?:\.[A-Z][a-zA-Z0-9_]*)*)\b'
 )
 
-# Pattern to strip string literals
+# Pattern to strip string and character literals
 STRING_LITERAL_PATTERN = re.compile(r'"(?:\\.|[^"\\])*"')
+CHAR_LITERAL_PATTERN = re.compile(r"'(?:\\.|[^'\\])'")
+
+# Pattern to extract imported class names: import (static)? pkg.ClassName;
+IMPORT_PATTERN = re.compile(r'^\s*import\s+(?:static\s+)?([a-zA-Z0-9_.]+)\s*;')
 
 
-def strip_string_literals(line: str) -> str:
-    """Replaces string literals in the line with empty strings to prevent false positives."""
-    return STRING_LITERAL_PATTERN.sub('""', line)
+def sanitize_literals(line: str) -> str:
+    """Replaces string and character literals with placeholders to prevent false comments or false FQN matches."""
+    line = STRING_LITERAL_PATTERN.sub('""', line)
+    line = CHAR_LITERAL_PATTERN.sub("''", line)
+    return line
 
 
 def check_file(file_path: str) -> List[Tuple[int, str, str]]:
@@ -32,43 +39,95 @@ def check_file(file_path: str) -> List[Tuple[int, str, str]]:
     Checks a single Java file for inline fully-qualified class names.
     Returns a list of (line_number, matched_fqn, line_content) tuples.
     """
-    violations = []
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+            raw_lines = fh.readlines()
+    except Exception as e:
+        return [(0, "", f"Could not read file {file_path}: {e}")]
+
+    # Pass 1: Collect imported types and collect all candidate FQN occurrences
+    imported_simple_names: Dict[str, str] = {}  # simple_name -> full_imported_fqn
+    candidate_fqns_by_simple_name: Dict[str, Set[str]] = {}
+
+    cleaned_lines: List[Tuple[int, str, str]] = []  # (line_num, sanitized_line, raw_line)
     in_block_comment = False
 
-    with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
-        for line_num, raw_line in enumerate(fh, 1):
-            line = raw_line.strip()
+    for line_num, raw_line in enumerate(raw_lines, 1):
+        line = raw_line.strip()
 
-            # Handle multi-line block comments
-            if in_block_comment:
-                if "*/" in line:
-                    in_block_comment = False
-                    line = line[line.find("*/") + 2 :].strip()
-                else:
-                    continue
-
-            if "/*" in line:
-                if "*/" in line:
-                    # Single-line block comment
-                    line = re.sub(r'/\*.*?\*/', '', line).strip()
-                else:
-                    in_block_comment = True
-                    line = line[: line.find("/*")].strip()
-
-            # Strip single-line comments
-            if "//" in line:
-                line = line[: line.find("//")].strip()
-
-            # Skip package declarations, import statements, empty lines
-            if not line or line.startswith("package ") or line.startswith("import "):
+        # Handle text block opening/closing or block comments
+        if in_block_comment:
+            if "*/" in line:
+                in_block_comment = False
+                line = line[line.find("*/") + 2 :].strip()
+            else:
                 continue
 
-            # Strip string literals
-            sanitized = strip_string_literals(line)
+        # Strip string literals before checking comment delimiters
+        # This prevents "/*" or "//" inside string literals from corrupting comment state
+        line = sanitize_literals(line)
 
-            match = FQN_PATTERN.search(sanitized)
-            if match:
-                violations.append((line_num, match.group(0), raw_line.rstrip()))
+        if "/*" in line:
+            if "*/" in line:
+                line = re.sub(r'/\*.*?\*/', '', line).strip()
+            else:
+                in_block_comment = True
+                line = line[: line.find("/*")].strip()
+
+        # Strip single-line comments
+        if "//" in line:
+            line = line[: line.find("//")].strip()
+
+        # Check and skip import declarations
+        if line.startswith("import "):
+            import_match = IMPORT_PATTERN.match(raw_line)
+            if import_match:
+                full_path = import_match.group(1)
+                parts = full_path.split(".")
+                # If static import of a member, track the declaring class
+                if "static " in raw_line and len(parts) >= 2 and parts[-1][0].islower():
+                    simple = parts[-2]
+                    imported_simple_names[simple] = ".".join(parts[:-1])
+                elif parts:
+                    simple = parts[-1]
+                    imported_simple_names[simple] = full_path
+            continue
+
+        # Skip package declarations and empty lines
+        if not line or line.startswith("package "):
+            continue
+
+        cleaned_lines.append((line_num, line, raw_line.rstrip()))
+
+        # Collect candidate FQNs for collision detection
+        for match in FQN_PATTERN.finditer(line):
+            fqn = match.group(1)
+            simple = fqn.split(".")[-1]
+            candidate_fqns_by_simple_name.setdefault(simple, set()).add(fqn)
+
+    # Pass 2: Identify genuine violations, exempting collisions
+    violations = []
+    for line_num, line, raw_line in cleaned_lines:
+        for match in FQN_PATTERN.finditer(line):
+            fqn = match.group(1)
+            simple = fqn.split(".")[-1]
+
+            # Collision Exception Check:
+            # An inline FQN is permitted solely when disambiguating two classes that share
+            # the exact same simple name within the same file:
+            # 1. Simple name is imported from a different package:
+            is_collision_with_import = (
+                simple in imported_simple_names
+                and imported_simple_names[simple] != fqn
+            )
+            # 2. File references two distinct packages for the same simple name:
+            is_collision_in_file = len(candidate_fqns_by_simple_name.get(simple, set())) > 1
+
+            if is_collision_with_import or is_collision_in_file:
+                # Legitimate collision disambiguation exemption
+                continue
+
+            violations.append((line_num, fqn, raw_line))
 
     return violations
 

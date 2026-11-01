@@ -25,8 +25,8 @@ LINK_PATTERN = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 # Match reference definitions: [label]: url "optional title"
 REF_DEF_PATTERN = re.compile(r"^\s*\[([^\]]+)\]:\s*(\S+)(?:\s+[\"'(].*[\"')])?\s*$")
 
-# Match reference-style links: [text][ref] or [ref][]
-REF_LINK_PATTERN = re.compile(r"(?<!!)\[([^\]]+)\]\[([^\]]*)\]")
+# Match reference-style links: [text][ref] or [ref][] (skip indexing expressions like matrix[i][j])
+REF_LINK_PATTERN = re.compile(r"(?<![\w!])\[([^\]]+)\]\[([^\]]*)\]")
 
 
 def validate_target_url(
@@ -38,6 +38,7 @@ def validate_target_url(
     """Validates a single raw target URL against repository link standards."""
     errors: List[Tuple[int, str, str]] = []
     clean_url = raw_url.strip()
+    resolved_root = repo_root.resolve()
 
     # 1. Prohibit file:// scheme
     if clean_url.lower().startswith("file:"):
@@ -65,7 +66,7 @@ def validate_target_url(
         return errors
 
     # 5. Target must stay within repository root boundary
-    if not target_path.is_relative_to(repo_root):
+    if not target_path.is_relative_to(resolved_root):
         errors.append((line_idx, clean_url, f"Link targets path outside repository boundary: {path_part}"))
         return errors
 
@@ -99,15 +100,16 @@ def check_markdown_file(file_path: Path, repo_root: Path) -> List[Tuple[int, str
 
     for line_idx, line in enumerate(lines, 1):
         stripped = line.strip()
-        fence_match = re.match(r"^(`{3,}|~{3,})", stripped)
+        fence_match = re.match(r"^(`{3,}|~{3,})(.*)$", stripped)
         if fence_match:
             fence = fence_match.group(1)
+            info = fence_match.group(2).strip()
             if not in_code_block:
                 in_code_block = True
                 current_fence_char = fence[0]
                 current_fence_len = len(fence)
                 continue
-            elif fence[0] == current_fence_char and len(fence) >= current_fence_len:
+            elif fence[0] == current_fence_char and len(fence) >= current_fence_len and not info:
                 in_code_block = False
                 current_fence_char = None
                 current_fence_len = 0

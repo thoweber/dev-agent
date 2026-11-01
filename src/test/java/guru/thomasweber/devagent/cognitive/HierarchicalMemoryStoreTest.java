@@ -1,7 +1,10 @@
 package guru.thomasweber.devagent.cognitive;
 
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,13 +34,13 @@ class HierarchicalMemoryStoreTest {
         assertThat(messages).hasSize(10);
 
         // Verify Tier 1 and Tier 2 remain strictly at indices 0 and 1
-        assertThat(((dev.langchain4j.data.message.SystemMessage) messages.get(0)).text()).contains("Quarkus Arc CDI Scoping Invariants");
-        assertThat(((dev.langchain4j.data.message.UserMessage) messages.get(1)).singleText()).contains("US-042: Add OAuth2 Endpoint");
+        assertThat(((SystemMessage) messages.get(0)).text()).contains("Quarkus Arc CDI Scoping Invariants");
+        assertThat(((UserMessage) messages.get(1)).singleText()).contains("US-042: Add OAuth2 Endpoint");
 
         // Oldest scratchpad message should be Turn 7
-        assertThat(((dev.langchain4j.data.message.UserMessage) messages.get(2)).singleText()).contains("Tool execution failure 7");
+        assertThat(((UserMessage) messages.get(2)).singleText()).contains("Tool execution failure 7");
         // Verify the newest scratchpad messages are preserved (Turn 10)
-        assertThat(((dev.langchain4j.data.message.AiMessage) messages.get(9)).text()).contains("Fix attempt 10");
+        assertThat(((AiMessage) messages.get(9)).text()).contains("Fix attempt 10");
     }
 
     @Test
@@ -57,10 +60,10 @@ class HierarchicalMemoryStoreTest {
     @DisplayName("Given system message - when added directly - then updates pinned invariants")
     void testDirectSystemMessageUpdate() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        memory.add(new dev.langchain4j.data.message.SystemMessage("Direct System Invariant"));
+        memory.add(new SystemMessage("Direct System Invariant"));
 
         assertThat(memory.messages()).hasSize(1);
-        assertThat(((dev.langchain4j.data.message.SystemMessage) memory.messages().get(0)).text())
+        assertThat(((SystemMessage) memory.messages().get(0)).text())
             .isEqualTo("Direct System Invariant");
     }
 
@@ -78,12 +81,12 @@ class HierarchicalMemoryStoreTest {
     void testAddSystemMessageDoesNotOverwritePinnedInvariants() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Pinned Invariants");
-        memory.add(new dev.langchain4j.data.message.SystemMessage("Secondary System Instructions"));
+        memory.add(new SystemMessage("Secondary System Instructions"));
 
         List<ChatMessage> messages = memory.messages();
         assertThat(messages).hasSize(2);
-        assertThat(((dev.langchain4j.data.message.SystemMessage) messages.get(0)).text()).isEqualTo("Pinned Invariants");
-        assertThat(((dev.langchain4j.data.message.SystemMessage) messages.get(1)).text()).isEqualTo("Secondary System Instructions");
+        assertThat(((SystemMessage) messages.get(0)).text()).isEqualTo("Pinned Invariants");
+        assertThat(((SystemMessage) messages.get(1)).text()).isEqualTo("Secondary System Instructions");
     }
 
     @Test
@@ -91,13 +94,13 @@ class HierarchicalMemoryStoreTest {
     void testAtomicToolCallAndResultEviction() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
-        dev.langchain4j.agent.tool.ToolExecutionRequest toolRequest = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest toolRequest = ToolExecutionRequest.builder()
             .id("call-1")
             .name("run_test")
             .arguments("{}")
             .build();
         AiMessage aiWithTool = AiMessage.from(toolRequest);
-        dev.langchain4j.data.message.ToolExecutionResultMessage toolResult = dev.langchain4j.data.message.ToolExecutionResultMessage.from(toolRequest, "Tests failed");
+        ToolExecutionResultMessage toolResult = ToolExecutionResultMessage.from(toolRequest, "Tests failed");
 
         memory.add(aiWithTool);
         memory.add(toolResult);
@@ -112,7 +115,7 @@ class HierarchicalMemoryStoreTest {
 
         List<ChatMessage> messages = memory.messages();
         // Tool result should not be orphaned
-        assertThat(messages).noneMatch(m -> m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage);
+        assertThat(messages).noneMatch(m -> m instanceof ToolExecutionResultMessage);
     }
 
     @Test
@@ -120,25 +123,25 @@ class HierarchicalMemoryStoreTest {
     void testMultipleToolResultsAndOrphanRejection() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
-        dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c1").name("t1").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req2 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c2").name("t2").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req3 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c3").name("t3").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req4 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c4").name("t4").arguments("{}").build();
+        ToolExecutionRequest req1 = ToolExecutionRequest.builder().id("c1").name("t1").arguments("{}").build();
+        ToolExecutionRequest req2 = ToolExecutionRequest.builder().id("c2").name("t2").arguments("{}").build();
+        ToolExecutionRequest req3 = ToolExecutionRequest.builder().id("c3").name("t3").arguments("{}").build();
+        ToolExecutionRequest req4 = ToolExecutionRequest.builder().id("c4").name("t4").arguments("{}").build();
 
         AiMessage aiWith4Tools = AiMessage.from(List.of(req1, req2, req3, req4));
         memory.add(aiWith4Tools);
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req1, "r1"));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req2, "r2"));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req3, "r3"));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req4, "r4"));
+        memory.add(ToolExecutionResultMessage.from(req1, "r1"));
+        memory.add(ToolExecutionResultMessage.from(req2, "r2"));
+        memory.add(ToolExecutionResultMessage.from(req3, "r3"));
+        memory.add(ToolExecutionResultMessage.from(req4, "r4"));
 
         // All 4 results and the parent AiMessage should still be present (not wiped out by self-eviction)
         assertThat(memory.messages()).hasSize(5);
         assertThat(memory.messages().get(0)).isEqualTo(aiWith4Tools);
 
         // Orphaned result without matching request in scratchpad must be dropped
-        dev.langchain4j.agent.tool.ToolExecutionRequest unknownReq = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("c99").name("t99").arguments("{}").build();
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(unknownReq, "orphan"));
+        ToolExecutionRequest unknownReq = ToolExecutionRequest.builder().id("c99").name("t99").arguments("{}").build();
+        memory.add(ToolExecutionResultMessage.from(unknownReq, "orphan"));
         assertThat(memory.messages()).hasSize(5);
     }
 
@@ -187,14 +190,14 @@ class HierarchicalMemoryStoreTest {
     void testDuplicateSystemMessageIgnored() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Base Invariant");
-        memory.add(new dev.langchain4j.data.message.SystemMessage("Base Invariant"));
-        memory.add(new dev.langchain4j.data.message.SystemMessage("Base Invariant"));
+        memory.add(new SystemMessage("Base Invariant"));
+        memory.add(new SystemMessage("Base Invariant"));
 
         assertThat(memory.messages()).hasSize(1);
-        assertThat(((dev.langchain4j.data.message.SystemMessage) memory.messages().get(0)).text()).isEqualTo("Base Invariant");
+        assertThat(((SystemMessage) memory.messages().get(0)).text()).isEqualTo("Base Invariant");
 
         // Adding a different system message is accepted
-        memory.add(new dev.langchain4j.data.message.SystemMessage("Another Invariant"));
+        memory.add(new SystemMessage("Another Invariant"));
         assertThat(memory.messages()).hasSize(2);
     }
 
@@ -204,22 +207,22 @@ class HierarchicalMemoryStoreTest {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Primary Invariants");
         memory.pinTaskSpecification("Task Story", "{}");
-        memory.add(new dev.langchain4j.data.message.SystemMessage("Secondary Invariants"));
+        memory.add(new SystemMessage("Secondary Invariants"));
         memory.add(new UserMessage("Working turn"));
 
         List<ChatMessage> messages = memory.messages();
         // Tier 1 contains Primary & Secondary invariants, Tier 2 contains Task Story, Scratchpad contains UserMessage
         assertThat(messages).hasSize(4);
-        assertThat(messages.get(0)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
-        assertThat(messages.get(1)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(messages.get(0)).isInstanceOf(SystemMessage.class);
+        assertThat(messages.get(1)).isInstanceOf(SystemMessage.class);
         assertThat(messages.get(2)).isInstanceOf(UserMessage.class);
         assertThat(messages.get(3)).isInstanceOf(UserMessage.class);
 
         // When scratchpad is cleared, Tier 1 system messages must remain intact
         memory.clearScratchpad();
         assertThat(memory.messages()).hasSize(3);
-        assertThat(memory.messages().get(0)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
-        assertThat(memory.messages().get(1)).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(memory.messages().get(0)).isInstanceOf(SystemMessage.class);
+        assertThat(memory.messages().get(1)).isInstanceOf(SystemMessage.class);
         assertThat(memory.messages().get(2)).isInstanceOf(UserMessage.class);
     }
 
@@ -230,13 +233,13 @@ class HierarchicalMemoryStoreTest {
         memory.add(new UserMessage("Root prompt for single long turn"));
 
         for (int i = 1; i <= 15; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("call-" + i)
                 .name("tool_" + i)
                 .arguments("{}")
                 .build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+            memory.add(ToolExecutionResultMessage.from(req, "Result " + i));
         }
 
         // 1 user message + 15 * 2 = 31 messages.
@@ -255,13 +258,13 @@ class HierarchicalMemoryStoreTest {
         // Edge case: when initial message is AiMessage with tool requests (no UserMessage at index 0)
         HierarchicalMemoryStore aiFirstMemory = new HierarchicalMemoryStore();
         for (int i = 1; i <= 15; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("call-ai-" + i)
                 .name("tool_" + i)
                 .arguments("{}")
                 .build();
             aiFirstMemory.add(AiMessage.from(req));
-            aiFirstMemory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+            aiFirstMemory.add(ToolExecutionResultMessage.from(req, "Result " + i));
         }
         assertThat(aiFirstMemory.messages()).hasSize(30);
         assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
@@ -281,13 +284,13 @@ class HierarchicalMemoryStoreTest {
         memory.add(new AiMessage("Thinking about how to solve the problem..."));
 
         for (int i = 1; i <= 15; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("call-step-" + i)
                 .name("tool_" + i)
                 .arguments("{}")
                 .build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+            memory.add(ToolExecutionResultMessage.from(req, "Result " + i));
         }
 
         // 1 user message + 1 plain AI message + 15 * 2 = 32 messages preserved in single turn
@@ -308,7 +311,7 @@ class HierarchicalMemoryStoreTest {
     @DisplayName("Given single turn with active in-flight tool call - when exceeding budget without later AiMessage - then preserves in-flight tool results")
     void testScratchpadExceedsBudgetWithInFlightToolCallPreserved() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest req = ToolExecutionRequest.builder()
             .id("call-solo")
             .name("tool")
             .arguments("{}")
@@ -317,7 +320,7 @@ class HierarchicalMemoryStoreTest {
         memory.add(new UserMessage("Prompt"));
         memory.add(AiMessage.from(req));
         for (int i = 0; i < 26; i++) {
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+            memory.add(ToolExecutionResultMessage.from(req, "res-" + i));
         }
 
         // Total messages: 1 user + 1 AiMessage + 26 results = 28 messages (> 24).
@@ -348,24 +351,24 @@ class HierarchicalMemoryStoreTest {
         memory.add(new UserMessage("Execute batch tasks"));
 
         // Step 1: AI requests 3 tools concurrently
-        dev.langchain4j.agent.tool.ToolExecutionRequest reqA = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-a").name("tA").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest reqB = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-b").name("tB").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest reqC = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-c").name("tC").arguments("{}").build();
+        ToolExecutionRequest reqA = ToolExecutionRequest.builder().id("call-a").name("tA").arguments("{}").build();
+        ToolExecutionRequest reqB = ToolExecutionRequest.builder().id("call-b").name("tB").arguments("{}").build();
+        ToolExecutionRequest reqC = ToolExecutionRequest.builder().id("call-c").name("tC").arguments("{}").build();
         memory.add(AiMessage.from(List.of(reqA, reqB, reqC)));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqA, "resA"));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqB, "resB"));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqC, "resC"));
+        memory.add(ToolExecutionResultMessage.from(reqA, "resA"));
+        memory.add(ToolExecutionResultMessage.from(reqB, "resB"));
+        memory.add(ToolExecutionResultMessage.from(reqC, "resC"));
 
         // Turn 2: Sequential single tool executions exceeding budget
         memory.add(new UserMessage("Followup batch tasks"));
         for (int i = 2; i <= 12; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("step-" + i)
                 .name("tool")
                 .arguments("{}")
                 .build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+            memory.add(ToolExecutionResultMessage.from(req, "res-" + i));
         }
         memory.add(new AiMessage("All batch steps completed successfully."));
 
@@ -374,7 +377,7 @@ class HierarchicalMemoryStoreTest {
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Followup batch tasks");
         // Confirms that multi-tool request and its 3 results (step 1) were atomically removed together
         assertThat(memory.messages()).noneMatch(m ->
-            m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
+            m instanceof ToolExecutionResultMessage tr &&
             (tr.id().equals("call-a") || tr.id().equals("call-b") || tr.id().equals("call-c"))
         );
         // And last AI completion message is preserved
@@ -390,33 +393,33 @@ class HierarchicalMemoryStoreTest {
         memory.add(new UserMessage("Batch processing"));
 
         // AI requests two tools: call-inter-1 and call-inter-2
-        dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest req1 = ToolExecutionRequest.builder()
             .id("call-inter-1").name("tool1").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req2 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest req2 = ToolExecutionRequest.builder()
             .id("call-inter-2").name("tool2").arguments("{}").build();
         memory.add(AiMessage.from(List.of(req1, req2)));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req1, "res1"));
+        memory.add(ToolExecutionResultMessage.from(req1, "res1"));
         // Intervening AI message between tool results
         memory.add(new AiMessage("Processing intermediate step..."));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req2, "res2"));
+        memory.add(ToolExecutionResultMessage.from(req2, "res2"));
 
         // Turn 2 exceeding budget
         memory.add(new UserMessage("Next batch"));
         for (int i = 3; i <= 14; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("step-inter-" + i)
                 .name("tool")
                 .arguments("{}")
                 .build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+            memory.add(ToolExecutionResultMessage.from(req, "res-" + i));
         }
         memory.add(new AiMessage("All steps done."));
 
         assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Next batch");
         assertThat(memory.messages()).noneMatch(m ->
-            m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
+            m instanceof ToolExecutionResultMessage tr &&
             (tr.id().equals("call-inter-1") || tr.id().equals("call-inter-2"))
         );
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
@@ -427,13 +430,13 @@ class HierarchicalMemoryStoreTest {
     void testAiMessageStartingConversationWithToolTrimming() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         for (int i = 1; i <= 15; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("ai-init-" + i)
                 .name("tool")
                 .arguments("{}")
                 .build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "result-" + i));
+            memory.add(ToolExecutionResultMessage.from(req, "result-" + i));
         }
         memory.add(new AiMessage("Final resolution"));
 
@@ -453,10 +456,10 @@ class HierarchicalMemoryStoreTest {
         memory.pinTaskSpecification("Spec", "{}");
 
         memory.add(new UserMessage("Do X"));
-        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest req = ToolExecutionRequest.builder()
             .id("call-x").name("toolX").arguments("{}").build();
         memory.add(AiMessage.from(req));
-        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Done"));
+        memory.add(ToolExecutionResultMessage.from(req, "Done"));
         memory.add(new AiMessage("X is finished"));
 
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
@@ -465,20 +468,20 @@ class HierarchicalMemoryStoreTest {
         // Case 1: SystemMessage is routed to pinned invariants, not scratchpad
         HierarchicalMemoryStore m1 = new HierarchicalMemoryStore();
         m1.add(new UserMessage("Do X"));
-        m1.add(new dev.langchain4j.data.message.SystemMessage("Invariant"));
+        m1.add(new SystemMessage("Invariant"));
         assertThat(m1.assertTurnStructureInvariants()).isTrue();
-        assertThat(m1.messages().getFirst()).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
+        assertThat(m1.messages().getFirst()).isInstanceOf(SystemMessage.class);
 
         // Case 2: Orphaned ToolExecutionResultMessage is dropped by add()
         HierarchicalMemoryStore m2 = new HierarchicalMemoryStore();
-        m2.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Orphan"));
+        m2.add(ToolExecutionResultMessage.from(req, "Orphan"));
         assertThat(m2.assertTurnStructureInvariants()).isTrue();
         assertThat(m2.messages()).isEmpty();
 
         // Case 3: ToolExecutionResultMessage without preceding matching request is dropped
         HierarchicalMemoryStore m3 = new HierarchicalMemoryStore();
         m3.add(new UserMessage("Start"));
-        m3.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Dangling"));
+        m3.add(ToolExecutionResultMessage.from(req, "Dangling"));
         assertThat(m3.assertTurnStructureInvariants()).isTrue();
         assertThat(m3.messages()).hasSize(1);
     }
@@ -519,16 +522,16 @@ class HierarchicalMemoryStoreTest {
     @DisplayName("Given ToolExecutionResultMessage with non-matching request ID - when added - then dropped by store")
     void testNonMatchingToolExecutionRequestIdDropped() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest req1 = ToolExecutionRequest.builder()
             .id("req-1").name("tool1").arguments("{}").build();
-        dev.langchain4j.agent.tool.ToolExecutionRequest req2 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+        ToolExecutionRequest req2 = ToolExecutionRequest.builder()
             .id("req-2").name("tool2").arguments("{}").build();
 
         memory.add(AiMessage.from(req1));
 
         // Attempt to add tool result for req2 (does not match req1)
-        dev.langchain4j.data.message.ToolExecutionResultMessage mismatchResult =
-            dev.langchain4j.data.message.ToolExecutionResultMessage.from(req2, "out");
+        ToolExecutionResultMessage mismatchResult =
+            ToolExecutionResultMessage.from(req2, "out");
         memory.add(mismatchResult);
 
         // Result was dropped
@@ -541,18 +544,18 @@ class HierarchicalMemoryStoreTest {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Turn 1"));
         for (int i = 1; i <= 6; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("call-t1-" + i).name("tool" + i).arguments("{}").build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+            memory.add(ToolExecutionResultMessage.from(req, "res-" + i));
         }
 
         memory.add(new UserMessage("Turn 2"));
         for (int i = 1; i <= 7; i++) {
-            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("call-t2-" + i).name("tool" + i).arguments("{}").build();
             memory.add(AiMessage.from(req));
-            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+            memory.add(ToolExecutionResultMessage.from(req, "res-" + i));
         }
 
         List<ChatMessage> messages = memory.messages();

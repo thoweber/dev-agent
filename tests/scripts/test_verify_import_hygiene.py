@@ -12,8 +12,8 @@ from unittest.mock import patch
 from scripts.verify_import_hygiene import (
     check_file,
     main,
+    sanitize_literals,
     scan_directory,
-    strip_string_literals,
 )
 
 
@@ -89,11 +89,65 @@ public class StringService {
         violations = check_file(file_path)
         self.assertEqual(len(violations), 0)
 
-    def test_strip_string_literals_utility(self):
+    def test_sanitize_literals_utility(self):
         line = 'String s = "java.util.List" + "another.string";'
-        result = strip_string_literals(line)
+        result = sanitize_literals(line)
         self.assertNotIn("java.util.List", result)
         self.assertEqual(result, 'String s = "" + "";')
+
+    def test_detects_fqn_with_diverse_package_prefixes(self):
+        content = """package guru.thomasweber.devagent;
+
+public class DiversePrefixes {
+    com.fasterxml.jackson.databind.ObjectMapper mapper;
+    jakarta.persistence.Entity entity;
+    dev.langchain4j.agent.tool.ToolExecutionRequest req;
+}
+"""
+        file_path = self._create_java_file("DiversePrefixes.java", content)
+        violations = check_file(file_path)
+        self.assertEqual(len(violations), 3)
+
+    def test_string_literal_with_comment_markers_does_not_mask_later_fqn(self):
+        content = """package guru.thomasweber.devagent;
+
+public class StringCommentService {
+    String url = "https://example.com/api"; java.util.List list;
+    String block = "/* not a comment"; java.util.Map map;
+}
+"""
+        file_path = self._create_java_file("StringCommentService.java", content)
+        violations = check_file(file_path)
+        self.assertEqual(len(violations), 2)
+        fqns = [v[1] for v in violations]
+        self.assertIn("java.util.List", fqns)
+        self.assertIn("java.util.Map", fqns)
+
+    def test_collision_exception_permits_disambiguating_fqn(self):
+        content = """package guru.thomasweber.devagent;
+
+import java.util.Date;
+
+public class DateHolder {
+    Date utilDate;
+    java.sql.Date sqlDate; // Exempt due to collision with imported java.util.Date
+}
+"""
+        file_path = self._create_java_file("DateHolder.java", content)
+        violations = check_file(file_path)
+        self.assertEqual(len(violations), 0)
+
+    def test_collision_exception_rejects_fqn_without_collision(self):
+        content = """package guru.thomasweber.devagent;
+
+public class DateHolderWithoutCollision {
+    java.sql.Date sqlDate; // Rejected: no collision in file
+}
+"""
+        file_path = self._create_java_file("DateHolderWithoutCollision.java", content)
+        violations = check_file(file_path)
+        self.assertEqual(len(violations), 1)
+        self.assertEqual(violations[0][1], "java.sql.Date")
 
     def test_scan_directory_collects_violations_from_multiple_files(self):
         self._create_java_file(

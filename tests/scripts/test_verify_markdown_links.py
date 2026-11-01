@@ -175,6 +175,40 @@ print("nested code")
         self.assertEqual(len(errors), 1)
         self.assertIn("Unresolved reference link label", errors[0][2])
 
+    def test_ignores_array_indexing_matrix_ij(self):
+        source = self.root / "indexing.md"
+        source.write_text("Refer to matrix[i][j] element or array[0][1] in algorithm.\n", encoding="utf-8")
+
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(errors, [])
+
+    def test_repo_root_resolution_in_boundary_check(self):
+        target = self.root / "valid.md"
+        target.write_text("# Valid\n", encoding="utf-8")
+
+        source = self.root / "test.md"
+        source.write_text("See [Doc](valid.md).\n", encoding="utf-8")
+
+        # Pass non-resolved repo_root with relative components
+        unresolved_root = self.root / "subdir" / ".."
+        errors = verify_markdown_links.check_markdown_file(source, unresolved_root)
+        self.assertEqual(errors, [])
+
+    def test_closing_fence_requires_blank_info_string(self):
+        source = self.root / "code_fence_info.md"
+        # In a 3-backtick block, a line with ```python must not close the block
+        source.write_text(
+            """```
+```python
+[Inside Code](file:///home/bad.md)
+```
+```
+""",
+            encoding="utf-8",
+        )
+        errors = verify_markdown_links.check_markdown_file(source, self.root)
+        self.assertEqual(errors, [])
+
     def test_main_cli_success(self):
         target = self.root / "valid.md"
         target.write_text("# Valid doc\n", encoding="utf-8")
