@@ -48,6 +48,7 @@ class BaseAgentCommandTest {
         // Parent command and context resolver
         DevAgentCommand parent = new DevAgentCommand();
         cmd.parentCommand = parent;
+        cmd.dir = null;
         assertThat(cmd.getWorkspaceRoot()).isNotNull();
         assertThat(cmd.getWorkspaceContextResolver()).isNotNull();
 
