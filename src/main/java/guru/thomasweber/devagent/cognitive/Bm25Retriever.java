@@ -293,7 +293,7 @@ public class Bm25Retriever {
         if (w.endsWith("sses")) {
             w = w.substring(0, w.length() - 2);
         } else if (w.endsWith("ies")) {
-            w = w.substring(0, w.length() - 3) + "y";
+            w = w.substring(0, w.length() - 3) + "i";
         } else if (w.endsWith("ss") || w.endsWith("us") || w.endsWith("is")) {
             // Keep unchanged
         } else if (w.endsWith("s")) {
@@ -332,6 +332,11 @@ public class Bm25Retriever {
         // Strip trailing 'e' if root is sufficiently long (e.g., retrieve -> retriev, cache -> cach)
         if (w.endsWith("e") && w.length() > 4) {
             w = w.substring(0, w.length() - 1);
+        }
+
+        // Stem trailing 'y' to 'i' if length > 3 (e.g., entity -> entiti, query -> queri)
+        if (w.endsWith("y") && w.length() > 3) {
+            w = w.substring(0, w.length() - 1) + "i";
         }
 
         return w;

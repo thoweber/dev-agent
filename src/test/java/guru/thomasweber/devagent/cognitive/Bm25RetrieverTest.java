@@ -219,7 +219,7 @@ class Bm25RetrieverTest {
             "relat", "condition", "organiz", "standardis", "generat", "orchestrat",
             "canonic", "deal", "scal", "flex", "contain", "process", "ring", "isolat", "died",
             "retriev", "execut", "user", "declarat", "live", "sanit", "size",
-            "process", "entity", "process", "status", "analysis", "rule", "gas", "retriev", "code"
+            "process", "entiti", "process", "status", "analysis", "rule", "gas", "retriev", "code"
         );
     }
 
@@ -243,6 +243,17 @@ class Bm25RetrieverTest {
         retriever.index(List.of(doc));
 
         List<ArchitecturalRecord> results = retriever.search("entities", 5);
+        assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
+    }
+
+    @Test
+    @DisplayName("Given document containing singular cookie - when querying with plural cookies - then matches record")
+    void givenDocWithSingularCookie_whenQueryingWithPluralCookies_thenMatches() {
+        Bm25Retriever retriever = new Bm25Retriever();
+        ArchitecturalRecord doc = createDoc("D1", "Cookie Auth", "HTTP cookie based authentication session tokens.");
+        retriever.index(List.of(doc));
+
+        List<ArchitecturalRecord> results = retriever.search("cookies", 5);
         assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
     }
 

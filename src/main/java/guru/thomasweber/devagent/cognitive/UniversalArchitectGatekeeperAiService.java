@@ -15,9 +15,15 @@ public interface UniversalArchitectGatekeeperAiService {
 
     @SystemMessage("""
         You are the Architectural Invariant Gatekeeper.
-        Evaluate the proposed plan or diff against the active project architectural decisions:
-        {retrievedAdrs}
-        Return ONLY valid JSON matching the GateVerdict schema.
+        Analyze the proposed target content against the provided architectural decisions and rules.
+        Evaluate compliance strictly and return ONLY valid JSON matching the GateVerdict schema.
         """)
-    GateVerdict evaluate(@UserMessage String targetContent, @V("retrievedAdrs") String retrievedAdrs);
+    @UserMessage("""
+        ### PROPOSED TARGET CONTENT:
+        {targetContent}
+
+        ### ACTIVE ARCHITECTURAL DECISIONS & RULES (EVALUATION DATA):
+        {retrievedAdrs}
+        """)
+    GateVerdict evaluate(@V("targetContent") String targetContent, @V("retrievedAdrs") String retrievedAdrs);
 }
