@@ -107,13 +107,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     public synchronized void close() throws IOException {
         closed = true;
         IOException failure = null;
-        if (fileChannel != null) {
-            try {
-                fileChannel.close();
-            } finally {
-                fileChannel = null;
-            }
-        }
+        closeChannelSilently();
         if (diskTempFile != null) {
             try {
                 Files.deleteIfExists(diskTempFile);
@@ -128,6 +122,18 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         }
     }
 
+    private void closeChannelSilently() {
+        if (fileChannel != null) {
+            try {
+                fileChannel.close();
+            } catch (IOException _) {
+                // Suppress secondary exception during channel close
+            } finally {
+                fileChannel = null;
+            }
+        }
+    }
+
     private Path createSecureTempFile() throws IOException {
         Path parent = tempDirRoot != null ? tempDirRoot : Path.of(System.getProperty("java.io.tmpdir"));
         FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
@@ -139,19 +145,25 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     private void checkOverflow(int incoming) throws IOException {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
-            this.fileChannel = FileChannel.open(
-                tempFile,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.READ
-            );
-            byte[] inMemoryBytes = memoryBuffer.toByteArray();
-            ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
-            while (nioBuffer.hasRemaining()) {
-                fileChannel.write(nioBuffer);
+            try {
+                this.fileChannel = FileChannel.open(
+                    tempFile,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.READ
+                );
+                byte[] inMemoryBytes = memoryBuffer.toByteArray();
+                ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
+                while (nioBuffer.hasRemaining()) {
+                    fileChannel.write(nioBuffer);
+                }
+                this.diskTempFile = tempFile;
+                this.memoryBuffer = null;
+            } catch (Throwable t) {
+                closeChannelSilently();
+                Files.deleteIfExists(tempFile);
+                throw t;
             }
-            this.diskTempFile = tempFile;
-            this.memoryBuffer = null;
         }
     }
 
