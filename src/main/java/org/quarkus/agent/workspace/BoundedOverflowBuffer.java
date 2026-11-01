@@ -169,7 +169,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
                 }
                 this.diskTempFile = tempFile;
                 this.memoryBuffer = null;
-            } catch (Throwable t) {
+            } catch (Exception e) {
                 if (fileChannel != null) {
                     try {
                         fileChannel.close();
@@ -180,7 +180,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
                     }
                 }
                 Files.deleteIfExists(tempFile);
-                throw t;
+                throw e;
             }
         }
     }
