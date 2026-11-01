@@ -74,7 +74,11 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (pattern == null || pattern.isBlank()) {
             throw new SecurityException("Jailbreak attempt: pattern cannot be null or blank");
         }
-        for (String segment : pattern.replace('\\', '/').split("/")) {
+        String normalized = pattern.replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.matches("^[a-zA-Z]:/.*")) {
+            throw new SecurityException("Jailbreak attempt: absolute pattern not allowed: " + pattern);
+        }
+        for (String segment : normalized.split("/")) {
             if ("..".equals(segment)) {
                 throw new SecurityException("Jailbreak attempt: Traversal detected: " + pattern);
             }

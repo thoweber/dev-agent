@@ -72,30 +72,10 @@ public class AdrParser {
         ParsedMarkdown parsed = markdownParserService.parse(content);
 
         // 1. Title
-        String title = getFirstMetadata(parsed.metadata(), "title");
-        if (title == null) {
-            title = parsed.sections().stream()
-                .map(DocumentSection::heading)
-                .filter(h -> !"Preamble".equalsIgnoreCase(h))
-                .findFirst()
-                .orElse(nameWithoutExt);
-        }
+        String title = deriveTitle(parsed, nameWithoutExt);
 
         // 2. ID
-        String id = getFirstMetadata(parsed.metadata(), "id");
-        if (id == null) {
-            Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
-            if (fileIdMatcher.find()) {
-                id = fileIdMatcher.group(1);
-            } else {
-                Matcher headerIdMatcher = ADR_ID_HEADER_PATTERN.matcher(title);
-                if (headerIdMatcher.find()) {
-                    id = headerIdMatcher.group(1);
-                } else {
-                    id = nameWithoutExt;
-                }
-            }
-        }
+        String id = deriveId(parsed, fileName, title, nameWithoutExt);
 
         // 3. Status
         String status = getFirstMetadata(parsed.metadata(), "status");
@@ -157,18 +137,10 @@ public class AdrParser {
         ParsedMarkdown parsed = markdownParserService.parse(rawContent);
 
         String fileName = (filePath != null && filePath.getFileName() != null) ? filePath.getFileName().toString() : "unknown.md";
-        String docId = getFirstMetadata(parsed.metadata(), "id");
-        if (docId == null) {
-            docId = fileName;
-        }
-        String title = getFirstMetadata(parsed.metadata(), "title");
-        if (title == null) {
-            title = parsed.sections().stream()
-                .map(DocumentSection::heading)
-                .filter(h -> !"Preamble".equalsIgnoreCase(h))
-                .findFirst()
-                .orElse("");
-        }
+        String nameWithoutExt = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
+
+        String title = deriveTitle(parsed, nameWithoutExt);
+        String docId = deriveId(parsed, fileName, title, nameWithoutExt);
 
         List<TextSegment> segments = new ArrayList<>();
         for (DocumentSection section : parsed.sections()) {
@@ -182,6 +154,36 @@ public class AdrParser {
             segments.add(TextSegment.from(segmentBody, new Metadata(metadata)));
         }
         return segments;
+    }
+
+    private String deriveTitle(ParsedMarkdown parsed, String fallback) {
+        String title = getFirstMetadata(parsed.metadata(), "title");
+        if (title == null) {
+            title = parsed.sections().stream()
+                .map(DocumentSection::heading)
+                .filter(h -> !"Preamble".equalsIgnoreCase(h))
+                .findFirst()
+                .orElse(fallback);
+        }
+        return title;
+    }
+
+    private String deriveId(ParsedMarkdown parsed, String fileName, String title, String nameWithoutExt) {
+        String id = getFirstMetadata(parsed.metadata(), "id");
+        if (id == null) {
+            Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
+            if (fileIdMatcher.find()) {
+                id = fileIdMatcher.group(1);
+            } else {
+                Matcher headerIdMatcher = ADR_ID_HEADER_PATTERN.matcher(title);
+                if (headerIdMatcher.find()) {
+                    id = headerIdMatcher.group(1);
+                } else {
+                    id = nameWithoutExt;
+                }
+            }
+        }
+        return id;
     }
 
     private static String getFirstMetadata(Map<String, List<String>> metadata, String key) {

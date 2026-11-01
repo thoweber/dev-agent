@@ -186,7 +186,7 @@ class AdrParserTest {
 
         assertThat(segments1).isEmpty();
         assertThat(segments2).hasSize(1);
-        assertThat(segments2.getFirst().metadata().getString("id")).isEqualTo("unknown.md");
+        assertThat(segments2.getFirst().metadata().getString("id")).isEqualTo("unknown");
         assertThat(segments2.getFirst().metadata().getString("path")).isEmpty();
     }
 
@@ -259,9 +259,27 @@ class AdrParserTest {
         List<TextSegment> segments = parser.parseSegments(Path.of("docs/guide.md"), content);
 
         assertThat(segments).hasSize(2);
-        assertThat(segments.getFirst().metadata().getString("id")).isEqualTo("guide.md");
+        assertThat(segments.getFirst().metadata().getString("id")).isEqualTo("guide");
         assertThat(segments.getFirst().metadata().getString("title")).isEqualTo("Architecture Guide");
         assertThat(segments.get(1).metadata().getString("section")).isEqualTo("Overview");
+    }
+
+    @Test
+    @DisplayName("Given ADR without frontmatter - when parseSegments - then derives identical ID matching parseRecord")
+    void givenAdrWithoutFrontmatter_whenParseSegments_thenDerivesIdenticalId() {
+        String content = """
+            # ADR-042: AST Parsing
+            
+            ## Decision
+            We use CommonMark AST parser.
+            """;
+
+        List<TextSegment> segments = parser.parseSegments(Path.of("docs/adr/ADR-042-commonmark.md"), content);
+
+        assertThat(segments).hasSize(2);
+        assertThat(segments.getFirst().metadata().getString("id")).isEqualTo("ADR-042");
+        assertThat(segments.getFirst().metadata().getString("title")).isEqualTo("ADR-042: AST Parsing");
+        assertThat(segments.get(1).metadata().getString("section")).isEqualTo("Decision");
     }
 
     @Test

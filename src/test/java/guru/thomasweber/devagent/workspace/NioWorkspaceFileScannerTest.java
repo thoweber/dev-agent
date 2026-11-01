@@ -140,6 +140,18 @@ class NioWorkspaceFileScannerTest {
     }
 
     @Test
+    @DisplayName("Given absolute patterns - when findFiles - then throws SecurityException")
+    void givenAbsolutePattern_whenFindFiles_thenThrowsSecurityException() {
+        assertThatThrownBy(() -> scanner.findFiles(repoRoot, "/etc/passwd"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("absolute pattern not allowed");
+
+        assertThatThrownBy(() -> scanner.findFiles(repoRoot, "C:\\Windows\\System32"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("absolute pattern not allowed");
+    }
+
+    @Test
     @DisplayName("Given non-existent search root prefix - when findFiles - then returns empty list")
     void givenNonExistentSearchRoot_whenFindFiles_thenReturnsEmptyList() {
         List<RepoPath> results = scanner.findFiles(repoRoot, "missing-dir/**/*.md");

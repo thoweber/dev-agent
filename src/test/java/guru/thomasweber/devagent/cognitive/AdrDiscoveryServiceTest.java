@@ -485,7 +485,7 @@ class AdrDiscoveryServiceTest {
 
         List<TextSegment> segments = discoveryService.parseAdrDocument(filePath, rawContent);
         assertThat(segments).hasSize(1);
-        assertThat(segments.getFirst().metadata().getString("id")).isEqualTo("ADR-015.md");
+        assertThat(segments.getFirst().metadata().getString("id")).isEqualTo("ADR-015");
         assertThat(segments.getFirst().metadata().getString("title")).isEqualTo("Simple ADR");
         assertThat(segments.getFirst().metadata().getString("section")).isEqualTo("Simple ADR");
     }
