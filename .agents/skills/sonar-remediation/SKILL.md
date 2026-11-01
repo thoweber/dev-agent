@@ -5,7 +5,7 @@ description: Audits SonarCloud issues, enforces Quality Gate standards, and appl
 
 # SonarCloud Remediation Skill (`sonar-remediation`)
 
-This skill governs static analysis, security hotspot analysis, and Quality Gate remediation. All testing and quality gates must align with [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) and [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md).
+This skill governs static analysis, security hotspot analysis, and Quality Gate remediation. All testing and quality gates must align with [05-testing-standards.md](../../rules/05-testing-standards.md) and [03-quality-and-slas.md](../../rules/03-quality-and-slas.md).
 
 ---
 

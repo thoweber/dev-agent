@@ -11,10 +11,13 @@
 * **Action-Oriented Verbs:** Use active voice and imperative mood ("Run the verification loop", "Validate canonical path", "Inject the SPI interface") rather than passive phrasing.
 * **Technical Precision:** Use exact domain terminology (e.g., *Path Jail*, *Two-Axis SPI*, *Lexical BM25 Inverted Index*, *Non-Locking State Socket*).
 
-## 3. Mandatory Clickable File Links
-* **`file://` Scheme Required:** Every mention of a file path, script, configuration file, or code symbol MUST be formatted as a clickable GFM link using the `file://` URI scheme:
-  * **File:** `[AGENTS.md](file:///home/developer/projects/dev-agent/AGENTS.md)`
-  * **Line Range:** `[pom.xml:L40-L60](file:///home/developer/projects/dev-agent/pom.xml#L40-L60)`
+## 3. Mandatory Relative File Links
+* **Portable Relative Paths Required:** Every mention of a file path, script, configuration file, or code symbol MUST be formatted as a clickable relative Markdown link pointing to the target file relative to the containing document:
+  * **Same Directory:** `[05-testing-standards.md](05-testing-standards.md)`
+  * **Parent / Sibling Directory:** `[01-architecture-invariants.md](../rules/01-architecture-invariants.md)`
+  * **From Root:** `[AGENTS.md](AGENTS.md)` or `[pom.xml](pom.xml)`
+  * **Line Range:** `[pom.xml:L40-L60](pom.xml#L40-L60)`
+* **Prohibited URI Schemes:** The `file://` URI scheme and absolute filesystem paths (such as `/home/...` or `C:\...`) are strictly prohibited in all repository Markdown files to preserve portability across GitHub and developer environments.
 * **Readable Link Text:** Use file basenames or descriptive symbol names for link text (never unformatted raw paths).
 
 ## 4. Strategic GitHub-Style Alerts

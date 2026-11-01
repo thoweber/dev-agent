@@ -5,7 +5,7 @@ description: Implements Quarkus CDI services, Picocli commands, WorkspaceContext
 
 # Backend Engineer Skill (`backend-engineer`)
 
-This skill governs the implementation of core CDI beans, Picocli CLI commands, workspace auto-detection, path validation, Git worktrees, and log sanitization in **dev-agent**. All implementations must adhere to [01-architecture-invariants.md](file:///home/developer/projects/dev-agent/.agents/rules/01-architecture-invariants.md), [02-coding-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/02-coding-standards.md), and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md).
+This skill governs the implementation of core CDI beans, Picocli CLI commands, workspace auto-detection, path validation, Git worktrees, and log sanitization in **dev-agent**. All implementations must adhere to [01-architecture-invariants.md](../../rules/01-architecture-invariants.md), [02-coding-standards.md](../../rules/02-coding-standards.md), and [05-testing-standards.md](../../rules/05-testing-standards.md).
 
 ---
 

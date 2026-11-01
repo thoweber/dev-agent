@@ -5,7 +5,7 @@ description: Governs test strategy, L1 unit, L2 integration, and L3 native CLI t
 
 # Test Manager & Quality Strategy Skill (`test-manager`)
 
-This skill governs test tiering, testing pyramid compliance, and Test-Driven Development (TDD) execution strategy across **dev-agent**. Consult [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full project test architecture and engineering invariants.
+This skill governs test tiering, testing pyramid compliance, and Test-Driven Development (TDD) execution strategy across **dev-agent**. Consult [05-testing-standards.md](../../rules/05-testing-standards.md) for full project test architecture and engineering invariants.
 
 ---
 

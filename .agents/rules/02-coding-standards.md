@@ -24,8 +24,13 @@
 * **Unreachable Defensive Code Remediation:** If a defensive branch (such as catching an exception that cannot be thrown, or checking null on an API that never returns null) cannot be reached through the component's public contract, eliminate the dead branch or simplify the logic in production code rather than gaming coverage with synthetic test hooks.
 
 ## 5. Test Engineering & Testing Standards
-* **Detailed Testing Standards:** Refer to [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full testing pyramid tiers, fixture standards, and invariants.
+* **Detailed Testing Standards:** Refer to [05-testing-standards.md](05-testing-standards.md) for full testing pyramid tiers, fixture standards, and invariants.
 * **Dedicated 1-to-1 Unit Test Files:** Every production class MUST have its own dedicated 1-to-1 unit test class (`<TargetClassName>Test.java`).
 * **Given-When-Then Display Names:** All `@Test` methods MUST use `@DisplayName("Given [precondition] - when [action/trigger] - then [expected outcome]")`.
 * **AssertJ Assertions:** Use AssertJ (`assertThat()`, `assertThatThrownBy()`) exclusively. `org.junit.jupiter.api.Assertions` is strictly forbidden.
-* **Mandatory Quality Gates:** Overall repository code coverage MUST satisfy Line $\ge 95.0\%$ and Branch $\ge 90.0\%$ (see [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md) and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md)).
+* **Mandatory Quality Gates:** Overall repository code coverage MUST satisfy Line $\ge 95.0\%$ and Branch $\ge 90.0\%$ (see [03-quality-and-slas.md](03-quality-and-slas.md) and [05-testing-standards.md](05-testing-standards.md)).
+
+## 6. Import Hygiene & Prohibition of Inline Fully Qualified Class Names
+* **Explicit Imports Standard:** Always import types explicitly at the top of the file rather than using inline fully qualified references (e.g., `import java.util.concurrent.atomic.AtomicReference;` instead of `java.util.concurrent.atomic.AtomicReference<...>`).
+* **Clean Code Invariant:** Inline fully qualified class names clutter source code and obscure architectural dependencies. They are strictly prohibited across both production and test files.
+* **Collision Disambiguation Exception:** An inline fully qualified type reference is permitted solely when disambiguating two classes that share the exact same simple name within the same file and cannot be resolved through aliasing.

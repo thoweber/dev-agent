@@ -36,8 +36,8 @@
   * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity` (via strongly-typed `SanitizedOutput`), HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
 
 ## 8. Panache Entity Encapsulation & Domain Decoupling (ADR-012)
-* Panache entities (`@Entity`) are strictly quarantined within `org.quarkus.agent.entity` and must never be accessed by classes outside this package.
-* Classes outside `org.quarkus.agent.entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
+* Panache entities (`@Entity`) are strictly quarantined within `guru.thomasweber.devagent.entity` and must never be accessed by classes outside this package.
+* Classes outside `guru.thomasweber.devagent.entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
 * Enforced via ArchUnit `entitiesMustNotBeAccessedOutsideTheirPackage`.
 
 ## 9. Global Project ID Host Isolation & Deterministic UUIDv3 (ADR-013)

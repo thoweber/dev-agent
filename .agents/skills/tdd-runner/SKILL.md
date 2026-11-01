@@ -5,7 +5,7 @@ description: Orchestrates the fast local Red-Green-Refactor execution loop using
 
 # TDD Runner Skill (`tdd-runner`)
 
-This skill coordinates the fast local inner execution feedback loop during autonomous feature development. All test practices must adhere to [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md).
+This skill coordinates the fast local inner execution feedback loop during autonomous feature development. All test practices must adhere to [05-testing-standards.md](../../rules/05-testing-standards.md).
 
 ---
 

@@ -112,7 +112,7 @@ Fast feedback commands for autonomous agents and contributors:
 
 ## Documentation & ADR Register
 
-* [AGENTS.md](file:///home/developer/projects/dev-agent/AGENTS.md) — Mandatory autonomous agent directives, TDD protocol, and local feedback loops.
-* [PROJECT_CONTEXT.md](file:///home/developer/projects/dev-agent/PROJECT_CONTEXT.md) — Master architecture context and implementation blueprint.
-* [docs/adr/](file:///home/developer/projects/dev-agent/docs/adr/) — Architecture Decision Records register (ADR-001 through ADR-010).
-* [.agents/](file:///home/developer/projects/dev-agent/.agents/) — Declarative configuration, boundary rules, and specialized persona skills.
+* [AGENTS.md](AGENTS.md) — Mandatory autonomous agent directives, TDD protocol, and local feedback loops.
+* [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — Master architecture context and implementation blueprint.
+* [docs/adr/](docs/adr/) — Architecture Decision Records register (ADR-001 through ADR-010).
+* [.agents/](.agents/) — Declarative configuration, boundary rules, and specialized persona skills.

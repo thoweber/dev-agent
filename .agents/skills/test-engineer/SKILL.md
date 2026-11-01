@@ -5,7 +5,7 @@ description: Authors 1-to-1 unit tests, ArchUnit native compliance rules, Picocl
 
 # Test Engineer Skill (`test-engineer`)
 
-This skill governs test engineering, ArchUnit architecture rule enforcement, Picocli CLI integration tests, and AssertJ test standards in **dev-agent**. Consult [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) for full test architecture and engineering invariants.
+This skill governs test engineering, ArchUnit architecture rule enforcement, Picocli CLI integration tests, and AssertJ test standards in **dev-agent**. Consult [05-testing-standards.md](../../rules/05-testing-standards.md) for full test architecture and engineering invariants.
 
 ---
 
@@ -22,7 +22,7 @@ This skill governs test engineering, ArchUnit architecture rule enforcement, Pic
 All tests in `AgentArchitectureTest` verify native GraalVM safety and architecture invariants:
 1. All methods annotated with `@Tool` must be declared in classes annotated with `@ApplicationScoped`.
 2. All non-interface classes in packages `..model..`, `..entity..`, `..remote..`, and `..gui..` must be annotated with `@RegisterForReflection`.
-3. Panache entities annotated with `@Entity` must only be accessed by classes in `org.quarkus.agent.entity..`.
+3. Panache entities annotated with `@Entity` must only be accessed by classes in `guru.thomasweber.devagent.entity..`.
 4. Test methods (`@Test`, `@BeforeEach`, `@AfterEach`) must not be annotated with `@Transactional`.
 
 ---
@@ -37,7 +37,7 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 
 ## 4. Coverage SLA & Quality Gates
 
-* Repository overall code coverage MUST satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`. Consult [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md).
+* Repository overall code coverage MUST satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`. Consult [03-quality-and-slas.md](../../rules/03-quality-and-slas.md).
 
 ---
 

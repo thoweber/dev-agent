@@ -20,11 +20,11 @@
 
 ## 2. Package Layout & Boundary Rules
 
-To enforce strict boundary isolation and native GraalVM compatibility, the codebase uses the following package structure under `org.quarkus.agent`:
+To enforce strict boundary isolation and native GraalVM compatibility, the codebase uses the following package structure under `guru.thomasweber.devagent`:
 
 ```
 dev-agent/
-└── src/main/java/org/quarkus/agent/
+└── src/main/java/guru/thomasweber/devagent/
     ├── DevAgentCommand.java           # TopCommand Picocli Entrypoint
     ├── cli/                           # Picocli Subcommands (Init, Plan, Feature, Status, Logs, Resume)
     ├── entity/                        # Panache Persistence Entities & TaskPersistenceService (Encapsulated)
@@ -46,7 +46,7 @@ dev-agent/
    * **Axis 2 (Framework):** `BackendFrameworkConvention` and `FrontendFrameworkConvention` SPIs decouple framework idioms (Quarkus, Angular, Spring Boot, React).
 3. **Canonical Path Sandboxing & Strongly-Typed `RepoPath`:** `WorkspaceJailValidator` validates every path against `activeWorkingRoot.toRealPath()`. Symbolic links targeting or originating within repository paths, traversal escapes, or `.git/**` / `~/.config/dev-agent/**` writes immediately throw `SecurityException`. File write sinks strictly consume `RepoPath`.
 4. **Context-Aware Secret Redaction Quarantine & `SanitizedOutput`:** Secret scrubbing is quarantined: never applied to raw Java/TypeScript source code or test files, but strictly applied to tool outputs before writing to audit entities and remote APIs. Persistence sinks strictly consume `SanitizedOutput`.
-5. **Panache Entity Encapsulation (ADR-012):** Panache entities (`@Entity`) are strictly quarantined to `org.quarkus.agent.entity` and must never be accessed by classes outside their package. Services outside `entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
+5. **Panache Entity Encapsulation (ADR-012):** Panache entities (`@Entity`) are strictly quarantined to `guru.thomasweber.devagent.entity` and must never be accessed by classes outside their package. Services outside `entity` consume immutable domain models (`TaskRun`, `StepAudit`) mapped through `TaskPersistenceService`.
 6. **Global Project ID Host Isolation & Deterministic UUIDv3 (ADR-013):** Repositories are identified via strongly-typed `ProjectId` value objects wrapping deterministic RFC 4122 UUIDv3 instances derived from canonical, credential-scrubbed coordinates (`host/namespace/repo` or `local:<path>`).
 7. **Exhaustive Crash Recovery & Physical Worktree Verification:** `CrashRecoveryDetector` evaluates complete active candidate queues (`findAllResumableTasks`). Tasks are resumable strictly if non-terminal, registered PID is dead on host OS, and their Git worktree physically exists on disk.
 8. **Subprocess Lifetime & Timeout Governance:** All external process forks (`git`, `mvnw`, etc.) are executed via `SubprocessExecutor` with mandatory timeouts, non-blocking virtual thread stream draining, 2-tier bounded output buffering (`BoundedOverflowBuffer`: 1 MB RAM -> 10 MB Disk overflow), and immediate `destroyForcibly()` on timeout/interruption.
@@ -58,11 +58,11 @@ dev-agent/
 
 ## 3. Two-Axis SPI Specifications
 
-### Axis 1: Build Tooling Execution SPI (`org.quarkus.agent.spi.build`)
+### Axis 1: Build Tooling Execution SPI (`guru.thomasweber.devagent.spi.build`)
 * `BackendBuildSystem`: `priority()`, `isApplicable(Path root)`, `resolveExecutable(Path root)`, `buildCompileCommand(...)`, `buildTestCommand(...)`, `sanitizeOutput(...)`.
 * `FrontendBuildSystem`: `priority()`, `isApplicable(Path root)`, `resolveExecutable(Path root)`, `buildTypeCheckCommand(...)`, `buildTestCommand(...)`, `buildClientCodegenCommand(...)`, `sanitizeOutput(...)`.
 
-### Axis 2: Framework Conventions & Idioms SPI (`org.quarkus.agent.spi.framework`)
+### Axis 2: Framework Conventions & Idioms SPI (`guru.thomasweber.devagent.spi.framework`)
 * `BackendFrameworkConvention`: `priority()`, `isApplicable(Path root)`, `getFrameworkName()`, `getPersonaInstructions()`, `getBaselineInvariants()`, `getTestExecutionFlags()`, `getOpenApiExportFlags(...)`.
 * `FrontendFrameworkConvention`: `priority()`, `isApplicable(Path root)`, `getFrameworkName()`, `getComponentGuidance()`, `getBaselineInvariants()`, `resolveSourceRoot(...)`.
 

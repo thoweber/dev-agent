@@ -11,18 +11,18 @@ Exposing Hibernate/Panache entities (`TaskRunEntity`, `StepAuditEntity`) across 
 ## Decision
 Enforce strict package encapsulation of Panache entities and mandate decoupled domain models:
 1. **Entity Confinement:**
-   - Panache entities (`TaskRunEntity`, `StepAuditEntity`, `MetricLogEntity`) reside exclusively in `org.quarkus.agent.entity` and must never be accessed by any class outside this package.
+   - Panache entities (`TaskRunEntity`, `StepAuditEntity`, `MetricLogEntity`) reside exclusively in `guru.thomasweber.devagent.entity` and must never be accessed by any class outside this package.
    - Guarded at build and CI time via an automated ArchUnit rule:
      ```java
      classes()
          .that().areAnnotatedWith(jakarta.persistence.Entity.class)
-         .should().onlyBeAccessed().byClassesThat().resideInAPackage("org.quarkus.agent.entity..");
+         .should().onlyBeAccessed().byClassesThat().resideInAPackage("guru.thomasweber.devagent.entity..");
      ```
-2. **Domain Models (`org.quarkus.agent.model`):**
-   - Domain records (`TaskRun`, `StepAudit`) and domain enums (`TaskStatus`) reside in `org.quarkus.agent.model`.
+2. **Domain Models (`guru.thomasweber.devagent.model`):**
+   - Domain records (`TaskRun`, `StepAudit`) and domain enums (`TaskStatus`) reside in `guru.thomasweber.devagent.model`.
    - Domain records are immutable, reflection-registered (`@RegisterForReflection`), and equipped with fluent builders (`@Builder(toBuilder = true)`).
 3. **Dedicated Mapping & Persistence Service (`TaskPersistenceService`):**
-   - `TaskPersistenceService` in `org.quarkus.agent.entity` serves as the sole data access gateway and sink.
+   - `TaskPersistenceService` in `guru.thomasweber.devagent.entity` serves as the sole data access gateway and sink.
    - Manages transactional boundaries, persistence operations, and bidirectional entity-to-domain mapping (`toDomain()`).
    - Consumer services (`StateSyncService`, `CrashRecoveryDetector`) operate exclusively on detached domain records (`TaskRun`), completely eliminating `LazyInitializationException` risks.
 

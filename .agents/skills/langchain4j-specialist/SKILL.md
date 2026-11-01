@@ -5,7 +5,7 @@ description: Designs and implements Quarkus-LangChain4j AiServices, prompt templ
 
 # LangChain4j & Cognitive Specialist Skill (`langchain4j-specialist`)
 
-This skill governs the cognitive orchestration layer, model routing, system prompt templating, pure-Java lexical retrieval, and deterministic decision caching in **dev-agent**. All cognitive services and memory implementations must adhere to [01-architecture-invariants.md](file:///home/developer/projects/dev-agent/.agents/rules/01-architecture-invariants.md) and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md).
+This skill governs the cognitive orchestration layer, model routing, system prompt templating, pure-Java lexical retrieval, and deterministic decision caching in **dev-agent**. All cognitive services and memory implementations must adhere to [01-architecture-invariants.md](../../rules/01-architecture-invariants.md) and [05-testing-standards.md](../../rules/05-testing-standards.md).
 
 ---
 
