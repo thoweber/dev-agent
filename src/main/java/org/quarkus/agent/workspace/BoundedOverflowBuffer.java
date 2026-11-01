@@ -61,7 +61,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
      * Exposes the pure write sink for process stdout/stderr draining.
      */
     public OutputStream outputStream() {
-        return sink;
+        return new BufferOutputStream(this);
     }
 
     /**
@@ -132,24 +132,36 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         }
     }
 
+    Path createTempFileWithPermissions(Path parent, FileAttribute<?> attr) throws IOException {
+        return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
+    }
+
     private Path createSecureTempFile() throws IOException {
         Path parent = tempDirRoot != null ? tempDirRoot : Path.of(System.getProperty("java.io.tmpdir"));
-        FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
-            EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+        try {
+            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
+                EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            );
+            return createTempFileWithPermissions(parent, attr);
+        } catch (UnsupportedOperationException _) {
+            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
+        }
+    }
+
+    FileChannel openSpillChannel(Path tempFile) throws IOException {
+        return FileChannel.open(
+            tempFile,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.WRITE,
+            StandardOpenOption.READ
         );
-        return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
     }
 
     private void checkOverflow(int incoming) throws IOException {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
             try {
-                this.fileChannel = FileChannel.open(
-                    tempFile,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.WRITE,
-                    StandardOpenOption.READ
-                );
+                this.fileChannel = openSpillChannel(tempFile);
                 byte[] inMemoryBytes = memoryBuffer.toByteArray();
                 ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
                 while (nioBuffer.hasRemaining()) {

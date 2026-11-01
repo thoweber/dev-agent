@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +16,13 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 class BoundedOverflowBufferTest {
 
@@ -351,5 +360,76 @@ class BoundedOverflowBufferTest {
                 // Secondary close in cleanup; any failure here is ignored
             }
         }
+    }
+
+    @Test
+    @DisplayName("Given non-POSIX filesystem - when overflow occurs - then falls back to default temp file creation")
+    void testNonPosixFilesystemFallbackUsingSpy() throws IOException {
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, tempDir);
+        BoundedOverflowBuffer spyBuffer = spy(buffer);
+
+        doThrow(new UnsupportedOperationException("Simulated non-POSIX environment"))
+            .when(spyBuffer).createTempFileWithPermissions(any(), any());
+
+        try (spyBuffer) {
+            OutputStream out = spyBuffer.outputStream();
+            out.write("1234567890".getBytes(StandardCharsets.UTF_8));
+            assertThat(spyBuffer.isOverflowedToDisk()).isTrue();
+            assertThat(spyBuffer.asString()).isEqualTo("1234567890");
+        }
+    }
+
+    @Test
+    @DisplayName("Given channel write failure during spill - when overflow occurs - then closes channel and deletes temp file")
+    void testChannelWriteFailureDuringSpillCleansUp() throws IOException {
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, tempDir);
+        BoundedOverflowBuffer spyBuffer = spy(buffer);
+        FileChannel mockChannel = mock(FileChannel.class);
+
+        doReturn(mockChannel).when(spyBuffer).openSpillChannel(any());
+        doThrow(new IOException("Simulated disk write failure")).when(mockChannel).write(any(ByteBuffer.class));
+
+        try (spyBuffer) {
+            OutputStream out = spyBuffer.outputStream();
+            out.write("12345".getBytes(StandardCharsets.UTF_8));
+            assertThat(spyBuffer.isOverflowedToDisk()).isFalse();
+
+            assertThatThrownBy(() -> out.write('6'))
+                .isInstanceOf(IOException.class)
+                .hasMessage("Simulated disk write failure");
+
+            verify(mockChannel).close();
+            assertThat(spyBuffer.isOverflowedToDisk()).isFalse();
+            assertThat(spyBuffer.asString()).isEqualTo("12345");
+
+            try (Stream<Path> list = Files.list(tempDir)) {
+                assertThat(list).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Given channel close failure - when buffer closed - then propagates IOException and clears channel")
+    void testChannelCloseFailureDuringBufferClose() throws IOException {
+        BoundedOverflowBuffer buffer = new BoundedOverflowBuffer(5, 50, tempDir);
+        BoundedOverflowBuffer spyBuffer = spy(buffer);
+        FileChannel mockChannel = mock(FileChannel.class);
+
+        doReturn(mockChannel).when(spyBuffer).openSpillChannel(any());
+        doAnswer(inv -> {
+            ByteBuffer buf = inv.getArgument(0);
+            int rem = buf.remaining();
+            buf.position(buf.limit());
+            return rem;
+        }).when(mockChannel).write(any(ByteBuffer.class));
+        doThrow(new IOException("Simulated channel close failure")).when(mockChannel).close();
+
+        OutputStream out = spyBuffer.outputStream();
+        out.write("1234567890".getBytes(StandardCharsets.UTF_8));
+        assertThat(spyBuffer.isOverflowedToDisk()).isTrue();
+
+        assertThatThrownBy(spyBuffer::close)
+            .isInstanceOf(IOException.class)
+            .hasMessage("Simulated channel close failure");
     }
 }
