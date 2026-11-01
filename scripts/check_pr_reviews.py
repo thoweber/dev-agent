@@ -522,6 +522,27 @@ def parse_coderabbit_comment(body: str) -> Dict[str, str]:
     return info
 
 
+def sanitize_untrusted_text(text: Optional[str], max_length: int = 4000, prefix: str = "| ") -> str:
+    """
+    Sanitize externally sourced review text to neutralize prompt injection vectors.
+    Removes control characters, escapes backticks, prefixes lines with a benign quote marker,
+    and bounds maximum length.
+    """
+    if text is None or not text:
+        return ""
+    text_str = str(text)
+    if len(text_str) > max_length:
+        text_str = text_str[:max_length] + " [truncated]"
+    # Strip dangerous control chars (preserve \n and \t)
+    filtered = "".join(ch for ch in text_str if ch in ("\n", "\t") or (ord(ch) >= 32 and ord(ch) != 127))
+    # Escape backticks
+    escaped = filtered.replace("`", r"\`")
+    if prefix:
+        lines = escaped.splitlines()
+        return "\n".join(f"{prefix}{line}" if line.strip() else prefix.rstrip() for line in lines)
+    return escaped
+
+
 def reply_to_thread(thread_id: str, body: str) -> None:
     """Add a reply to an existing PR review thread."""
     mutation = """
@@ -688,18 +709,21 @@ def main() -> None:
             print(f"[{i}] {status_flag} Thread ID: {tid}")
             print(f"    Target:   {path}:{line}")
             print(f"    Severity: {meta['severity']} | Category: {meta['category']}" + (f" | {meta['cwe']}" if meta['cwe'] else ""))
-            print(f"    Finding:  {meta['title']}")
+            print(f"    Finding:  {sanitize_untrusted_text(meta['title'], prefix='')}")
             print(f"    History:  {len(comments)} comment(s). Last author: @{last_comment.get('author', {}).get('login', 'unknown')}")
 
             if args.details:
                 if meta.get("action_prompt"):
-                    print(f"    Action:   {meta['action_prompt']}")
+                    sanitized_action = sanitize_untrusted_text(meta['action_prompt'], prefix="    | ")
+                    print(f"    Action:\n{sanitized_action}")
                 print("    --- Comments ---")
                 for c in comments:
                     author = c.get("author", {}).get("login", "unknown")
-                    body_clean = "\n      ".join(c.get("body", "").splitlines()[:10])
-                    print(f"      [@{author}]:\n      {body_clean}")
-                    if len(c.get("body", "").splitlines()) > 10:
+                    raw_lines = c.get("body", "").splitlines()
+                    truncated_raw = "\n".join(raw_lines[:10])
+                    body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
+                    print(f"      [@{author}]:\n{body_clean}")
+                    if len(raw_lines) > 10:
                         print("      ... [truncated]")
                 print("    ----------------")
 
@@ -711,12 +735,17 @@ def main() -> None:
         for j, od in enumerate(outside_diff_comments, 1):
             print(f"[{j}] [OUTSIDE-DIFF] Target: {od['target']}")
             print(f"    Severity: {od['severity']} | Category: {od['category']}")
-            print(f"    Finding:  {od['title']}")
+            print(f"    Finding:  {sanitize_untrusted_text(od['title'], prefix='')}")
             if od.get("action_prompt"):
-                print(f"    Action:   {od['action_prompt']}")
+                sanitized_action = sanitize_untrusted_text(od['action_prompt'], prefix="    | ")
+                print(f"    Action:\n{sanitized_action}")
             if args.details and od.get("body"):
-                body_clean = "\n      ".join(od["body"].splitlines()[:10])
-                print(f"    Body:\n      {body_clean}")
+                raw_lines = od["body"].splitlines()
+                truncated_raw = "\n".join(raw_lines[:10])
+                body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
+                print(f"    Body:\n{body_clean}")
+                if len(raw_lines) > 10:
+                    print("      ... [truncated]")
             print("    " + "-" * 70 + "\n")
 
     print("-" * 78)

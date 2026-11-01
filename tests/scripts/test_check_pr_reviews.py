@@ -297,6 +297,35 @@ Verify null safety.
         self.assertEqual(repo, "my-project")
         self.assertEqual(pr, 123)
 
+    # -------------------------------------------------------------------------
+    # sanitize_untrusted_text tests
+    # -------------------------------------------------------------------------
+
+    def test_sanitize_untrusted_text_none_or_empty(self):
+        self.assertEqual(check_pr_reviews.sanitize_untrusted_text(""), "")
+        self.assertEqual(check_pr_reviews.sanitize_untrusted_text(None), "")
+
+    def test_sanitize_untrusted_text_strips_control_characters(self):
+        malicious = "Hello\x00\x07World\x1b[31m!\tLine2\nLine3\x7f"
+        sanitized = check_pr_reviews.sanitize_untrusted_text(malicious, prefix="")
+        self.assertEqual(sanitized, "HelloWorld[31m!\tLine2\nLine3")
+
+    def test_sanitize_untrusted_text_escapes_backticks(self):
+        text = "Run `rm -rf /` and ```python print('hack')```"
+        sanitized = check_pr_reviews.sanitize_untrusted_text(text, prefix="")
+        self.assertEqual(sanitized, r"Run \`rm -rf /\` and \`\`\`python print('hack')\`\`\`")
+
+    def test_sanitize_untrusted_text_prefixes_lines(self):
+        text = "Instruction 1\nInstruction 2\n"
+        sanitized = check_pr_reviews.sanitize_untrusted_text(text, prefix="| ")
+        self.assertEqual(sanitized, "| Instruction 1\n| Instruction 2")
+
+    def test_sanitize_untrusted_text_truncation(self):
+        long_text = "A" * 100
+        sanitized = check_pr_reviews.sanitize_untrusted_text(long_text, max_length=10, prefix="")
+        self.assertEqual(sanitized, "A" * 10 + " [truncated]")
+
+
 
 if __name__ == "__main__":
     unittest.main()
