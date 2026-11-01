@@ -4,6 +4,8 @@ import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.segment.TextSegment;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.DocumentSection;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
+import guru.thomasweber.devagent.config.DevAgentConfig;
+import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
@@ -49,20 +51,31 @@ public class AdrDiscoveryService {
     private final WorkspaceContextResolver contextResolver;
     private final WorkspaceJailValidator jailValidator;
     private final MarkdownParserService markdownParserService;
+    private final DevAgentConfigLoader configLoader;
 
     @Inject
     public AdrDiscoveryService(
         WorkspaceContextResolver contextResolver,
         WorkspaceJailValidator jailValidator,
-        MarkdownParserService markdownParserService
+        MarkdownParserService markdownParserService,
+        DevAgentConfigLoader configLoader
     ) {
         this.contextResolver = contextResolver;
         this.jailValidator = jailValidator;
         this.markdownParserService = markdownParserService;
+        this.configLoader = configLoader;
+    }
+
+    public AdrDiscoveryService(
+        WorkspaceContextResolver contextResolver,
+        WorkspaceJailValidator jailValidator,
+        MarkdownParserService markdownParserService
+    ) {
+        this(contextResolver, jailValidator, markdownParserService, new DevAgentConfigLoader());
     }
 
     public AdrDiscoveryService(WorkspaceContextResolver contextResolver, WorkspaceJailValidator jailValidator) {
-        this(contextResolver, jailValidator, new MarkdownParserService());
+        this(contextResolver, jailValidator, new MarkdownParserService(), new DevAgentConfigLoader());
     }
 
     public List<ArchitecturalRecord> discoverRecords() {
@@ -100,106 +113,8 @@ public class AdrDiscoveryService {
         if (!Files.isRegularFile(configFile)) {
             return Collections.emptyList();
         }
-        try {
-            List<String> lines = Files.readAllLines(configFile);
-            List<String> paths = new ArrayList<>();
-            boolean inKnowledge = false;
-            boolean inRulesPaths = false;
-            boolean inBracketArray = false;
-            StringBuilder bracketBuffer = new StringBuilder();
-            int rulesPathsIndent = -1;
-
-            for (String line : lines) {
-                String trimmed = line.trim();
-                if (trimmed.startsWith("#") || trimmed.isEmpty()) {
-                    continue;
-                }
-                int indent = getIndent(line);
-                if (trimmed.startsWith("knowledge:")) {
-                    inKnowledge = true;
-                    inRulesPaths = false;
-                    continue;
-                }
-                if (inKnowledge && trimmed.startsWith("rules-paths:")) {
-                    String rest = stripComment(trimmed.substring("rules-paths:".length())).trim();
-                    if (rest.startsWith("[")) {
-                        inBracketArray = true;
-                        bracketBuffer.append(rest);
-                        if (rest.contains("]")) {
-                            inBracketArray = false;
-                            parseBracketArray(bracketBuffer.toString(), paths);
-                            bracketBuffer.setLength(0);
-                        }
-                        continue;
-                    }
-                    inRulesPaths = true;
-                    rulesPathsIndent = indent;
-                    continue;
-                }
-                if (inBracketArray) {
-                    String clean = stripComment(trimmed);
-                    bracketBuffer.append(" ").append(clean);
-                    if (clean.contains("]")) {
-                        inBracketArray = false;
-                        parseBracketArray(bracketBuffer.toString(), paths);
-                        bracketBuffer.setLength(0);
-                    }
-                    continue;
-                }
-                if (inRulesPaths) {
-                    if (indent <= rulesPathsIndent && !trimmed.startsWith("-")) {
-                        inRulesPaths = false;
-                        if (indent == 0) {
-                            inKnowledge = false;
-                        }
-                    } else if (trimmed.startsWith("-")) {
-                        String item = stripQuotes(stripComment(trimmed.substring(1)).trim());
-                        paths.add(item);
-                    }
-                }
-            }
-            return paths;
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read config file: " + configFile, e);
-        }
-    }
-
-    private static void parseBracketArray(String text, List<String> paths) {
-        int start = text.indexOf('[');
-        int end = text.lastIndexOf(']');
-        if (start >= 0 && end > start) {
-            String inner = text.substring(start + 1, end);
-            for (String part : inner.split(",")) {
-                String item = stripQuotes(part.trim());
-                if (!item.isEmpty()) {
-                    paths.add(item);
-                }
-            }
-        }
-    }
-
-    private static String stripComment(String s) {
-        int hashIdx = s.indexOf('#');
-        return hashIdx >= 0 ? s.substring(0, hashIdx) : s;
-    }
-
-    private static String stripQuotes(String s) {
-        if (s.length() >= 2) {
-            char first = s.charAt(0);
-            char last = s.charAt(s.length() - 1);
-            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                return s.substring(1, s.length() - 1).trim();
-            }
-        }
-        return s;
-    }
-
-    private int getIndent(String line) {
-        int count = 0;
-        while (count < line.length() && line.charAt(count) == ' ') {
-            count++;
-        }
-        return count;
+        DevAgentConfig config = configLoader.load(configFile);
+        return config.knowledge().rulesPaths().orElse(Collections.emptyList());
     }
 
     private void validateNoTraversal(String pattern) {

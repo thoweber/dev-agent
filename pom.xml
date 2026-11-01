@@ -112,6 +112,12 @@
             <artifactId>quarkus-arc</artifactId>
         </dependency>
 
+        <!-- Quarkus YAML Configuration -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-config-yaml</artifactId>
+        </dependency>
+
         <!-- Deterministic Cache (Caffeine) -->
         <dependency>
             <groupId>io.quarkus</groupId>

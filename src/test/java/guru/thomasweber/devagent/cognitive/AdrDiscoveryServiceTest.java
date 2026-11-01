@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.cognitive;
 
 import dev.langchain4j.data.segment.TextSegment;
+import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
@@ -102,9 +103,6 @@ class AdrDiscoveryServiceTest {
                   - "custom/adrs/*.md"
                   - 'specs/**/*.md'
                   - ./unquoted/*.md
-                  - "unbalanced
-                  - 'unbalanced
-                  - a
               budget:
                 max-task-cost-usd: 2.00
             """);
@@ -206,7 +204,7 @@ class AdrDiscoveryServiceTest {
             agent:
               knowledge:
                 rules-paths:
-                  - ""
+                  - "   "
             """);
 
         assertThatThrownBy(() -> discoveryService.discoverRecords())
@@ -514,5 +512,18 @@ class AdrDiscoveryServiceTest {
     void givenNullFilePathAndContent_whenParseAdrDocument_thenHandlesSafely() {
         List<TextSegment> segments = discoveryService.parseAdrDocument(null, null);
         assertThat(segments).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Given explicit configLoader constructor - when discovering - then executes properly")
+    void givenExplicitConfigLoaderConstructor_whenDiscovering_thenExecutesProperly() {
+        AdrDiscoveryService service = new AdrDiscoveryService(
+            contextResolver,
+            jailValidator,
+            new MarkdownParserService(),
+            new DevAgentConfigLoader()
+        );
+        List<ArchitecturalRecord> records = service.discoverRecords();
+        assertThat(records).isNotNull();
     }
 }
