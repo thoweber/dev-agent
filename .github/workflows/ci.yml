@@ -37,8 +37,14 @@ jobs:
       - name: Validate Code Formatting (Spotless)
         run: ./mvnw --batch-mode spotless:check
 
+      - name: Run Python Automation Unit Tests
+        run: python3 -m unittest discover -s tests/scripts
+
       - name: Full Reactor Clean Build & Verification
         run: ./mvnw --batch-mode clean verify
+
+      - name: Enforce JaCoCo Coverage Quality Gates
+        run: ./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates
 
       - name: SonarCloud Analysis & Quality Gate Check
         if: env.SONAR_TOKEN != ''

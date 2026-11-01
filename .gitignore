@@ -47,3 +47,9 @@ tmp/
 scratch/
 hs_err_pid*
 replay_pid*
+
+# Python Bytecode & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+

@@ -17,6 +17,21 @@ class FeatureCommandTest {
     Path tempDir;
 
     @Test
+    @DisplayName("Given feature command with instruction - when executed - then outputs initiating execution message")
+    void testFeatureCommandExecution() {
+        FeatureCommand command = new FeatureCommand();
+        CommandLine cmd = new CommandLine(command);
+        StringWriter sw = new StringWriter();
+        cmd.setOut(new PrintWriter(sw));
+
+        int exitCode = cmd.execute("Build authentication");
+
+        assertThat(exitCode).isZero();
+        assertThat(sw.toString()).contains("[dev-agent] Initiating full-stack TDD execution: Build authentication");
+        assertThat(command.getInstruction()).isEqualTo("Build authentication");
+    }
+
+    @Test
     @DisplayName("Given feature command with instruction and flags - when parsed - then sets properties correctly")
     void testFeatureCommandFlags() {
         FeatureCommand command = new FeatureCommand();
@@ -60,5 +75,27 @@ class FeatureCommandTest {
         int exitCodeBlank = cmd.execute("   ");
         assertThat(exitCodeBlank).isZero();
         assertThat(swBlank.toString()).contains("Please provide a feature specification");
+    }
+
+    @Test
+    @DisplayName("Given feature command - when executed with --help - then outputs feature subcommand usage and exit code 0")
+    void testHelpOption() {
+        FeatureCommand command = new FeatureCommand();
+        CommandLine cmd = new CommandLine(command);
+        StringWriter sw = new StringWriter();
+        cmd.setOut(new PrintWriter(sw));
+
+        int exitCode = cmd.execute("--help");
+
+        assertThat(exitCode).isZero();
+        assertThat(sw.toString()).contains(
+            "Usage: feature",
+            "[<instruction>]",
+            "--gui",
+            "--detach",
+            "-y, --yes",
+            "--offline",
+            "-d, --dir, --workspace"
+        );
     }
 }

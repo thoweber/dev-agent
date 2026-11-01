@@ -5,7 +5,7 @@ description: Designs and implements Quarkus-LangChain4j AiServices, prompt templ
 
 # LangChain4j & Cognitive Specialist Skill (`langchain4j-specialist`)
 
-This skill governs the cognitive orchestration layer, model routing, system prompt templating, pure-Java lexical retrieval, and deterministic decision caching in **dev-agent**.
+This skill governs the cognitive orchestration layer, model routing, system prompt templating, pure-Java lexical retrieval, and deterministic decision caching in **dev-agent**. All cognitive services and memory implementations must adhere to [01-architecture-invariants.md](file:///home/developer/projects/dev-agent/.agents/rules/01-architecture-invariants.md) and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md).
 
 ---
 
@@ -39,3 +39,11 @@ Declare AiServices using Quarkus-LangChain4j annotations:
 * **Tier 1 (Pinned System Invariants):** Immutable project guidelines and architecture rules (`SystemMessage`). Quarantined strictly to Tier 1; never placed in sliding scratchpad.
 * **Tier 2 (Pinned Task Spec):** User story and approved implementation plan JSON (`UserMessage`).
 * **Tier 3 (Sliding Scratchpad & Atomic Eviction):** Bounded by `MAX_SCRATCHPAD_TURNS`. Eviction MUST operate on complete atomic turns (purging the user prompt and all its answering assistant messages and tool execution results together) to prevent severed context and API 400 Bad Request errors.
+
+---
+
+## 5. Cognitive Test Engineering & Zero-Reflection Standards
+
+* **Black-Box Turn Verification:** Memory tests (`HierarchicalMemoryStoreTest`) must strictly exercise public APIs (`add()`, `messages()`, `clear()`).
+* **No Reflection:** Using `field.setAccessible(true)` to manipulate the internal `slidingScratchpad` is forbidden.
+* **Atomic Eviction Assertions:** Verify that tool execution results are never orphaned when requests are trimmed, and verify that turn structure invariants hold without invasive state injection.

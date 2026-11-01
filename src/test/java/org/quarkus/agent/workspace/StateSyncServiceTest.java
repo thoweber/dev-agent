@@ -13,6 +13,8 @@ import org.quarkus.agent.model.StepAudit;
 import org.quarkus.agent.model.TaskRun;
 import org.quarkus.agent.model.TaskStateChangeEvent;
 import org.quarkus.agent.model.TaskStatus;
+import org.quarkus.agent.testutil.StepAuditMother;
+import org.quarkus.agent.testutil.TaskRunMother;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,22 +41,19 @@ class StateSyncServiceTest {
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
         StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        StepAudit step1 = StepAudit.builder()
-            .toolName("mvn_test")
+        StepAudit step1 = StepAuditMother.builder("mvn_test")
             .exitCode(0)
             .durationMs(500L)
             .outputSummary("Tests passed")
             .build();
 
-        StepAudit step2 = StepAudit.builder()
-            .toolName("git_commit")
+        StepAudit step2 = StepAuditMother.builder("git_commit")
             .exitCode(1)
             .durationMs(120L)
             .outputSummary(null)
             .build();
 
-        TaskRun taskRun = TaskRun.builder()
-            .taskId("TASK-001")
+        TaskRun taskRun = TaskRunMother.builder("TASK-001")
             .projectId("org/repo")
             .status(TaskStatus.GREEN_PATCH)
             .currentPhase("GREEN_PATCH")
@@ -97,11 +96,11 @@ class StateSyncServiceTest {
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
         StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRun taskRun = TaskRun.builder()
-            .taskId("TASK-002")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
+        TaskRun taskRun = TaskRunMother.planning("org/repo", "TASK-002")
+            .toBuilder()
+            .branch(null)
+            .updatedAt(null)
+            .pid(null)
             .build();
 
         service.projectToMarkdown(taskRun);
@@ -133,11 +132,8 @@ class StateSyncServiceTest {
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
         StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRun taskRun = TaskRun.builder()
-            .taskId("TASK-003")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
+        TaskRun taskRun = TaskRunMother.planning("org/repo", "TASK-003")
+            .toBuilder()
             .userStory("Connecting to API with key AIzaSy123456789012345678901234567890")
             .build();
 
@@ -157,12 +153,7 @@ class StateSyncServiceTest {
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
         StateSyncService service = new StateSyncService(workspace, secretFilter, null);
 
-        TaskRun taskRun = TaskRun.builder()
-            .taskId("../../evil-task")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
-            .build();
+        TaskRun taskRun = TaskRunMother.planning("org/repo", "../../evil-task");
 
         assertThatThrownBy(() -> service.projectToMarkdown(taskRun))
             .isInstanceOf(SecurityException.class)
@@ -185,12 +176,7 @@ class StateSyncServiceTest {
         Path symlinkJournal = runsDir.resolve("TASK-SYMLINK.md");
         Files.createSymbolicLink(symlinkJournal, outsideTarget);
 
-        TaskRun taskRun = TaskRun.builder()
-            .taskId("TASK-SYMLINK")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
-            .build();
+        TaskRun taskRun = TaskRunMother.planning("org/repo", "TASK-SYMLINK");
 
         assertThatThrownBy(() -> service.projectToMarkdown(taskRun))
             .isInstanceOf(SecurityException.class)
@@ -206,11 +192,8 @@ class StateSyncServiceTest {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
 
-        TaskRun recordedRun = TaskRun.builder()
-            .taskId("TASK-SYNC-EVENT")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
+        TaskRun recordedRun = TaskRunMother.planning("org/repo", "TASK-SYNC-EVENT")
+            .toBuilder()
             .userStory("Story")
             .build();
 
@@ -245,12 +228,7 @@ class StateSyncServiceTest {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
 
-        TaskRun recordedRun = TaskRun.builder()
-            .taskId("TASK-TX-SYNC")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
-            .build();
+        TaskRun recordedRun = TaskRunMother.planning("org/repo", "TASK-TX-SYNC");
 
         TaskPersistenceService mockPersistence = new TaskPersistenceService() {
             @Override
@@ -300,12 +278,7 @@ class StateSyncServiceTest {
         WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
         SecretRedactionFilter secretFilter = new SecretRedactionFilter();
 
-        TaskRun recordedRun = TaskRun.builder()
-            .taskId("TASK-TX-INACTIVE")
-            .projectId("org/repo")
-            .status(TaskStatus.PLANNING)
-            .currentPhase("PLANNING")
-            .build();
+        TaskRun recordedRun = TaskRunMother.planning("org/repo", "TASK-TX-INACTIVE");
 
         TaskPersistenceService mockPersistence = new TaskPersistenceService() {
             @Override
@@ -381,7 +354,7 @@ class StateSyncServiceTest {
         // Test registryInstance not resolvable branch
         Instance<TransactionSynchronizationRegistry> unresolvableRegistry = mock(Instance.class);
         when(unresolvableRegistry.isResolvable()).thenReturn(false);
-        TaskRun recordedRun = TaskRun.builder().taskId("TASK-UNRESOLVABLE").build();
+        TaskRun recordedRun = TaskRunMother.planning("TASK-UNRESOLVABLE");
         TaskPersistenceService mockPersist = new TaskPersistenceService() {
             @Override
             public TaskRun recordStateChange(TaskStateChangeEvent event, SanitizedOutput sanitizedSummary) {
@@ -393,7 +366,7 @@ class StateSyncServiceTest {
         assertThat(Files.exists(workspace.resolveAgentsDir().resolve("runs/TASK-UNRESOLVABLE.md"))).isTrue();
 
         // Validate null taskId throws SecurityException
-        TaskRun nullTaskRun = TaskRun.builder().taskId(null).build();
+        TaskRun nullTaskRun = TaskRunMother.builder(null).branch(null).build();
         assertThatThrownBy(() -> service.projectToMarkdown(nullTaskRun))
             .isInstanceOf(SecurityException.class);
 

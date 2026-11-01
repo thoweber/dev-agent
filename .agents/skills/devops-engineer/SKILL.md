@@ -5,16 +5,18 @@ description: Manages GraalVM Mandrel native compilation, GitHub Actions CI pipel
 
 # DevOps & Release Engineering Skill (`devops-engineer`)
 
-This skill governs native compilation, CI automation, artifact packaging, and installation scripting for **dev-agent**.
+This skill governs native compilation, CI automation, artifact packaging, and installation scripting for **dev-agent**. All test lifecycle and quality gate enforcement must adhere to [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) and [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md).
 
 ---
 
 ## 1. GraalVM Native Compilation
 
 * **Build Command:**  
-  `./mvnw clean package -Dnative -Dquarkus.native.container-build=false`
+  `./mvnw clean package -Dnative -Dquarkus.native.container-build=true`
 * **Performance Target:**  
   Binary size $<60\text{ MB}$, cold boot $<50\text{ ms}$, idle memory $<40\text{ MB}$.
+* **Level 3 Native Verification:**  
+  Verify native binary cold start and subcommand execution via `@QuarkusMainIntegrationTest` (`NativeDevAgentIT`) in the `native` Maven profile.
 * **Global Installation Path:**  
   Installs binary to `~/.local/bin/dev-agent`.
 
@@ -28,8 +30,10 @@ This skill governs native compilation, CI automation, artifact packaging, and in
   1. Checkout with full history.
   2. Setup JDK 25.
   3. Validate code formatting: `./mvnw spotless:check`.
-  4. Build and verify: `./mvnw clean verify`.
-  5. Upload JaCoCo test coverage report.
+  4. Run Python automation unit tests: `python3 -m unittest discover -s tests/scripts`.
+  5. Build and verify: `./mvnw clean verify`.
+  6. Enforce coverage quality gates: `./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates`.
+  7. Upload JaCoCo test coverage report.
 
 ---
 

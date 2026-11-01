@@ -204,24 +204,22 @@ On invocation, `WorkspaceContextResolver` inspects `System.getProperty("user.dir
 To prevent directory traversal, symbolic link exploits (CWE-59), or host corruption:
 * All path inputs must resolve strictly within the active execution root (`activeWorkingRoot.toRealPath()`) and are modeled as strongly-typed `RepoPath` value objects:
   ```java
-  public RepoPath validateAndResolve(String untrustedPath) {
+  public Path validateAndResolve(String untrustedPath) {
       if (untrustedPath == null || untrustedPath.isBlank()) {
-          throw new SecurityException("Jailbreak attempt: Path cannot be null or empty");
+          throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
       }
-      return RepoPath.fromUntrusted(activeWorkingRoot, untrustedPath);
+      Path target = normalizedRoot.resolve(untrustedPath).normalize();
+      // Ensure target and all ancestor directories do not escape or contain symlinks
+      ...
+      return target;
   }
 
-  public RepoPath validateForWrite(RepoPath repoPath) {
-      Path candidate = repoPath.absolutePath();
-      // Ensure all existing ancestor directories do not escape or contain symlinks
-      Path current = candidate.normalize();
-      while (current != null && !current.equals(activeWorkingRoot)) {
-          if (Files.exists(current, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(current)) {
-              throw new SecurityException("Jailbreak attempt: Intermediate symlink detected: " + current);
-          }
-          current = current.getParent();
+  public RepoPath validateForWrite(String untrustedPath) {
+      if (untrustedPath == null || untrustedPath.isBlank()) {
+          throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
       }
-      return repoPath;
+      Path resolved = validateAndResolve(untrustedPath);
+      return RepoPath.of(resolved, activeWorkingRoot);
   }
   ```
 * File write sinks (e.g. `writeAtomic`, `writeText`) strictly consume strongly-typed `RepoPath` instances.

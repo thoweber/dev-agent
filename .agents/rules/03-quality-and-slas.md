@@ -23,3 +23,7 @@
 * **Condition / Branch Coverage Gate:** Repository overall branch/condition coverage MUST satisfy $\ge 90.0\%$.
 * **Gate Enforcement Command:** Verified via `./scripts/parse_jacoco.py --fail-under-gates`.
 * **Spotless-First Invariant:** Whenever writing or modifying code, run `./mvnw spotless:apply` before executing any other Maven goal.
+
+## 5. Autonomous PR Merge Prohibition Invariant
+* **Strict Human Authority:** Autonomous agents, subagents, and scripts must NEVER execute `gh pr merge`, fast-forward `main`, or merge pull request branches into `main` under any circumstances.
+* **Hand-Off Protocol:** When all quality gates, tests, and PR reviews are completely green, the agent must yield execution to the human maintainer by submitting a clear hand-off report and requesting manual review and merge.

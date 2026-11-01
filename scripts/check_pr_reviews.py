@@ -93,6 +93,21 @@ def detect_repo_and_pr(cli_repo: Optional[str], cli_pr: Optional[int]) -> Tuple[
     return owner, repo, pr_num
 
 
+def is_coderabbit_status_comment(user: str, body: str) -> bool:
+    """Identify whether a comment is an auto-generated review status comment from CodeRabbit."""
+    if "coderabbit" not in user.lower():
+        return False
+    status_markers = [
+        "This is an auto-generated comment",
+        "coderabbit-ai-generated",
+        "Currently processing new changes in this PR",
+        "review in progress",
+        "Review profile:",
+        "Run ID:",
+    ]
+    return any(marker in body for marker in status_markers)
+
+
 def check_coderabbit_progress(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
     """Inspect top-level issue comments to see if CodeRabbit is actively running."""
     endpoint = f"repos/{owner}/{repo}/issues/{pr_num}/comments"
@@ -121,31 +136,33 @@ def check_coderabbit_progress(owner: str, repo: str, pr_num: int) -> Dict[str, A
     for c in reversed(comments):
         user = (c.get("user") or {}).get("login", "")
         body = c.get("body", "")
-        if "coderabbit" in user.lower() or "coderabbit-ai-generated" in body:
-            run_id_match = re.search(r"(?:\*\*)?Run ID(?:\*\*)?:\s*`([a-f0-9-]+)`", body)
-            run_id = run_id_match.group(1) if run_id_match else None
-            updated_at = c.get("updated_at")
+        if not is_coderabbit_status_comment(user, body):
+            continue
 
-            if "Currently processing new changes in this PR" in body or "review in progress" in body:
-                return {
-                    "in_progress": True,
-                    "status": "Review in progress by CodeRabbit",
-                    "run_id": run_id,
-                    "updated_at": updated_at,
-                }
-            else:
-                return {
-                    "in_progress": False,
-                    "status": "Review completed",
-                    "run_id": run_id,
-                    "updated_at": updated_at,
-                }
+        run_id_match = re.search(r"(?:\*\*)?Run ID(?:\*\*)?:\s*`([a-f0-9-]+)`", body)
+        run_id = run_id_match.group(1) if run_id_match else None
+        updated_at = c.get("updated_at")
+
+        if "Currently processing new changes in this PR" in body or "review in progress" in body.lower():
+            return {
+                "in_progress": True,
+                "status": "Review in progress by CodeRabbit",
+                "run_id": run_id,
+                "updated_at": updated_at,
+            }
+        else:
+            return {
+                "in_progress": False,
+                "status": "Review completed",
+                "run_id": run_id,
+                "updated_at": updated_at,
+            }
 
     return {"in_progress": False, "status": "No CodeRabbit review comment found", "run_id": None}
 
 
 def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
-    """Fetch PR review threads using GraphQL with cursor-based pagination."""
+    """Fetch PR review threads using GraphQL with cursor-based pagination across threads and comments."""
     query = """
     query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
       repository(owner: $owner, name: $repo) {
@@ -227,6 +244,61 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
 
         review_threads_conn = pr_node.get("reviewThreads", {})
         nodes = review_threads_conn.get("nodes", [])
+
+        # Paginate nested comments for each thread if comments exceed 100
+        for thread in nodes:
+            comments_conn = thread.get("comments", {})
+            c_page_info = comments_conn.get("pageInfo", {})
+            thread_id = thread.get("id")
+            seen_cursors = set()
+            while c_page_info.get("hasNextPage"):
+                c_cursor = c_page_info.get("endCursor")
+                if not c_cursor:
+                    print(f"Error: hasNextPage is true but endCursor is missing in comment pagination for thread {thread_id}", file=sys.stderr)
+                    sys.exit(1)
+                if c_cursor in seen_cursors:
+                    print(f"Error: Infinite cursor loop detected in comment pagination for thread {thread_id}", file=sys.stderr)
+                    sys.exit(1)
+                seen_cursors.add(c_cursor)
+                c_query = """
+                query($threadId: ID!, $cursor: String!) {
+                  node(id: $threadId) {
+                    ... on PullRequestReviewThread {
+                      comments(first: 100, after: $cursor) {
+                        pageInfo {
+                          hasNextPage
+                          endCursor
+                        }
+                        nodes {
+                          id
+                          author { login }
+                          body
+                          createdAt
+                          updatedAt
+                        }
+                      }
+                    }
+                  }
+                }
+                """
+                code_c, out_c, _ = run_gh_cmd([
+                    "api", "graphql",
+                    "-f", f"threadId={thread_id}",
+                    "-f", f"cursor={c_cursor}",
+                    "-f", f"query={c_query}",
+                ])
+                if code_c != 0 or not out_c:
+                    print(f"Error fetching nested comments for thread {thread_id}", file=sys.stderr)
+                    sys.exit(1)
+                try:
+                    c_data = json.loads(out_c)
+                    nested_conn = c_data.get("data", {}).get("node", {}).get("comments", {})
+                    thread["comments"]["nodes"].extend(nested_conn.get("nodes", []))
+                    c_page_info = nested_conn.get("pageInfo", {})
+                except (json.JSONDecodeError, KeyError) as e:
+                    print(f"Error parsing nested comments for thread {thread_id}: {e}", file=sys.stderr)
+                    sys.exit(1)
+
         all_threads.extend(nodes)
 
         page_info = review_threads_conn.get("pageInfo", {})
@@ -237,6 +309,210 @@ def fetch_review_threads(owner: str, repo: str, pr_num: int) -> Dict[str, Any]:
 
     pr_metadata["reviewThreads"] = {"nodes": all_threads}
     return {"data": {"repository": {"pullRequest": pr_metadata}}}
+
+
+def extract_outside_diff_section(body: str) -> Optional[str]:
+    """Extract outside-diff section, terminating only at unfenced '---' or '## ' boundaries."""
+    m_start = re.search(r"Outside diff (?:range )?comments.*?\n", body)
+    if not m_start:
+        return None
+
+    remainder = body[m_start.end():]
+    section_lines = []
+    in_fence = False
+    fence_char = None
+    fence_len = 0
+
+    for line in remainder.splitlines(keepends=True):
+        stripped = line.strip()
+        effective_line = re.sub(r"^>\s?", "", stripped)
+        m_fence = re.match(r"^(`{3,}|~{3,})", effective_line)
+        if m_fence:
+            marker = m_fence.group(1)
+            char = marker[0]
+            length = len(marker)
+            if not in_fence:
+                in_fence = True
+                fence_char = char
+                fence_len = length
+            elif char == fence_char and length >= fence_len:
+                in_fence = False
+                fence_char = None
+                fence_len = 0
+            section_lines.append(line)
+            continue
+
+        if not in_fence and (re.match(r"^---\s*$", effective_line) or re.match(r"^##\s+", effective_line)):
+            break
+
+        section_lines.append(line)
+
+    return "".join(section_lines)
+
+
+def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict[str, Any]]:
+    """Fetch review bodies from pullRequest.reviews and extract 'Outside diff range comments'."""
+    query = """
+    query($owner: String!, $repo: String!, $pr: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $pr) {
+          reviews(last: 100) {
+            nodes {
+              id
+              author { login }
+              body
+              submittedAt
+              state
+            }
+          }
+        }
+      }
+    }
+    """
+    code, out, _ = run_gh_cmd([
+        "api", "graphql",
+        "-f", f"owner={owner}",
+        "-f", f"repo={repo}",
+        "-F", f"pr={pr_num}",
+        "-f", f"query={query}",
+    ])
+    if code != 0 or not out:
+        print(f"Error fetching reviews for PR #{pr_num}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError as e:
+        print(f"Error parsing reviews JSON for PR #{pr_num}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    reviews = data.get("data", {}).get("repository", {}).get("pullRequest", {}).get("reviews", {}).get("nodes", [])
+    findings: List[Dict[str, Any]] = []
+
+    # Locate the newest submitted CodeRabbit review before checking for outside-diff markers
+    cr_reviews = []
+    for r in reviews:
+        user = (r.get("author") or {}).get("login", "")
+        if "coderabbit" in user.lower():
+            state = (r.get("state") or "").upper()
+            if state != "PENDING":
+                cr_reviews.append(r)
+
+    if not cr_reviews:
+        return []
+
+    # Sort chronologically by submittedAt if available, otherwise preserve order
+    cr_reviews.sort(key=lambda r: r.get("submittedAt") or "")
+    latest_cr_review = cr_reviews[-1]
+
+    body = latest_cr_review.get("body") or ""
+    if not ("Outside diff range comments" in body or "Outside diff comments" in body or 'alt="Outside diff"' in body):
+        return []
+
+    body = latest_cr_review.get("body") or ""
+    raw_findings = []
+
+    # Style 1: Outside diff range comments section
+    if "Outside diff range comments" in body or "Outside diff comments" in body:
+        section = extract_outside_diff_section(body)
+        if section is None:
+            print(f"Error: Found outside-diff comments heading in PR #{pr_num} review but failed to extract section", file=sys.stderr)
+            sys.exit(1)
+
+        unquoted_section = re.sub(r"(?m)^>\s?", "", section)
+        details_pattern = re.compile(
+            r"<details>\s*<summary>(.*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+            re.DOTALL,
+        )
+        for m in details_pattern.finditer(unquoted_section):
+            raw_findings.append((m.group(1), m.group(2)))
+
+    # Style 2: Follow-up comments / individual outside-diff badges
+    if 'alt="Outside diff"' in body:
+        unquoted_body = re.sub(r"(?m)^>\s?", "", body)
+        badge_pattern = re.compile(
+            r"<details>\s*<summary>((?:(?!</summary>).)*?alt=[\"']Outside diff[\"'](?:(?!</summary>).)*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+            re.DOTALL,
+        )
+        for m in badge_pattern.finditer(unquoted_body):
+            if (m.group(1), m.group(2)) not in raw_findings:
+                raw_findings.append((m.group(1), m.group(2)))
+
+    seen_cids = set()
+    for summary_html, content_html in raw_findings:
+        cid_m = re.search(r"<!--\s*(cr-comment:[^\s>]+)\s*-->", content_html)
+        cid = cid_m.group(1) if cid_m else None
+        if cid:
+            if cid in seen_cids:
+                continue
+            seen_cids.add(cid)
+        clean_s = re.sub(r"<.*?>", "", summary_html).strip()
+        clean_c = re.sub(r"<.*?>", "", content_html).strip()
+
+        sev_m = re.search(r"\b(Critical|Major|Minor|Info)\b", clean_s) or re.search(r"\b(Critical|Major|Minor|Info)\b", clean_c)
+        severity = sev_m.group(1) if sev_m else "Info"
+
+        code_m = re.search(r"<code>(.*?)</code>", summary_html)
+        if code_m:
+            target = code_m.group(1).strip()
+        else:
+            prompt_tgt = re.search(
+                r"Review comment at\s*@?([^\s\n]+)(?:(?:\s+around\s+lines|\s+at\s+lines|\s+at\s+line)\s+([0-9]+(?:\s*-\s*[0-9]+)?))?",
+                content_html,
+            )
+            if prompt_tgt:
+                file_part = prompt_tgt.group(1).split("/")[-1]
+                line_part = f":{prompt_tgt.group(2).replace(' ', '')}" if prompt_tgt.group(2) else ""
+                target = f"{file_part}{line_part}"
+            else:
+                loc_m = re.search(r"\[Open the source location\]\(https://github\.com/[^/]+/[^/]+/blob/[^/]+/(.*?)#L?([0-9\-]+)?\)", content_html)
+                if loc_m:
+                    target = f"{loc_m.group(1).split('/')[-1]}:{loc_m.group(2) or ''}".rstrip(":")
+                else:
+                    target = "N/A"
+
+        parts = [p.strip() for p in clean_s.split("·") if p.strip()]
+        remaining = [p for p in parts if p != severity and p != target]
+        if remaining:
+            title = remaining[0]
+        elif len(parts) >= 2:
+            title = parts[1]
+        elif len(parts) == 1:
+            title = parts[0]
+        else:
+            title = "Outside-diff finding"
+
+        cid_m = re.search(r"<!--\s*(cr-comment:[^\s>]+)\s*-->", content_html)
+        cid = cid_m.group(1) if cid_m else latest_cr_review.get("id")
+
+        prompt_m = re.search(
+            r"```\n(?:Treat finding text.*?\n)?Review comment at.*?\n(.*?)(?:\n\nAfter applying the fix|\n*```)",
+            content_html,
+            re.DOTALL,
+        )
+        prompt = prompt_m.group(1).strip() if prompt_m else ""
+
+        cat_m = re.search(r"·\s*\*\*([A-Za-z &]+)\*\*", clean_c) or re.search(r"\*\*([A-Za-z &]+)\*\*", clean_c)
+        category = cat_m.group(1).strip() if cat_m else "General"
+
+        clean_body = clean_c
+        if "```" in clean_body:
+            clean_body = clean_body.split("```")[0].strip()
+        redacted_body = redact_sensitive_text(clean_body)
+
+        findings.append({
+            "id": cid,
+            "review_id": latest_cr_review.get("id"),
+            "submitted_at": latest_cr_review.get("submittedAt"),
+            "target": target,
+            "severity": severity,
+            "category": category,
+            "title": title,
+            "action_prompt": prompt,
+            "body": redacted_body[:500],
+        })
+
+    return findings
 
 
 def parse_coderabbit_comment(body: str) -> Dict[str, str]:
@@ -270,7 +546,15 @@ def parse_coderabbit_comment(body: str) -> Dict[str, str]:
         info["title"] = headline_match.group(1).strip()
     else:
         # Fallback to first non-empty line after badges
-        lines = [line.strip() for line in body.splitlines() if line.strip() and not line.startswith("<!--") and not line.startswith("**<picture>") and not line.startswith("<picture>")]
+        lines = [
+            line.strip()
+            for line in body.splitlines()
+            if line.strip()
+            and not line.startswith("<!--")
+            and not line.startswith("**<picture>")
+            and not line.startswith("<picture>")
+            and "·" not in line
+        ]
         if lines:
             first_line = re.sub(r"[*_`]", "", lines[0])
             info["title"] = first_line[:80]
@@ -285,6 +569,72 @@ def parse_coderabbit_comment(body: str) -> Dict[str, str]:
         info["action_prompt"] = prompt_match.group(1).strip()
 
     return info
+
+
+def sanitize_untrusted_text(text: Optional[str], max_length: int = 4000, prefix: str = "| ") -> str:
+    """
+    Sanitize externally sourced review text to neutralize prompt injection vectors.
+    Removes control characters, escapes backticks, prefixes lines with a benign quote marker,
+    and bounds maximum length.
+    """
+    if text is None or not text:
+        return ""
+    text_str = str(text)
+    if len(text_str) > max_length:
+        text_str = text_str[:max_length] + " [truncated]"
+    # Strip dangerous control chars (preserve \n and \t)
+    filtered = "".join(ch for ch in text_str if ch in ("\n", "\t") or (ord(ch) >= 32 and ord(ch) != 127))
+    # Escape backticks
+    escaped = filtered.replace("`", r"\`")
+    if prefix:
+        lines = escaped.splitlines()
+        return "\n".join(f"{prefix}{line}" if line.strip() else prefix.rstrip() for line in lines)
+    return escaped
+
+
+SENSITIVE_JSON_KEYS = {"body", "title", "text", "comment", "action_prompt"}
+
+
+def sanitize_json_untrusted_text(obj: Any) -> Any:
+    """
+    Recursively sanitize or redact free-text fields in JSON structures to prevent
+    untrusted review comments from poisoning downstream LLM automation context.
+    """
+    if isinstance(obj, dict):
+        sanitized = {}
+        for k, v in obj.items():
+            if k in SENSITIVE_JSON_KEYS and isinstance(v, str):
+                sanitized[k] = "[REDACTED_UNTRUSTED_TEXT]"
+            else:
+                sanitized[k] = sanitize_json_untrusted_text(v)
+        return sanitized
+    elif isinstance(obj, list):
+        return [sanitize_json_untrusted_text(item) for item in obj]
+    return obj
+
+
+REDACTED_SENSITIVE_PATTERNS = [
+    re.compile(r"\bgh[pousr]_[a-zA-Z0-9]{36,255}\b"),
+    re.compile(r"\bgithub_pat_\w{82,120}\b"),
+    re.compile(r"\b(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b"),
+    re.compile(r"(?i)\bbearer\s+[a-zA-Z0-9_\-.=]{15,}"),
+    re.compile(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----"),
+    re.compile(r"(?i)([\"']?[\w-]*(?:pass(?:word|wd)?|secret|token|key)[\"']?\s*[:=]\s*)([\"'][^\"']*[\"']|[^\s\"',;]+)"),
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+]
+
+
+def redact_sensitive_text(text: Optional[str]) -> str:
+    """Mask common credential, secret, and PII patterns in text."""
+    if not text:
+        return ""
+    result = str(text)
+    for pattern in REDACTED_SENSITIVE_PATTERNS:
+        if pattern.groups == 2:
+            result = pattern.sub(r"\1[REDACTED]", result)
+        else:
+            result = pattern.sub("[REDACTED]", result)
+    return result
 
 
 def reply_to_thread(thread_id: str, body: str) -> None:
@@ -385,8 +735,10 @@ def main() -> None:
             sys.exit(2)
         sys.exit(1 if progress.get("in_progress") else 0)
 
-    # 2. Fetch review threads
+    # 2. Fetch review threads and outside-diff comments
     raw_data = fetch_review_threads(owner, repo, pr_num)
+    outside_diff_comments = fetch_outside_diff_comments(owner, repo, pr_num)
+
     pr_data = raw_data.get("data", {}).get("repository", {}).get("pullRequest", {})
     threads = pr_data.get("reviewThreads", {}).get("nodes", [])
 
@@ -407,11 +759,13 @@ def main() -> None:
                 "total": total_threads,
                 "resolved": len(resolved_threads),
                 "unresolved": len(unresolved_threads),
+                "outside_diff_count": len(outside_diff_comments),
             },
-            "threads": active_list,
+            "threads": sanitize_json_untrusted_text(active_list),
+            "outside_diff_comments": sanitize_json_untrusted_text(outside_diff_comments),
         }
         print(json.dumps(result, indent=2))
-        if args.fail_on_unresolved and unresolved_threads:
+        if args.fail_on_unresolved and (unresolved_threads or outside_diff_comments):
             sys.exit(1)
         sys.exit(0)
 
@@ -421,52 +775,84 @@ def main() -> None:
     print(f"  Title:  {pr_data.get('title')}")
     print(f"  Branch: {pr_data.get('headRefName')}")
     print(f"  Status: {progress.get('status')} (Run ID: {progress.get('run_id') or 'N/A'})")
-    print(f"  Stats:  Total: {total_threads} | Resolved: {len(resolved_threads)} | Unresolved: {len(unresolved_threads)}")
+    print(f"  Stats:  Inline: Total: {total_threads} | Resolved: {len(resolved_threads)} | Unresolved: {len(unresolved_threads)}")
+    if outside_diff_comments:
+        print(f"          Outside-Diff Findings: {len(outside_diff_comments)}")
     print("=" * 78)
 
-    if not active_list:
-        print("\nAll review threads are resolved! No open findings.")
+    if not active_list and not outside_diff_comments:
+        print("\nAll review threads and outside-diff comments are resolved! No open findings.")
         print("-" * 78)
         sys.exit(0)
 
-    print(f"\nListing {'all' if args.all else 'unresolved'} review threads ({len(active_list)}):\n")
+    if active_list:
+        print(f"\nListing {'all' if args.all else 'unresolved'} inline review threads ({len(active_list)}):\n")
 
-    for i, t in enumerate(active_list, 1):
-        tid = t.get("id")
-        path = t.get("path")
-        line = t.get("line") or t.get("originalLine") or "N/A"
-        is_resolved = t.get("isResolved")
-        comments = t.get("comments", {}).get("nodes", [])
-        first_comment = comments[0] if comments else {}
-        last_comment = comments[-1] if comments else {}
+        for i, t in enumerate(active_list, 1):
+            tid = t.get("id")
+            path = t.get("path")
+            line = t.get("line") or t.get("originalLine") or "N/A"
+            is_resolved = t.get("isResolved")
+            comments = t.get("comments", {}).get("nodes", [])
+            first_comment = comments[0] if comments else {}
+            last_comment = comments[-1] if comments else {}
 
-        meta = parse_coderabbit_comment(first_comment.get("body", ""))
+            meta = parse_coderabbit_comment(first_comment.get("body", ""))
 
-        status_flag = "[RESOLVED]" if is_resolved else "[UNRESOLVED]"
-        print(f"[{i}] {status_flag} Thread ID: {tid}")
-        print(f"    Target:   {path}:{line}")
-        print(f"    Severity: {meta['severity']} | Category: {meta['category']}" + (f" | {meta['cwe']}" if meta['cwe'] else ""))
-        print(f"    Finding:  {meta['title']}")
-        print(f"    History:  {len(comments)} comment(s). Last author: @{last_comment.get('author', {}).get('login', 'unknown')}")
+            status_flag = "[RESOLVED]" if is_resolved else "[UNRESOLVED]"
+            print(f"[{i}] {status_flag} Thread ID: {tid}")
+            print(f"    Target:   {path}:{line}")
+            print(f"    Severity: {meta['severity']} | Category: {meta['category']}" + (f" | {meta['cwe']}" if meta['cwe'] else ""))
+            print(f"    Finding:  {sanitize_untrusted_text(redact_sensitive_text(meta['title']), prefix='')}")
+            print(f"    History:  {len(comments)} comment(s). Last author: @{last_comment.get('author', {}).get('login', 'unknown')}")
 
-        if args.details:
-            if meta.get("action_prompt"):
-                print(f"    Action:   {meta['action_prompt']}")
-            print("    --- Comments ---")
-            for c in comments:
-                author = c.get("author", {}).get("login", "unknown")
-                body_clean = "\n      ".join(c.get("body", "").splitlines()[:10])
-                print(f"      [@{author}]:\n      {body_clean}")
-                if len(c.get("body", "").splitlines()) > 10:
+            if args.details:
+                if meta.get("action_prompt"):
+                    redacted_action = redact_sensitive_text(meta['action_prompt'])
+                    sanitized_action = sanitize_untrusted_text(redacted_action, prefix="    | ")
+                    print(f"    Action:\n{sanitized_action}")
+                print("    --- Comments ---")
+                for c in comments:
+                    author = c.get("author", {}).get("login", "unknown")
+                    redacted_body = redact_sensitive_text(c.get("body", ""))
+                    raw_lines = redacted_body.splitlines()
+                    truncated_raw = "\n".join(raw_lines[:10])
+                    body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
+                    print(f"      [@{author}]:\n{body_clean}")
+                    if len(raw_lines) > 10:
+                        print("      ... [truncated]")
+                print("    ----------------")
+
+            print(f"    Remediate command:")
+            print(f"      ./scripts/check_pr_reviews.py --thread {tid} --reply \"Resolved...\" --resolve\n")
+
+    if outside_diff_comments:
+        print(f"\nListing outside-diff review findings ({len(outside_diff_comments)}):\n")
+        for j, od in enumerate(outside_diff_comments, 1):
+            target = sanitize_untrusted_text(
+                redact_sensitive_text(od.get("target", "")),
+                prefix="",
+            )
+            print(f"[{j}] [OUTSIDE-DIFF] Target: {target}")
+            print(f"    Severity: {od['severity']} | Category: {od['category']}")
+            print(f"    Finding:  {sanitize_untrusted_text(redact_sensitive_text(od['title']), prefix='')}")
+            if od.get("action_prompt"):
+                redacted_action = redact_sensitive_text(od['action_prompt'])
+                sanitized_action = sanitize_untrusted_text(redacted_action, prefix="    | ")
+                print(f"    Action:\n{sanitized_action}")
+            if args.details and od.get("body"):
+                redacted_body = redact_sensitive_text(od.get("body", ""))
+                raw_lines = redacted_body.splitlines()
+                truncated_raw = "\n".join(raw_lines[:10])
+                body_clean = sanitize_untrusted_text(truncated_raw, prefix="      | ")
+                print(f"    Body:\n{body_clean}")
+                if len(raw_lines) > 10:
                     print("      ... [truncated]")
-            print("    ----------------")
-
-        print(f"    Remediate command:")
-        print(f"      ./scripts/check_pr_reviews.py --thread {tid} --reply \"Resolved...\" --resolve\n")
+            print("    " + "-" * 70 + "\n")
 
     print("-" * 78)
 
-    if args.fail_on_unresolved and unresolved_threads:
+    if args.fail_on_unresolved and (unresolved_threads or outside_diff_comments):
         sys.exit(1)
 
 

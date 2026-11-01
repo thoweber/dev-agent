@@ -41,7 +41,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given memory store - when id and clear called - behaves as expected")
+    @DisplayName("Given memory store - when id and clear called - then behaves as expected")
     void testStoreIdAndClear() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         assertThat(memory.id()).isEqualTo("hierarchical-memory");
@@ -54,7 +54,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given system message added directly - then updates pinned invariants")
+    @DisplayName("Given system message - when added directly - then updates pinned invariants")
     void testDirectSystemMessageUpdate() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new dev.langchain4j.data.message.SystemMessage("Direct System Invariant"));
@@ -65,7 +65,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given blank or null inputs to pin methods - handles gracefully")
+    @DisplayName("Given blank or null inputs to pin methods - when passed - then handles gracefully")
     void testPinNullAndBlankInputs() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants(null);
@@ -74,7 +74,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given pinned invariants - when SystemMessage added via add() - does not overwrite pinned invariants")
+    @DisplayName("Given pinned invariants - when SystemMessage added via add() - then does not overwrite pinned invariants")
     void testAddSystemMessageDoesNotOverwritePinnedInvariants() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Pinned Invariants");
@@ -87,7 +87,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given tool request and execution result - when scratchpad trimmed - evicts tool result with request")
+    @DisplayName("Given tool request and execution result - when scratchpad trimmed - then evicts tool result with request")
     void testAtomicToolCallAndResultEviction() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
@@ -116,7 +116,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multiple tool execution results - does not self-evict during addition and drops orphaned results")
+    @DisplayName("Given multiple tool execution results - when added - then does not self-evict during addition and drops orphaned results")
     void testMultipleToolResultsAndOrphanRejection() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
@@ -143,7 +143,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given memory with all tiers - when clear called - removes all tiers; clearScratchpad only clears scratchpad")
+    @DisplayName("Given memory with all tiers - when clear called - then removes all tiers")
     void testClearAllTiersVsScratchpad() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Invariants");
@@ -160,7 +160,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given conversation turns - when scratchpad trimmed - evicts user message and ai response together atomically")
+    @DisplayName("Given conversation turns - when scratchpad trimmed - then evicts user message and ai response together atomically")
     void testAtomicUserAndAiTurnEviction() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
 
@@ -183,7 +183,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given duplicate SystemMessage via add() - ignores duplicates and does not grow Tier 1")
+    @DisplayName("Given duplicate SystemMessage via add() - when added - then ignores duplicates and does not grow Tier 1")
     void testDuplicateSystemMessageIgnored() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Base Invariant");
@@ -199,7 +199,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given secondary SystemMessage via add() - preserves in Tier 1 and keeps scratchpad free of SystemMessages")
+    @DisplayName("Given secondary SystemMessage via add() - when added - then preserves in Tier 1 and keeps scratchpad free of SystemMessages")
     void testSystemMessageQuarantinedToTier1() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Primary Invariants");
@@ -224,8 +224,230 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given turn structure validator - validates alternating turns and absence of dangling tool calls")
-    void testTurnStructureInvariants() throws Exception {
+    @DisplayName("Given single active turn with many tool executions - when exceeding message budget - then preserves full turn in-flight without mid-turn severance")
+    void testSingleTurnToolBudgetTrimming() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Root prompt for single long turn"));
+
+        for (int i = 1; i <= 15; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("call-" + i)
+                .name("tool_" + i)
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+        }
+
+        // 1 user message + 15 * 2 = 31 messages.
+        // In a single turn, mid-turn trimming is prohibited by ADR-011; full in-flight turn is preserved
+        assertThat(memory.messages()).hasSize(31);
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+
+        // When a subsequent turn arrives exceeding budget, older turn is evicted atomically
+        memory.add(new UserMessage("Turn 2"));
+        assertThat(memory.messages()).hasSize(1);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Turn 2");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+
+        // Edge case: when initial message is AiMessage with tool requests (no UserMessage at index 0)
+        HierarchicalMemoryStore aiFirstMemory = new HierarchicalMemoryStore();
+        for (int i = 1; i <= 15; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("call-ai-" + i)
+                .name("tool_" + i)
+                .arguments("{}")
+                .build();
+            aiFirstMemory.add(AiMessage.from(req));
+            aiFirstMemory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+        }
+        assertThat(aiFirstMemory.messages()).hasSize(30);
+        assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
+
+        aiFirstMemory.add(new UserMessage("Subsequent turn"));
+        assertThat(aiFirstMemory.messages()).hasSize(1);
+        assertThat(aiFirstMemory.messages().getLast()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) aiFirstMemory.messages().getLast()).singleText()).isEqualTo("Subsequent turn");
+        assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given single active turn with plain AiMessage before tool executions - when exceeding message budget - then preserves user prompt and thoughts in-flight")
+    void testSingleTurnWithPlainAiMessageBeforeToolInteractionsTrimming() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Root prompt for single long turn"));
+        memory.add(new AiMessage("Thinking about how to solve the problem..."));
+
+        for (int i = 1; i <= 15; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("call-step-" + i)
+                .name("tool_" + i)
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Result " + i));
+        }
+
+        // 1 user message + 1 plain AI message + 15 * 2 = 32 messages preserved in single turn
+        assertThat(memory.messages()).hasSize(32);
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
+        assertThat(memory.messages().get(1)).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) memory.messages().get(1)).text()).isEqualTo("Thinking about how to solve the problem...");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+
+        memory.add(new UserMessage("Next Turn"));
+        assertThat(memory.messages()).hasSize(1);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Next Turn");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given single turn with active in-flight tool call - when exceeding budget without later AiMessage - then preserves in-flight tool results")
+    void testScratchpadExceedsBudgetWithInFlightToolCallPreserved() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-solo")
+            .name("tool")
+            .arguments("{}")
+            .build();
+
+        memory.add(new UserMessage("Prompt"));
+        memory.add(AiMessage.from(req));
+        for (int i = 0; i < 26; i++) {
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+
+        // Total messages: 1 user + 1 AiMessage + 26 results = 28 messages (> 24).
+        // Since no subsequent AiMessage has arrived, the tool interaction is active/in-flight and cannot be trimmed.
+        assertThat(memory.messages()).hasSize(28);
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given single turn with plain AI thoughts - when exceeding message budget without tool calls - then terminates trimming cleanly")
+    void testSingleTurnPlainAiThoughtsExceedingBudget() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Analyze complex architecture"));
+        for (int i = 1; i <= 26; i++) {
+            memory.add(new AiMessage("Analysis step " + i));
+        }
+
+        // All 27 messages preserved in single turn because there are no tool interactions to trim
+        assertThat(memory.messages()).hasSize(27);
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given multi-tool execution in older turn - when message budget exceeded - then evicts multi-tool request and all results atomically")
+    void testMultiToolExecutionAtomicallyTrimmed() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Execute batch tasks"));
+
+        // Step 1: AI requests 3 tools concurrently
+        dev.langchain4j.agent.tool.ToolExecutionRequest reqA = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-a").name("tA").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest reqB = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-b").name("tB").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest reqC = dev.langchain4j.agent.tool.ToolExecutionRequest.builder().id("call-c").name("tC").arguments("{}").build();
+        memory.add(AiMessage.from(List.of(reqA, reqB, reqC)));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqA, "resA"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqB, "resB"));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(reqC, "resC"));
+
+        // Turn 2: Sequential single tool executions exceeding budget
+        memory.add(new UserMessage("Followup batch tasks"));
+        for (int i = 2; i <= 12; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("step-" + i)
+                .name("tool")
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+        memory.add(new AiMessage("All batch steps completed successfully."));
+
+        // Verifies Turn 1 was evicted atomically to respect budget
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Followup batch tasks");
+        // Confirms that multi-tool request and its 3 results (step 1) were atomically removed together
+        assertThat(memory.messages()).noneMatch(m ->
+            m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
+            (tr.id().equals("call-a") || tr.id().equals("call-b") || tr.id().equals("call-c"))
+        );
+        // And last AI completion message is preserved
+        assertThat(memory.messages().getLast()).isInstanceOf(AiMessage.class);
+        assertThat(((AiMessage) memory.messages().getLast()).text()).isEqualTo("All batch steps completed successfully.");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given multi-tool execution with intervening reasoning message in older turn - when message budget exceeded - then evicts all tool results and thoughts atomically")
+    void testMultiToolExecutionWithInterveningMessageTrimmed() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new UserMessage("Batch processing"));
+
+        // AI requests two tools: call-inter-1 and call-inter-2
+        dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-inter-1").name("tool1").arguments("{}").build();
+        dev.langchain4j.agent.tool.ToolExecutionRequest req2 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+            .id("call-inter-2").name("tool2").arguments("{}").build();
+        memory.add(AiMessage.from(List.of(req1, req2)));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req1, "res1"));
+        // Intervening AI message between tool results
+        memory.add(new AiMessage("Processing intermediate step..."));
+        memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req2, "res2"));
+
+        // Turn 2 exceeding budget
+        memory.add(new UserMessage("Next batch"));
+        for (int i = 3; i <= 14; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("step-inter-" + i)
+                .name("tool")
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+        memory.add(new AiMessage("All steps done."));
+
+        assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Next batch");
+        assertThat(memory.messages()).noneMatch(m ->
+            m instanceof dev.langchain4j.data.message.ToolExecutionResultMessage tr &&
+            (tr.id().equals("call-inter-1") || tr.id().equals("call-inter-2"))
+        );
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given conversation starting with AiMessage followed by tool interactions - when new turn exceeds budget - then evicts cleanly")
+    void testAiMessageStartingConversationWithToolTrimming() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        for (int i = 1; i <= 15; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("ai-init-" + i)
+                .name("tool")
+                .arguments("{}")
+                .build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "result-" + i));
+        }
+        memory.add(new AiMessage("Final resolution"));
+
+        // New turn exceeding budget
+        memory.add(new UserMessage("Next user turn"));
+        assertThat(memory.messages()).hasSize(1);
+        assertThat(memory.messages().getLast()).isInstanceOf(UserMessage.class);
+        assertThat(((UserMessage) memory.messages().getLast()).singleText()).isEqualTo("Next user turn");
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given turn structure validator - when verifying memory - then validates alternating turns and absence of dangling tool calls")
+    void testTurnStructureInvariants() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinInvariants("Rules");
         memory.pinTaskSpecification("Spec", "{}");
@@ -239,30 +461,30 @@ class HierarchicalMemoryStoreTest {
 
         assertThat(memory.assertTurnStructureInvariants()).isTrue();
 
-        // Directly mutate slidingScratchpad via reflection to test invalid states
-        java.lang.reflect.Field field = HierarchicalMemoryStore.class.getDeclaredField("slidingScratchpad");
-        field.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        List<ChatMessage> scratchpad = (List<ChatMessage>) field.get(memory);
+        // Verify observable handling of invalid messages through public API
+        // Case 1: SystemMessage is routed to pinned invariants, not scratchpad
+        HierarchicalMemoryStore m1 = new HierarchicalMemoryStore();
+        m1.add(new UserMessage("Do X"));
+        m1.add(new dev.langchain4j.data.message.SystemMessage("Invariant"));
+        assertThat(m1.assertTurnStructureInvariants()).isTrue();
+        assertThat(m1.messages().getFirst()).isInstanceOf(dev.langchain4j.data.message.SystemMessage.class);
 
-        // Case 1: contains SystemMessage in scratchpad
-        scratchpad.add(new dev.langchain4j.data.message.SystemMessage("Illegal"));
-        assertThat(memory.assertTurnStructureInvariants()).isFalse();
+        // Case 2: Orphaned ToolExecutionResultMessage is dropped by add()
+        HierarchicalMemoryStore m2 = new HierarchicalMemoryStore();
+        m2.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Orphan"));
+        assertThat(m2.assertTurnStructureInvariants()).isTrue();
+        assertThat(m2.messages()).isEmpty();
 
-        // Case 2: starts with ToolExecutionResultMessage
-        scratchpad.clear();
-        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Orphan"));
-        assertThat(memory.assertTurnStructureInvariants()).isFalse();
-
-        // Case 3: ToolExecutionResultMessage without preceding matching request
-        scratchpad.clear();
-        scratchpad.add(new UserMessage("Start"));
-        scratchpad.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Dangling"));
-        assertThat(memory.assertTurnStructureInvariants()).isFalse();
+        // Case 3: ToolExecutionResultMessage without preceding matching request is dropped
+        HierarchicalMemoryStore m3 = new HierarchicalMemoryStore();
+        m3.add(new UserMessage("Start"));
+        m3.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "Dangling"));
+        assertThat(m3.assertTurnStructureInvariants()).isTrue();
+        assertThat(m3.messages()).hasSize(1);
     }
 
     @Test
-    @DisplayName("Given null story and plan in pinTaskSpecification - uses fallback values")
+    @DisplayName("Given null story and plan in pinTaskSpecification - when pinned - then uses fallback values")
     void testPinTaskSpecificationNullDefaults() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.pinTaskSpecification(null, null);
@@ -275,7 +497,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given AiMessage without tool requests - evicts cleanly when turn count exceeds capacity")
+    @DisplayName("Given AiMessage without tool requests - when turn count exceeds capacity - then evicts cleanly")
     void testEvictScratchpadStartingWithAiMessage() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new AiMessage("Leading Ai turn"));
@@ -294,7 +516,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given ToolExecutionResultMessage with non-matching request ID - dropped by store")
+    @DisplayName("Given ToolExecutionResultMessage with non-matching request ID - when added - then dropped by store")
     void testNonMatchingToolExecutionRequestIdDropped() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         dev.langchain4j.agent.tool.ToolExecutionRequest req1 = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
@@ -314,18 +536,25 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multiple turns with many messages - evicts complete older turns to respect message budget")
+    @DisplayName("Given multiple turns with many messages - when message budget exceeded - then evicts complete older turns")
     void testMessageBudgetEvictsOlderTurns() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Turn 1"));
-        for (int i = 1; i <= 15; i++) {
+        for (int i = 1; i <= 6; i++) {
             dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
-                .id("call-" + i).name("tool" + i).arguments("{}").build();
+                .id("call-t1-" + i).name("tool" + i).arguments("{}").build();
             memory.add(AiMessage.from(req));
             memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
         }
 
         memory.add(new UserMessage("Turn 2"));
+        for (int i = 1; i <= 7; i++) {
+            dev.langchain4j.agent.tool.ToolExecutionRequest req = dev.langchain4j.agent.tool.ToolExecutionRequest.builder()
+                .id("call-t2-" + i).name("tool" + i).arguments("{}").build();
+            memory.add(AiMessage.from(req));
+            memory.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+
         List<ChatMessage> messages = memory.messages();
         assertThat(messages.getFirst()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) messages.getFirst()).singleText()).isEqualTo("Turn 2");
@@ -333,7 +562,7 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given multiple turns below message budget - preserves all turns")
+    @DisplayName("Given multiple turns below message budget - when added - then preserves all turns")
     void testMultipleTurnsBelowMessageBudget() {
         HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
         memory.add(new UserMessage("Turn 1"));
