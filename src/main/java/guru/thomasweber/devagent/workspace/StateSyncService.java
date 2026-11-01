@@ -1,5 +1,11 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.cognitive.MarkdownParserService;
+import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
+import guru.thomasweber.devagent.entity.TaskPersistenceService;
+import guru.thomasweber.devagent.model.StepAudit;
+import guru.thomasweber.devagent.model.TaskRun;
+import guru.thomasweber.devagent.model.TaskStateChangeEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Instance;
@@ -9,10 +15,6 @@ import jakarta.transaction.Synchronization;
 import jakarta.transaction.TransactionSynchronizationRegistry;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
-import guru.thomasweber.devagent.entity.TaskPersistenceService;
-import guru.thomasweber.devagent.model.StepAudit;
-import guru.thomasweber.devagent.model.TaskRun;
-import guru.thomasweber.devagent.model.TaskStateChangeEvent;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +22,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
 /**
  * Service that synchronizes database transitions to human-readable Markdown run journals.
@@ -33,6 +36,7 @@ public class StateSyncService {
     private final WorkspaceContextResolver workspaceResolver;
     private final SecretRedactionFilter secretFilter;
     private final TaskPersistenceService persistenceService;
+    private final MarkdownParserService markdownParserService;
     private final Instance<TransactionSynchronizationRegistry> registryInstance;
 
     @Inject
@@ -40,12 +44,23 @@ public class StateSyncService {
         WorkspaceContextResolver workspaceResolver,
         SecretRedactionFilter secretFilter,
         TaskPersistenceService persistenceService,
+        MarkdownParserService markdownParserService,
         Instance<TransactionSynchronizationRegistry> registryInstance
     ) {
         this.workspaceResolver = workspaceResolver;
         this.secretFilter = secretFilter;
         this.persistenceService = persistenceService;
+        this.markdownParserService = markdownParserService;
         this.registryInstance = registryInstance;
+    }
+
+    public StateSyncService(
+        WorkspaceContextResolver workspaceResolver,
+        SecretRedactionFilter secretFilter,
+        TaskPersistenceService persistenceService,
+        Instance<TransactionSynchronizationRegistry> registryInstance
+    ) {
+        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), registryInstance);
     }
 
     public StateSyncService(
@@ -53,11 +68,11 @@ public class StateSyncService {
         SecretRedactionFilter secretFilter,
         TaskPersistenceService persistenceService
     ) {
-        this(workspaceResolver, secretFilter, persistenceService, null);
+        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), null);
     }
 
     public StateSyncService() {
-        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), null);
+        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), new MarkdownParserService(), null);
     }
 
     @Transactional
@@ -166,6 +181,30 @@ public class StateSyncService {
             );
         } catch (IOException e) {
             LOG.warnf(e, "Failed to project Markdown state journal: %s", e.getMessage());
+        }
+    }
+
+    /**
+     * Reads and parses a persisted task execution journal using MarkdownParserService.
+     *
+     * @param taskId the task ID to read
+     * @return parsed markdown containing YAML frontmatter and structural sections, or empty if not found
+     */
+    public Optional<ParsedMarkdown> readTaskJournal(String taskId) {
+        validateTaskId(taskId);
+        try {
+            Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
+            Path targetRunsDir = repoRoot.resolve(".agents/runs");
+            RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
+            RepoPath journalFile = runsDir.resolve(taskId + ".md");
+            if (!Files.isRegularFile(journalFile.toPath())) {
+                return Optional.empty();
+            }
+            String content = Files.readString(journalFile.toPath());
+            return Optional.of(markdownParserService.parse(content));
+        } catch (IOException e) {
+            LOG.warnf(e, "Failed to read Markdown state journal for taskId=%s: %s", taskId, e.getMessage());
+            return Optional.empty();
         }
     }
 

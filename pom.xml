@@ -30,6 +30,7 @@
         <jacoco.version>0.8.15</jacoco.version>
         <lombok.version>1.18.46</lombok.version>
         <jspecify.version>1.0.1</jspecify.version>
+        <commonmark.version>0.24.0</commonmark.version>
         <spotless-plugin.version>3.9.0</spotless-plugin.version>
 
         <!-- SonarCloud Configuration -->
@@ -56,6 +57,15 @@
                 <groupId>io.quarkiverse.langchain4j</groupId>
                 <artifactId>quarkus-langchain4j-bom</artifactId>
                 <version>${quarkus.langchain4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- CommonMark AST Parser BOM -->
+            <dependency>
+                <groupId>org.commonmark</groupId>
+                <artifactId>commonmark-parent</artifactId>
+                <version>${commonmark.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -128,6 +138,24 @@
         <dependency>
             <groupId>io.quarkiverse.langchain4j</groupId>
             <artifactId>quarkus-langchain4j-core</artifactId>
+        </dependency>
+
+        <!-- Core CommonMark AST Parser -->
+        <dependency>
+            <groupId>org.commonmark</groupId>
+            <artifactId>commonmark</artifactId>
+        </dependency>
+
+        <!-- YAML Frontmatter extension for task journals & ADR metadata -->
+        <dependency>
+            <groupId>org.commonmark</groupId>
+            <artifactId>commonmark-ext-yaml-front-matter</artifactId>
+        </dependency>
+
+        <!-- GFM Tables extension for test/audit tables -->
+        <dependency>
+            <groupId>org.commonmark</groupId>
+            <artifactId>commonmark-ext-gfm-tables</artifactId>
         </dependency>
 
         <!-- Lombok & Static Typing Helpers -->

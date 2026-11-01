@@ -1,5 +1,13 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.cognitive.MarkdownParserService;
+import guru.thomasweber.devagent.entity.TaskPersistenceService;
+import guru.thomasweber.devagent.model.StepAudit;
+import guru.thomasweber.devagent.model.TaskRun;
+import guru.thomasweber.devagent.model.TaskStateChangeEvent;
+import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.testutil.StepAuditMother;
+import guru.thomasweber.devagent.testutil.TaskRunMother;
 import jakarta.enterprise.inject.Instance;
 import jakarta.transaction.Status;
 import jakarta.transaction.Synchronization;
@@ -8,13 +16,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
-import guru.thomasweber.devagent.entity.TaskPersistenceService;
-import guru.thomasweber.devagent.model.StepAudit;
-import guru.thomasweber.devagent.model.TaskRun;
-import guru.thomasweber.devagent.model.TaskStateChangeEvent;
-import guru.thomasweber.devagent.model.TaskStatus;
-import guru.thomasweber.devagent.testutil.StepAuditMother;
-import guru.thomasweber.devagent.testutil.TaskRunMother;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -87,6 +89,17 @@ class StateSyncServiceTest {
             .contains("{\"steps\":[\"step1\"]}")
             .contains("- [x] **mvn_test** (500ms): Tests passed")
             .contains("- [ ] **git_commit** (120ms):");
+
+        Optional<MarkdownParserService.ParsedMarkdown> parsedOpt = service.readTaskJournal("TASK-001");
+        assertThat(parsedOpt).isPresent();
+        MarkdownParserService.ParsedMarkdown parsed = parsedOpt.get();
+        assertThat(parsed.metadata().get("task_id")).containsExactly("TASK-001");
+        assertThat(parsed.metadata().get("status")).containsExactly("GREEN_PATCH");
+        assertThat(parsed.sections()).extracting(MarkdownParserService.DocumentSection::heading)
+            .contains("User Story", "Approved Implementation Plan", "Step Execution History");
+
+        // Non-existent task returns empty
+        assertThat(service.readTaskJournal("TASK-DOES-NOT-EXIST")).isEmpty();
     }
 
     @Test

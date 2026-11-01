@@ -1,5 +1,9 @@
 package guru.thomasweber.devagent.cognitive;
 
+import dev.langchain4j.data.document.Metadata;
+import dev.langchain4j.data.segment.TextSegment;
+import guru.thomasweber.devagent.cognitive.MarkdownParserService.DocumentSection;
+import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
@@ -15,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,19 +42,27 @@ public class AdrDiscoveryService {
         "ADR.md"
     );
 
-    private static final Pattern TITLE_PATTERN = Pattern.compile("^#\\s+(.+)$", Pattern.MULTILINE);
     private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([A-Za-z0-9_-]+)");
     private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b([A-Z0-9]+-\\d+)\\b");
     private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^([A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
-    private static final Pattern SUMMARY_SECTION_PATTERN = Pattern.compile("(?is)##\\s*(?:summary|context)\\s*\\n+([^#\\n][^#]*?)(?=\\n##|\\Z)");
 
     private final WorkspaceContextResolver contextResolver;
     private final WorkspaceJailValidator jailValidator;
+    private final MarkdownParserService markdownParserService;
 
     @Inject
-    public AdrDiscoveryService(WorkspaceContextResolver contextResolver, WorkspaceJailValidator jailValidator) {
+    public AdrDiscoveryService(
+        WorkspaceContextResolver contextResolver,
+        WorkspaceJailValidator jailValidator,
+        MarkdownParserService markdownParserService
+    ) {
         this.contextResolver = contextResolver;
         this.jailValidator = jailValidator;
+        this.markdownParserService = markdownParserService;
+    }
+
+    public AdrDiscoveryService(WorkspaceContextResolver contextResolver, WorkspaceJailValidator jailValidator) {
+        this(contextResolver, jailValidator, new MarkdownParserService());
     }
 
     public List<ArchitecturalRecord> discoverRecords() {
@@ -265,55 +278,117 @@ public class AdrDiscoveryService {
         return relStr.startsWith(".git/") || relStr.startsWith("target-agent/") || relStr.startsWith("target/") || relStr.contains("/node_modules/");
     }
 
+    public List<TextSegment> parseAdrDocument(Path filePath, String rawContent) {
+        ParsedMarkdown parsed = markdownParserService.parse(rawContent);
+
+        String fileName = (filePath != null && filePath.getFileName() != null) ? filePath.getFileName().toString() : "unknown.md";
+        String docId = getFirstMetadata(parsed.metadata(), "id");
+        if (docId == null) {
+            docId = fileName;
+        }
+        String title = getFirstMetadata(parsed.metadata(), "title");
+        if (title == null) {
+            title = parsed.sections().stream()
+                .map(DocumentSection::heading)
+                .filter(h -> !"Preamble".equalsIgnoreCase(h))
+                .findFirst()
+                .orElse("");
+        }
+
+        List<TextSegment> segments = new ArrayList<>();
+        for (DocumentSection section : parsed.sections()) {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("path", filePath != null ? filePath.toString() : "");
+            metadata.put("id", docId);
+            metadata.put("title", title);
+            metadata.put("section", section.heading());
+
+            String segmentBody = String.format("[%s - %s] %s\n%s", docId, title, section.heading(), section.content());
+            segments.add(TextSegment.from(segmentBody, new Metadata(metadata)));
+        }
+        return segments;
+    }
+
+    private static String getFirstMetadata(Map<String, List<String>> metadata, String key) {
+        List<String> values = metadata.get(key);
+        if (values != null && !values.isEmpty()) {
+            String first = values.getFirst();
+            if (first != null && !first.isBlank()) {
+                return first.trim();
+            }
+        }
+        return null;
+    }
+
     private ArchitecturalRecord parseRecord(RepoPath repoPath) {
         try {
             String content = Files.readString(repoPath.toPath());
             String fileName = repoPath.toPath().getFileName().toString();
             String nameWithoutExt = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
 
+            ParsedMarkdown parsed = markdownParserService.parse(content);
+
             // Title
-            String title = nameWithoutExt;
-            Matcher titleMatcher = TITLE_PATTERN.matcher(content);
-            if (titleMatcher.find()) {
-                title = titleMatcher.group(1).trim();
+            String title = getFirstMetadata(parsed.metadata(), "title");
+            if (title == null) {
+                title = parsed.sections().stream()
+                    .map(DocumentSection::heading)
+                    .filter(h -> !"Preamble".equalsIgnoreCase(h))
+                    .findFirst()
+                    .orElse(nameWithoutExt);
             }
 
             // ID
-            String id = nameWithoutExt;
-            Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
-            if (fileIdMatcher.find()) {
-                id = fileIdMatcher.group(1);
-            } else {
-                Matcher headerIdMatcher = ADR_ID_HEADER_PATTERN.matcher(title);
-                if (headerIdMatcher.find()) {
-                    id = headerIdMatcher.group(1);
-                }
-            }
-
-            // Status
-            String status = "Active";
-            Matcher statusMatcher = STATUS_PATTERN.matcher(content);
-            if (statusMatcher.find()) {
-                status = statusMatcher.group(1).trim();
-            }
-
-            // Summary
-            String summary = title;
-            Matcher summaryMatcher = SUMMARY_SECTION_PATTERN.matcher(content);
-            if (summaryMatcher.find()) {
-                summary = summaryMatcher.group(1).trim();
-            } else {
-                String[] paragraphs = content.split("\\n\\s*\\n");
-                for (String p : paragraphs) {
-                    String clean = p.replaceAll("^[#*\\s-]+", "").trim();
-                    if (!clean.isEmpty() && !clean.toLowerCase().startsWith("status:")) {
-                        summary = clean;
-                        break;
+            String id = getFirstMetadata(parsed.metadata(), "id");
+            if (id == null) {
+                Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
+                if (fileIdMatcher.find()) {
+                    id = fileIdMatcher.group(1);
+                } else {
+                    Matcher headerIdMatcher = ADR_ID_HEADER_PATTERN.matcher(title);
+                    if (headerIdMatcher.find()) {
+                        id = headerIdMatcher.group(1);
+                    } else {
+                        id = nameWithoutExt;
                     }
                 }
             }
 
-            List<String> tags = deriveTags(repoPath);
+            // Status
+            String status = getFirstMetadata(parsed.metadata(), "status");
+            if (status == null) {
+                Matcher statusMatcher = STATUS_PATTERN.matcher(content);
+                status = statusMatcher.find() ? statusMatcher.group(1).trim() : "Active";
+            }
+
+            // Summary
+            String summary = getFirstMetadata(parsed.metadata(), "summary");
+            if (summary == null) {
+                summary = parsed.sections().stream()
+                    .filter(s -> "Summary".equalsIgnoreCase(s.heading()) || "Context".equalsIgnoreCase(s.heading()))
+                    .map(DocumentSection::content)
+                    .findFirst()
+                    .orElse(null);
+            }
+            if (summary == null || summary.isBlank()) {
+                summary = parsed.sections().stream()
+                    .map(DocumentSection::content)
+                    .filter(c -> !c.isBlank() && !c.toLowerCase().startsWith("status:"))
+                    .findFirst()
+                    .map(c -> {
+                        int nl = c.indexOf('\n');
+                        return nl > 0 ? c.substring(0, nl).trim() : c.trim();
+                    })
+                    .orElse(title);
+            }
+
+            // Tags
+            List<String> tags = new ArrayList<>();
+            if (parsed.metadata().containsKey("tags")) {
+                tags.addAll(parsed.metadata().get("tags"));
+            }
+            tags.addAll(deriveTags(repoPath));
+            tags = tags.stream().distinct().toList();
 
             return ArchitecturalRecord.builder()
                 .id(id)

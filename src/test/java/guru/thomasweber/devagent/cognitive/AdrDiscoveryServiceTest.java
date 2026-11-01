@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.cognitive;
 
+import dev.langchain4j.data.segment.TextSegment;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
@@ -385,5 +386,133 @@ class AdrDiscoveryServiceTest {
         List<ArchitecturalRecord> records = discoveryService.discoverRecords();
         assertThat(records).hasSize(1);
         assertThat(records.getFirst().id()).isEqualTo("INLINE-01");
+    }
+
+    @Test
+    @DisplayName("Given ADR with YAML frontmatter - when discovering - then extracts frontmatter metadata directly")
+    void givenAdrWithFrontmatter_whenDiscovering_thenExtractsFrontmatterMetadata() throws IOException {
+        Path adrDir = tempDir.resolve("docs/adr");
+        Files.createDirectories(adrDir);
+        Files.writeString(adrDir.resolve("ADR-042.md"), """
+            ---
+            id: ADR-042
+            title: Native CommonMark AST Parsing
+            status: ACCEPTED
+            summary: Replace regex markdown parsing with commonmark AST
+            tags:
+              - parser
+              - ast
+            ---
+            # Body Heading
+
+            Body content here.
+            """);
+
+        List<ArchitecturalRecord> records = discoveryService.discoverRecords();
+        assertThat(records).hasSize(1);
+        ArchitecturalRecord record = records.getFirst();
+        assertThat(record.id()).isEqualTo("ADR-042");
+        assertThat(record.title()).isEqualTo("Native CommonMark AST Parsing");
+        assertThat(record.status()).isEqualTo("ACCEPTED");
+        assertThat(record.summary()).isEqualTo("Replace regex markdown parsing with commonmark AST");
+        assertThat(record.tags()).contains("parser", "ast", "adr");
+    }
+
+    @Test
+    @DisplayName("Given ADR with heading inside fenced code block - when discovering - then does not treat code comment as heading")
+    void givenAdrWithCodeHeading_whenDiscovering_thenDoesNotTreatCodeAsHeading() throws IOException {
+        Path adrDir = tempDir.resolve("docs/adr");
+        Files.createDirectories(adrDir);
+        Files.writeString(adrDir.resolve("ADR-050.md"), """
+            # ADR-050: Code Block Safety
+
+            ```bash
+            # Fake heading inside bash snippet
+            echo "not a heading"
+            ```
+
+            ## Summary
+            Legitimate summary section.
+            """);
+
+        List<ArchitecturalRecord> records = discoveryService.discoverRecords();
+        assertThat(records).hasSize(1);
+        ArchitecturalRecord record = records.getFirst();
+        assertThat(record.id()).isEqualTo("ADR-050");
+        assertThat(record.title()).isEqualTo("ADR-050: Code Block Safety");
+        assertThat(record.summary()).isEqualTo("Legitimate summary section.");
+    }
+
+    @Test
+    @DisplayName("Given raw ADR document with frontmatter - when parseAdrDocument - then returns TextSegments with metadata")
+    void givenRawAdrDocument_whenParseAdrDocument_thenReturnsTextSegmentsWithMetadata() {
+        Path filePath = Path.of("docs/adr/ADR-010.md");
+        String rawContent = """
+            ---
+            id: ADR-010
+            title: Vert.x Review GUI
+            ---
+            # Overview
+            Embedded Vert.x HTTP server on port 9999.
+
+            ## Architecture
+            Reactive routes with Storybook iframe.
+            """;
+
+        List<TextSegment> segments = discoveryService.parseAdrDocument(filePath, rawContent);
+        assertThat(segments).hasSize(2);
+
+        TextSegment seg1 = segments.get(0);
+        assertThat(seg1.metadata().getString("id")).isEqualTo("ADR-010");
+        assertThat(seg1.metadata().getString("title")).isEqualTo("Vert.x Review GUI");
+        assertThat(seg1.metadata().getString("section")).isEqualTo("Overview");
+        assertThat(seg1.text()).contains("[ADR-010 - Vert.x Review GUI] Overview");
+        assertThat(seg1.text()).contains("Embedded Vert.x HTTP server on port 9999.");
+
+        TextSegment seg2 = segments.get(1);
+        assertThat(seg2.metadata().getString("section")).isEqualTo("Architecture");
+        assertThat(seg2.text()).contains("[ADR-010 - Vert.x Review GUI] Architecture");
+        assertThat(seg2.text()).contains("Reactive routes with Storybook iframe.");
+    }
+
+    @Test
+    @DisplayName("Given raw ADR document without frontmatter - when parseAdrDocument - then handles cleanly without exceptions")
+    void givenRawAdrWithoutFrontmatter_whenParseAdrDocument_thenHandlesCleanly() {
+        Path filePath = Path.of("docs/adr/ADR-015.md");
+        String rawContent = """
+            # Simple ADR
+            Content of simple ADR.
+            """;
+
+        List<TextSegment> segments = discoveryService.parseAdrDocument(filePath, rawContent);
+        assertThat(segments).hasSize(1);
+        assertThat(segments.getFirst().metadata().getString("id")).isEqualTo("ADR-015.md");
+        assertThat(segments.getFirst().metadata().getString("title")).isEqualTo("Simple ADR");
+        assertThat(segments.getFirst().metadata().getString("section")).isEqualTo("Simple ADR");
+    }
+
+    @Test
+    @DisplayName("Given code block with bash comments - when parseAdrDocument - then code comments are not treated as sections")
+    void givenCodeBlockComments_whenParseAdrDocument_thenNotTreatedAsSections() {
+        Path filePath = Path.of("docs/adr/ADR-020.md");
+        String rawContent = """
+            # Execution
+            ```bash
+            # Comment line 1
+            # Comment line 2
+            run_cmd
+            ```
+            """;
+
+        List<TextSegment> segments = discoveryService.parseAdrDocument(filePath, rawContent);
+        assertThat(segments).hasSize(1);
+        assertThat(segments.getFirst().metadata().getString("section")).isEqualTo("Execution");
+    }
+
+    @Test
+    @DisplayName("Given null filePath and null content - when parseAdrDocument - then handles safely without exceptions")
+    void givenNullFilePathAndContent_whenParseAdrDocument_thenHandlesSafely() {
+        List<TextSegment> segments = discoveryService.parseAdrDocument(null, null);
+        assertThat(segments).isEmpty();
     }
 }
