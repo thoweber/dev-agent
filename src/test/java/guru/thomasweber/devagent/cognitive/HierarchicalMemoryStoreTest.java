@@ -115,7 +115,7 @@ class HierarchicalMemoryStoreTest {
 
         List<ChatMessage> messages = memory.messages();
         // Tool result should not be orphaned
-        assertThat(messages).noneMatch(m -> m instanceof ToolExecutionResultMessage);
+        assertThat(messages).noneMatch(ToolExecutionResultMessage.class::isInstance);
     }
 
     @Test
