@@ -2,6 +2,7 @@ package org.quarkus.agent.workspace;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -130,10 +131,18 @@ public class BoundedOverflowBuffer implements AutoCloseable {
 
     private Path createSecureTempFile() throws IOException {
         Path parent = tempDirRoot != null ? tempDirRoot : Path.of(System.getProperty("java.io.tmpdir"));
-        FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
-            EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
-        );
-        return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
+        try {
+            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
+                EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+            );
+            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
+        } catch (UnsupportedOperationException _) {
+            Path tempFile = Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
+            File file = tempFile.toFile();
+            file.setReadable(true, true);
+            file.setWritable(true, true);
+            return tempFile;
+        }
     }
 
     private void checkOverflow(int incoming) throws IOException {

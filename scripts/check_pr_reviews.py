@@ -95,7 +95,7 @@ def detect_repo_and_pr(cli_repo: Optional[str], cli_pr: Optional[int]) -> Tuple[
 
 def is_coderabbit_status_comment(user: str, body: str) -> bool:
     """Identify whether a comment is an auto-generated review status comment from CodeRabbit."""
-    if "coderabbit" not in user.lower() and "coderabbit-ai-generated" not in body:
+    if "coderabbit" not in user.lower():
         return False
     status_markers = [
         "This is an auto-generated comment",
@@ -325,7 +325,8 @@ def extract_outside_diff_section(body: str) -> Optional[str]:
 
     for line in remainder.splitlines(keepends=True):
         stripped = line.strip()
-        m_fence = re.match(r"^(`{3,}|~{3,})", stripped)
+        effective_line = re.sub(r"^>\s?", "", stripped)
+        m_fence = re.match(r"^(`{3,}|~{3,})", effective_line)
         if m_fence:
             marker = m_fence.group(1)
             char = marker[0]
@@ -341,7 +342,7 @@ def extract_outside_diff_section(body: str) -> Optional[str]:
             section_lines.append(line)
             continue
 
-        if not in_fence and (re.match(r"^---\s*$", stripped) or re.match(r"^##\s+", stripped)):
+        if not in_fence and (re.match(r"^---\s*$", effective_line) or re.match(r"^##\s+", effective_line)):
             break
 
         section_lines.append(line)
@@ -388,42 +389,74 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
     reviews = data.get("data", {}).get("repository", {}).get("pullRequest", {}).get("reviews", {}).get("nodes", [])
     findings: List[Dict[str, Any]] = []
 
-    # Locate the latest CodeRabbit review
+    # Locate the latest CodeRabbit review containing outside-diff comments
     latest_cr_review = None
     for r in reversed(reviews):
         user = (r.get("author") or {}).get("login", "")
         if "coderabbit" in user.lower():
-            latest_cr_review = r
-            break
+            body = r.get("body") or ""
+            if "Outside diff range comments" in body or "Outside diff comments" in body or 'alt="Outside diff"' in body:
+                latest_cr_review = r
+                break
 
     if not latest_cr_review:
         return []
 
     body = latest_cr_review.get("body") or ""
-    if "Outside diff range comments" not in body and "Outside diff comments" not in body:
-        return []
+    raw_findings = []
 
-    section = extract_outside_diff_section(body)
-    if section is None:
-        print(f"Error: Found outside-diff comments heading in PR #{pr_num} review but failed to extract section", file=sys.stderr)
-        sys.exit(1)
+    # Style 1: Outside diff range comments section
+    if "Outside diff range comments" in body or "Outside diff comments" in body:
+        section = extract_outside_diff_section(body)
+        if section is None:
+            print(f"Error: Found outside-diff comments heading in PR #{pr_num} review but failed to extract section", file=sys.stderr)
+            sys.exit(1)
 
-    details_pattern = re.compile(
-        r"<details>\s*<summary>(.*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
-        re.DOTALL,
-    )
-    for m in details_pattern.finditer(section):
-        summary_html = m.group(1)
-        content_html = m.group(2)
+        unquoted_section = re.sub(r"(?m)^>\s?", "", section)
+        details_pattern = re.compile(
+            r"<details>\s*<summary>(.*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+            re.DOTALL,
+        )
+        for m in details_pattern.finditer(unquoted_section):
+            raw_findings.append((m.group(1), m.group(2)))
 
-        sev_m = re.search(r"(Critical|Major|Minor|Info)", summary_html)
+    # Style 2: Follow-up comments / individual outside-diff badges
+    if 'alt="Outside diff"' in body:
+        unquoted_body = re.sub(r"(?m)^>\s?", "", body)
+        badge_pattern = re.compile(
+            r"<details>\s*<summary>(.*?alt=[\"']Outside diff[\"'].*?)</summary>\s*<blockquote>(.*?)</blockquote>\s*</details>",
+            re.DOTALL,
+        )
+        for m in badge_pattern.finditer(unquoted_body):
+            raw_findings.append((m.group(1), m.group(2)))
+
+    for summary_html, content_html in raw_findings:
+        clean_s = re.sub(r"<.*?>", "", summary_html).strip()
+        clean_c = re.sub(r"<.*?>", "", content_html).strip()
+
+        sev_m = re.search(r"\b(Critical|Major|Minor|Info)\b", clean_s) or re.search(r"\b(Critical|Major|Minor|Info)\b", clean_c)
         severity = sev_m.group(1) if sev_m else "Info"
 
         code_m = re.search(r"<code>(.*?)</code>", summary_html)
-        target = code_m.group(1).strip() if code_m else "N/A"
+        if code_m:
+            target = code_m.group(1).strip()
+        else:
+            prompt_tgt = re.search(
+                r"Review comment at\s*@?([^\s\n]+)(?:(?:\s+around\s+lines|\s+at\s+lines|\s+at\s+line)\s+([0-9]+(?:\s*-\s*[0-9]+)?))?",
+                content_html,
+            )
+            if prompt_tgt:
+                file_part = prompt_tgt.group(1).split("/")[-1]
+                line_part = f":{prompt_tgt.group(2).replace(' ', '')}" if prompt_tgt.group(2) else ""
+                target = f"{file_part}{line_part}"
+            else:
+                loc_m = re.search(r"\[Open the source location\]\(https://github\.com/[^/]+/[^/]+/blob/[^/]+/(.*?)#L?([0-9\-]+)?\)", content_html)
+                if loc_m:
+                    target = f"{loc_m.group(1).split('/')[-1]}:{loc_m.group(2) or ''}".rstrip(":")
+                else:
+                    target = "N/A"
 
-        clean_sum = re.sub(r"<.*?>", "", summary_html).strip()
-        parts = [p.strip() for p in clean_sum.split("·") if p.strip()]
+        parts = [p.strip() for p in clean_s.split("·") if p.strip()]
         remaining = [p for p in parts if p != severity and p != target]
         if remaining:
             title = remaining[0]
@@ -438,16 +471,16 @@ def fetch_outside_diff_comments(owner: str, repo: str, pr_num: int) -> List[Dict
         cid = cid_m.group(1) if cid_m else latest_cr_review.get("id")
 
         prompt_m = re.search(
-            r"```\n(?:Treat finding text.*?\n)?Review comment at.*?\n(.*?)\n\nAfter applying the fix",
+            r"```\n(?:Treat finding text.*?\n)?Review comment at.*?\n(.*?)(?:\n\nAfter applying the fix|\n*```)",
             content_html,
             re.DOTALL,
         )
         prompt = prompt_m.group(1).strip() if prompt_m else ""
 
-        cat_m = re.search(r"\*\*(?:[^\*]*\s)?([A-Za-z &]+)\*\*", content_html)
+        cat_m = re.search(r"·\s*\*\*([A-Za-z &]+)\*\*", clean_c) or re.search(r"\*\*([A-Za-z &]+)\*\*", clean_c)
         category = cat_m.group(1).strip() if cat_m else "General"
 
-        clean_body = re.sub(r"<.*?>", "", content_html).strip()
+        clean_body = clean_c
         if "```" in clean_body:
             clean_body = clean_body.split("```")[0].strip()
         redacted_body = redact_sensitive_text(clean_body)

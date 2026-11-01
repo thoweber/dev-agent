@@ -103,6 +103,22 @@ Content under alternate heading.
         self.assertIsNotNone(section)
         self.assertIn("Content under alternate heading.", section)
 
+    def test_extract_outside_diff_section_blockquoted(self):
+        body = """
+> ## Outside diff range comments
+> <details>
+> <summary><code>App.java</code> · Minor · Clean up</summary>
+> <blockquote>Body</blockquote>
+> </details>
+>
+> ---
+> ## Next steps
+"""
+        section = check_pr_reviews.extract_outside_diff_section(body)
+        self.assertIsNotNone(section)
+        self.assertIn("<code>App.java</code>", section)
+        self.assertNotIn("## Next steps", section)
+
     # -------------------------------------------------------------------------
     # parse_coderabbit_comment tests
     # -------------------------------------------------------------------------
@@ -144,9 +160,14 @@ This is a regular finding without a bold headline format.
                 "coderabbitai[bot]", "Currently processing new changes in this PR..."
             )
         )
-        self.assertTrue(
+        self.assertFalse(
             check_pr_reviews.is_coderabbit_status_comment(
                 "some-user", "<!-- coderabbit-ai-generated --> Review in progress"
+            )
+        )
+        self.assertTrue(
+            check_pr_reviews.is_coderabbit_status_comment(
+                "coderabbitai[bot]", "<!-- coderabbit-ai-generated --> Review in progress"
             )
         )
         self.assertTrue(
@@ -263,6 +284,62 @@ Verify null safety.
         self.assertEqual(f["title"], "Null Pointer Risk")
         self.assertEqual(f["action_prompt"], "Null pointer access")
         self.assertIn("**Logic Defect**", f["body"])
+
+    @patch("check_pr_reviews.run_gh_cmd")
+    def test_fetch_outside_diff_comments_blockquoted(self, mock_gh):
+        review_body = """
+> **⚠️ Outside diff range comments (1)**
+> 
+> <details>
+> <summary><strong>Major</strong> · Remove unused loop. · <code>src/Main.java:10-20</code></summary><blockquote>
+> <dl>
+> <dd>
+> 
+> `src/Main.java:10-20`
+> **Remove unused loop.**
+> 
+> <!-- cr-comment:prr-comment-2 -->
+> 
+> ```
+> Review comment at Line 10
+> Remove this dead loop.
+> ```
+> </dd>
+> </dl>
+> </blockquote></details>
+> 
+> ---
+"""
+        response = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviews": {
+                            "nodes": [
+                                {
+                                    "id": "PRR_kwDO999",
+                                    "author": {"login": "coderabbitai[bot]"},
+                                    "body": review_body,
+                                    "submittedAt": "2026-10-29T00:15:00Z",
+                                    "state": "COMMENTED",
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        mock_gh.return_value = (0, json.dumps(response), "")
+
+        findings = check_pr_reviews.fetch_outside_diff_comments("owner", "repo", 1)
+        self.assertEqual(len(findings), 1)
+        f = findings[0]
+        self.assertEqual(f["id"], "cr-comment:prr-comment-2")
+        self.assertEqual(f["review_id"], "PRR_kwDO999")
+        self.assertEqual(f["target"], "src/Main.java:10-20")
+        self.assertEqual(f["severity"], "Major")
+        self.assertEqual(f["title"], "Remove unused loop.")
+        self.assertEqual(f["action_prompt"], "Remove this dead loop.")
 
     @patch("check_pr_reviews.run_gh_cmd")
     def test_fetch_outside_diff_comments_no_cr_reviews(self, mock_gh):

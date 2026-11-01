@@ -293,7 +293,7 @@ class BoundedOverflowBufferTest {
             if (madeNonWritable) {
                 try {
                     Files.delete(probe);
-                } catch (IOException e) {
+                } catch (IOException _) {
                     deletionBlocked = true;
                 }
             }
@@ -320,7 +320,8 @@ class BoundedOverflowBufferTest {
             Files.deleteIfExists(probe);
             try {
                 buffer.close();
-            } catch (Exception ignored) {
+            } catch (Exception _) {
+                // Secondary close in cleanup; any failure here is ignored
             }
         }
     }
