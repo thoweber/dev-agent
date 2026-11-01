@@ -138,44 +138,21 @@ public class BoundedOverflowBuffer implements AutoCloseable {
 
     private void checkOverflow(int incoming) throws IOException {
         if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
-            Path tempFile = null;
-            FileChannel channel = null;
-            try {
-                tempFile = createSecureTempFile();
-                channel = FileChannel.open(
-                    tempFile,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.WRITE,
-                    StandardOpenOption.READ
-                );
-                byte[] inMemoryBytes = memoryBuffer.toByteArray();
-                ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
-                while (nioBuffer.hasRemaining()) {
-                    channel.write(nioBuffer);
-                }
-                this.fileChannel = channel;
-                this.diskTempFile = tempFile;
-                this.memoryBuffer = null;
-            } catch (Exception e) {
-                if (channel != null) {
-                    try {
-                        channel.close();
-                    } catch (IOException _) {
-                        // Suppress secondary exception during cleanup
-                    }
-                }
-                if (tempFile != null) {
-                    try {
-                        Files.deleteIfExists(tempFile);
-                    } catch (IOException _) {
-                        // Suppress secondary exception during cleanup
-                    }
-                }
-                if (e instanceof IOException ioEx) {
-                    throw ioEx;
-                }
-                throw (RuntimeException) e;
+            Path tempFile = createSecureTempFile();
+            FileChannel channel = FileChannel.open(
+                tempFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.READ
+            );
+            byte[] inMemoryBytes = memoryBuffer.toByteArray();
+            ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
+            while (nioBuffer.hasRemaining()) {
+                channel.write(nioBuffer);
             }
+            this.fileChannel = channel;
+            this.diskTempFile = tempFile;
+            this.memoryBuffer = null;
         }
     }
 
