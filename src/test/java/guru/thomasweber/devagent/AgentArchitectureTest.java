@@ -1,11 +1,20 @@
 package guru.thomasweber.devagent;
 
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaCall;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.properties.HasName;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 import dev.langchain4j.agent.tool.Tool;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.persistence.Entity;
+import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
@@ -37,25 +46,25 @@ public class AgentArchitectureTest {
     @ArchTest
     public static final ArchRule entitiesMustNotBeAccessedOutsideTheirPackage =
         classes()
-            .that().areAnnotatedWith(jakarta.persistence.Entity.class)
+            .that().areAnnotatedWith(Entity.class)
             .should().onlyBeAccessed().byClassesThat().resideInAPackage("guru.thomasweber.devagent.entity..");
 
     @ArchTest
     public static final ArchRule testMethodsMustNotBeAnnotatedWithTransactional =
         methods()
-            .that().areAnnotatedWith(org.junit.jupiter.api.Test.class)
-            .or().areAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
-            .or().areAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
-            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+            .that().areAnnotatedWith(Test.class)
+            .or().areAnnotatedWith(BeforeEach.class)
+            .or().areAnnotatedWith(AfterEach.class)
+            .should().notBeAnnotatedWith(Transactional.class);
 
-    private static final com.tngtech.archunit.base.DescribedPredicate<com.tngtech.archunit.core.domain.JavaClass> CONTAIN_TEST_OR_LIFECYCLE_METHODS =
-        new com.tngtech.archunit.base.DescribedPredicate<>("contain test or lifecycle methods or end with Test/IT") {
+    private static final DescribedPredicate<JavaClass> CONTAIN_TEST_OR_LIFECYCLE_METHODS =
+        new DescribedPredicate<>("contain test or lifecycle methods or end with Test/IT") {
             @Override
-            public boolean test(com.tngtech.archunit.core.domain.JavaClass javaClass) {
+            public boolean test(JavaClass javaClass) {
                 return javaClass.getMethods().stream().anyMatch(m ->
-                    m.isAnnotatedWith(org.junit.jupiter.api.Test.class)
-                        || m.isAnnotatedWith(org.junit.jupiter.api.BeforeEach.class)
-                        || m.isAnnotatedWith(org.junit.jupiter.api.AfterEach.class)
+                    m.isAnnotatedWith(Test.class)
+                        || m.isAnnotatedWith(BeforeEach.class)
+                        || m.isAnnotatedWith(AfterEach.class)
                 ) || javaClass.getSimpleName().endsWith("Test") || javaClass.getSimpleName().endsWith("IT");
             }
         };
@@ -64,15 +73,15 @@ public class AgentArchitectureTest {
     public static final ArchRule testClassesMustNotBeAnnotatedWithTransactional =
         classes()
             .that(CONTAIN_TEST_OR_LIFECYCLE_METHODS)
-            .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+            .should().notBeAnnotatedWith(Transactional.class);
 
     @ArchTest
     public static final ArchRule testsMustNotUseReflectionToBypassEncapsulation =
         noClasses()
             .that().haveSimpleNameEndingWith("Test")
             .or().haveSimpleNameEndingWith("IT")
-            .should().callMethodWhere(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
-                com.tngtech.archunit.core.domain.properties.HasName.Predicates.name("setAccessible")
+            .should().callMethodWhere(JavaCall.Predicates.target(
+                HasName.Predicates.name("setAccessible")
             ))
             .as("Test classes must practice black-box behavioral verification and not use setAccessible(true)");
 }

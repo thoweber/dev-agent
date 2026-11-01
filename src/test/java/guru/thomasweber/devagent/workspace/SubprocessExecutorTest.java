@@ -8,6 +8,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -112,8 +114,8 @@ class SubprocessExecutorTest {
     @DisplayName("Given thread interrupted during execution - terminates process and restores interrupt status")
     void testExecuteInterruptedThread() throws Exception {
         SubprocessExecutor executor = new SubprocessExecutor();
-        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean(false);
-        java.util.concurrent.atomic.AtomicReference<ProcessResult> resultRef = new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicBoolean interrupted = new AtomicBoolean(false);
+        AtomicReference<ProcessResult> resultRef = new AtomicReference<>();
 
         Thread t = new Thread(() -> {
             ProcessResult res = executor.execute(

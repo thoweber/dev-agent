@@ -1,8 +1,10 @@
 package guru.thomasweber.devagent.entity;
 
+import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
+import org.jboss.logging.Logger;
 import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.StepAudit;
 import guru.thomasweber.devagent.model.TaskRun;
@@ -23,7 +25,7 @@ import java.util.Optional;
 @RegisterForReflection
 public class TaskPersistenceService {
 
-    private static final org.jboss.logging.Logger LOG = org.jboss.logging.Logger.getLogger(TaskPersistenceService.class);
+    private static final Logger LOG = Logger.getLogger(TaskPersistenceService.class);
 
     @Transactional
     public Optional<TaskRun> findByProjectAndTask(String projectId, String taskId) {
@@ -149,7 +151,7 @@ public class TaskPersistenceService {
         TaskRunEntity.deleteAll();
     }
 
-    void persistEntity(io.quarkus.hibernate.orm.panache.PanacheEntityBase entity) {
+    void persistEntity(PanacheEntityBase entity) {
         try {
             entity.persist();
         } catch (IllegalStateException | NullPointerException e) {

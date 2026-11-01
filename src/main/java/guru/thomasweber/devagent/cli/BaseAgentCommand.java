@@ -8,6 +8,7 @@ import guru.thomasweber.devagent.DevAgentCommand;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 
 import java.io.BufferedReader;
+import java.io.Console;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -41,7 +42,7 @@ public abstract class BaseAgentCommand implements Runnable {
     }
 
     protected boolean isInteractive() {
-        java.io.Console console = System.console();
+        Console console = System.console();
         return in != null || (console != null && console.isTerminal());
     }
 

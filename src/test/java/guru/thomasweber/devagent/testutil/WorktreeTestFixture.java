@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -11,7 +13,7 @@ import java.util.stream.Stream;
  */
 public final class WorktreeTestFixture {
 
-    private static final java.util.Set<Path> CREATED_WORKTREES = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final Set<Path> CREATED_WORKTREES = ConcurrentHashMap.newKeySet();
 
     private WorktreeTestFixture() {}
 

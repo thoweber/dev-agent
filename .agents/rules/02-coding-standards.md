@@ -29,3 +29,8 @@
 * **Given-When-Then Display Names:** All `@Test` methods MUST use `@DisplayName("Given [precondition] - when [action/trigger] - then [expected outcome]")`.
 * **AssertJ Assertions:** Use AssertJ (`assertThat()`, `assertThatThrownBy()`) exclusively. `org.junit.jupiter.api.Assertions` is strictly forbidden.
 * **Mandatory Quality Gates:** Overall repository code coverage MUST satisfy Line $\ge 95.0\%$ and Branch $\ge 90.0\%$ (see [03-quality-and-slas.md](03-quality-and-slas.md) and [05-testing-standards.md](05-testing-standards.md)).
+
+## 6. Import Hygiene & Prohibition of Inline Fully Qualified Class Names
+* **Explicit Imports Standard:** Always import types explicitly at the top of the file rather than using inline fully qualified references (e.g., `import java.util.concurrent.atomic.AtomicReference;` instead of `java.util.concurrent.atomic.AtomicReference<...>`).
+* **Clean Code Invariant:** Inline fully qualified class names clutter source code and obscure architectural dependencies. They are strictly prohibited across both production and test files.
+* **Collision Disambiguation Exception:** An inline fully qualified type reference is permitted solely when disambiguating two classes that share the exact same simple name within the same file and cannot be resolved through aliasing.

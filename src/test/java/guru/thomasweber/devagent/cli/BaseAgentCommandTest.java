@@ -4,6 +4,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import guru.thomasweber.devagent.DevAgentCommand;
+import picocli.CommandLine;
+
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.nio.file.Path;
@@ -43,13 +46,13 @@ class BaseAgentCommandTest {
         assertThat(cmd.getIn()).isSameAs(reader);
 
         // Parent command and context resolver
-        guru.thomasweber.devagent.DevAgentCommand parent = new guru.thomasweber.devagent.DevAgentCommand();
+        DevAgentCommand parent = new DevAgentCommand();
         cmd.parentCommand = parent;
         assertThat(cmd.getWorkspaceRoot()).isNotNull();
         assertThat(cmd.getWorkspaceContextResolver()).isNotNull();
 
         // Execution through CommandLine sets spec
-        picocli.CommandLine cl = new picocli.CommandLine(cmd);
+        CommandLine cl = new CommandLine(cmd);
         cl.execute();
         assertThat(cmd.getOut()).isNotNull();
         assertThat(cmd.getErr()).isNotNull();

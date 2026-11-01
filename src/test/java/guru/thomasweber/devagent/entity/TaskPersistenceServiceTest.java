@@ -9,7 +9,9 @@ import guru.thomasweber.devagent.model.TaskStateChangeEvent;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.testutil.TaskRunMother;
 import guru.thomasweber.devagent.workspace.SanitizedOutput;
+import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -106,7 +108,7 @@ class TaskPersistenceServiceTest {
         assertThat(step.sanitizedInput).isNull();
         assertThat(step.outputSummary).isNull();
 
-        guru.thomasweber.devagent.workspace.SecretRedactionFilter filter = new guru.thomasweber.devagent.workspace.SecretRedactionFilter();
+        SecretRedactionFilter filter = new SecretRedactionFilter();
         step.setSanitizedInput(filter.sanitize("git push password=mySecret123"));
         step.setOutputSummary(filter.sanitize("Auth failure"));
 
@@ -120,7 +122,7 @@ class TaskPersistenceServiceTest {
         metric.modelName = "gemini-2.5-flash";
         metric.promptTokens = 100;
         metric.completionTokens = 50;
-        metric.costUsd = java.math.BigDecimal.valueOf(0.001);
+        metric.costUsd = BigDecimal.valueOf(0.001);
         metric.cacheHit = true;
         metric.retrievedAdrs = "ADR-001";
 

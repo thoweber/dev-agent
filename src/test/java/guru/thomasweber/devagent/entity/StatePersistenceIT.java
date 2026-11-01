@@ -2,15 +2,21 @@ package guru.thomasweber.devagent.entity;
 
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import guru.thomasweber.devagent.model.TaskRun;
+import guru.thomasweber.devagent.model.TaskStateChangeEvent;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.testutil.TaskRunMother;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
+import guru.thomasweber.devagent.workspace.SanitizedOutput;
+import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,15 +88,15 @@ class StatePersistenceIT {
     }
 
     @Inject
-    jakarta.enterprise.event.Event<guru.thomasweber.devagent.model.TaskStateChangeEvent> stateChangeEvent;
+    Event<TaskStateChangeEvent> stateChangeEvent;
 
     @Inject
-    guru.thomasweber.devagent.workspace.WorkspaceContextResolver workspaceResolver;
+    WorkspaceContextResolver workspaceResolver;
 
     @Test
     @DisplayName("Given state change event - when fired - then updates H2 and projects Markdown journal")
     void testStateChangeEventProjectsMarkdown() throws Exception {
-        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+        QuarkusTransaction.requiringNew().run(() -> {
             TaskRunEntity task = new TaskRunEntity();
             task.projectId = "thoweber/dev-agent";
             task.taskId = "TASK-PROJECTION-01";
@@ -102,7 +108,7 @@ class StatePersistenceIT {
             task.persist();
         });
 
-        stateChangeEvent.fire(new guru.thomasweber.devagent.model.TaskStateChangeEvent(
+        stateChangeEvent.fire(new TaskStateChangeEvent(
             "thoweber/dev-agent",
             "TASK-PROJECTION-01",
             TaskStatus.RED_TEST,
@@ -111,7 +117,7 @@ class StatePersistenceIT {
             Instant.now()
         ));
 
-        TaskRunEntity updated = io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().call(() -> {
+        TaskRunEntity updated = QuarkusTransaction.requiringNew().call(() -> {
             TaskRunEntity t = TaskRunEntity.findByProjectAndTask("thoweber/dev-agent", "TASK-PROJECTION-01");
             if (t != null && t.steps != null) {
                 t.steps.size(); // initialize collection
@@ -125,17 +131,17 @@ class StatePersistenceIT {
             .doesNotContain("hunter2")
             .contains("***REDACTED_CREDENTIAL***");
 
-        java.nio.file.Path journalPath = workspaceResolver.resolveAgentsDir()
+        Path journalPath = workspaceResolver.resolveAgentsDir()
             .resolve("runs/TASK-PROJECTION-01.md");
         assertThat(journalPath).isRegularFile();
-        String content = java.nio.file.Files.readString(journalPath);
+        String content = Files.readString(journalPath);
         assertThat(content).contains("TASK-PROJECTION-01")
             .contains("RED_TEST")
             .contains("Verify dual representation")
             .contains("Added failing test");
 
         // Clean up generated test run journal
-        java.nio.file.Files.deleteIfExists(journalPath);
+        Files.deleteIfExists(journalPath);
     }
 
     @Inject
@@ -144,7 +150,7 @@ class StatePersistenceIT {
     @Test
     @DisplayName("Given TaskPersistenceService - maps TaskRunEntity and StepAuditEntity to domain models")
     void testTaskPersistenceServiceDomainMapping() {
-        io.quarkus.narayana.jta.QuarkusTransaction.requiringNew().run(() -> {
+        QuarkusTransaction.requiringNew().run(() -> {
             StepAuditEntity.deleteAll();
             TaskRunEntity.deleteAll();
 
@@ -166,14 +172,14 @@ class StatePersistenceIT {
             step.durationMs = 100L;
             step.exitCode = 0;
             step.createdAt = Instant.now();
-            step.setOutputSummary(new guru.thomasweber.devagent.workspace.SanitizedOutput("Success"));
+            step.setOutputSummary(new SanitizedOutput("Success"));
             step.persist();
 
             task.steps.add(step);
             task.persist();
         });
 
-        guru.thomasweber.devagent.model.TaskRun domain = persistenceService.findByProjectAndTask("map-org/map-repo", "TASK-MAP-01").orElse(null);
+        TaskRun domain = persistenceService.findByProjectAndTask("map-org/map-repo", "TASK-MAP-01").orElse(null);
         assertThat(domain).isNotNull();
         assertThat(domain.projectId()).isEqualTo("map-org/map-repo");
         assertThat(domain.taskId()).isEqualTo("TASK-MAP-01");
@@ -187,8 +193,8 @@ class StatePersistenceIT {
     @DisplayName("Given StepAuditEntity - when setOutputSummary called with SanitizedOutput - populates output safely")
     void testStepAuditEntityConsumesSanitizedOutput() {
         StepAuditEntity entity = new StepAuditEntity();
-        guru.thomasweber.devagent.workspace.SanitizedOutput input = new guru.thomasweber.devagent.workspace.SanitizedOutput("git push");
-        guru.thomasweber.devagent.workspace.SanitizedOutput summary = new guru.thomasweber.devagent.workspace.SanitizedOutput("Error: ***REDACTED_CREDENTIAL***");
+        SanitizedOutput input = new SanitizedOutput("git push");
+        SanitizedOutput summary = new SanitizedOutput("Error: ***REDACTED_CREDENTIAL***");
 
         entity.setSanitizedInput(input);
         entity.setOutputSummary(summary);
@@ -207,7 +213,7 @@ class StatePersistenceIT {
                 .status(TaskStatus.GREEN_PATCH)
                 .currentPhase("GREEN_PATCH")
                 .build();
-            guru.thomasweber.devagent.model.TaskRun saved = persistenceService.saveTask(taskRun);
+            TaskRun saved = persistenceService.saveTask(taskRun);
             assertThat(saved).isNotNull();
             assertThat(saved.taskId()).isEqualTo("TASK-SAVE-IT");
 
