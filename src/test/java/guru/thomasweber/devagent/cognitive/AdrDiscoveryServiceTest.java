@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.cognitive;
 import dev.langchain4j.data.segment.TextSegment;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.workspace.NioWorkspaceFileScanner;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -522,6 +523,20 @@ class AdrDiscoveryServiceTest {
             jailValidator,
             new MarkdownParserService(),
             new DevAgentConfigLoader()
+        );
+        List<ArchitecturalRecord> records = service.discoverRecords();
+        assertThat(records).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given explicit fileScanner constructor - when discovering - then executes properly")
+    void givenExplicitFileScannerConstructor_whenDiscovering_thenExecutesProperly() {
+        AdrDiscoveryService service = new AdrDiscoveryService(
+            contextResolver,
+            jailValidator,
+            new MarkdownParserService(),
+            new DevAgentConfigLoader(),
+            new NioWorkspaceFileScanner()
         );
         List<ArchitecturalRecord> records = service.discoverRecords();
         assertThat(records).isNotNull();

@@ -7,27 +7,25 @@ import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.config.DevAgentConfig;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.workspace.NioWorkspaceFileScanner;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorkspaceFileScanner;
 import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * Dynamically discovers architectural decision records (ADRs) and declarative rules
@@ -52,18 +50,30 @@ public class AdrDiscoveryService {
     private final WorkspaceJailValidator jailValidator;
     private final MarkdownParserService markdownParserService;
     private final DevAgentConfigLoader configLoader;
+    private final WorkspaceFileScanner fileScanner;
 
     @Inject
     public AdrDiscoveryService(
         WorkspaceContextResolver contextResolver,
         WorkspaceJailValidator jailValidator,
         MarkdownParserService markdownParserService,
-        DevAgentConfigLoader configLoader
+        DevAgentConfigLoader configLoader,
+        WorkspaceFileScanner fileScanner
     ) {
         this.contextResolver = contextResolver;
         this.jailValidator = jailValidator;
         this.markdownParserService = markdownParserService;
         this.configLoader = configLoader;
+        this.fileScanner = fileScanner;
+    }
+
+    public AdrDiscoveryService(
+        WorkspaceContextResolver contextResolver,
+        WorkspaceJailValidator jailValidator,
+        MarkdownParserService markdownParserService,
+        DevAgentConfigLoader configLoader
+    ) {
+        this(contextResolver, jailValidator, markdownParserService, configLoader, new NioWorkspaceFileScanner());
     }
 
     public AdrDiscoveryService(
@@ -71,11 +81,11 @@ public class AdrDiscoveryService {
         WorkspaceJailValidator jailValidator,
         MarkdownParserService markdownParserService
     ) {
-        this(contextResolver, jailValidator, markdownParserService, new DevAgentConfigLoader());
+        this(contextResolver, jailValidator, markdownParserService, new DevAgentConfigLoader(), new NioWorkspaceFileScanner());
     }
 
     public AdrDiscoveryService(WorkspaceContextResolver contextResolver, WorkspaceJailValidator jailValidator) {
-        this(contextResolver, jailValidator, new MarkdownParserService(), new DevAgentConfigLoader());
+        this(contextResolver, jailValidator, new MarkdownParserService(), new DevAgentConfigLoader(), new NioWorkspaceFileScanner());
     }
 
     public List<ArchitecturalRecord> discoverRecords() {
@@ -83,22 +93,23 @@ public class AdrDiscoveryService {
     }
 
     public List<ArchitecturalRecord> discoverRecords(Path root) {
-        WorkspaceJailValidator effectiveJail = (root.equals(jailValidator.getActiveWorkingRoot()))
-            ? jailValidator
-            : new WorkspaceJailValidator(root);
+        if (root == null || !Files.exists(root)) {
+            return Collections.emptyList();
+        }
 
         List<String> configuredPaths = readConfiguredRulesPaths(root);
         List<String> pathsToScan = configuredPaths.isEmpty() ? DEFAULT_CONVENTION_PATHS : configuredPaths;
 
-        Map<Path, RepoPath> uniqueFiles = new LinkedHashMap<>();
-
-        for (String pattern : pathsToScan) {
-            validateNoTraversal(pattern);
-            scanPattern(pattern, root, effectiveJail, uniqueFiles);
-        }
+        RepoPath repoRoot = RepoPath.of(root, root);
+        List<RepoPath> markdownFiles = fileScanner.findFiles(
+            repoRoot,
+            pathsToScan,
+            WorkspaceFileScanner.DEFAULT_IGNORED_PREFIXES,
+            p -> p.getFileName() != null && p.getFileName().toString().endsWith(".md")
+        );
 
         List<ArchitecturalRecord> records = new ArrayList<>();
-        for (RepoPath repoPath : uniqueFiles.values()) {
+        for (RepoPath repoPath : markdownFiles) {
             ArchitecturalRecord record = parseRecord(repoPath);
             if (record != null) {
                 records.add(record);
@@ -115,82 +126,6 @@ public class AdrDiscoveryService {
         }
         DevAgentConfig config = configLoader.load(configFile);
         return config.knowledge().rulesPaths().orElse(Collections.emptyList());
-    }
-
-    private void validateNoTraversal(String pattern) {
-        if (pattern == null || pattern.isBlank()) {
-            throw new SecurityException("Jailbreak attempt: pattern cannot be null or blank");
-        }
-        for (String segment : pattern.replace('\\', '/').split("/")) {
-            if (segment.equals("..")) {
-                throw new SecurityException("Jailbreak attempt: Traversal detected: " + pattern);
-            }
-        }
-    }
-
-    private void scanPattern(String pattern, Path root, WorkspaceJailValidator jail, Map<Path, RepoPath> uniqueFiles) {
-        String normalizedPattern = pattern.replace('\\', '/');
-        if (normalizedPattern.startsWith("./")) {
-            normalizedPattern = normalizedPattern.substring(2);
-        }
-
-        if (normalizedPattern.contains("*")) {
-            int firstStar = normalizedPattern.indexOf('*');
-            int lastSlash = normalizedPattern.lastIndexOf('/', firstStar);
-            String prefix = (lastSlash >= 0) ? normalizedPattern.substring(0, lastSlash) : "";
-            Path searchRoot = prefix.isEmpty() ? root : root.resolve(prefix);
-            if (!Files.exists(searchRoot)) {
-                return;
-            }
-
-            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + normalizedPattern);
-            try (Stream<Path> stream = Files.walk(searchRoot)) {
-                stream.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(".md"))
-                    .filter(p -> !isIgnored(root, p))
-                    .forEach(file -> {
-                        Path rel = root.relativize(file);
-                        String relStr = rel.toString().replace('\\', '/');
-                        if (matcher.matches(Path.of(relStr))) {
-                            Path resolved = jail.validateAndResolve(relStr);
-                            RepoPath repoPath = RepoPath.of(resolved, root);
-                            uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
-                        }
-                    });
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to walk workspace root: " + searchRoot, e);
-            }
-        } else {
-            Path path = root.resolve(normalizedPattern);
-            if (Files.isDirectory(path)) {
-                try (Stream<Path> stream = Files.walk(path)) {
-                    stream.filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().endsWith(".md"))
-                        .filter(p -> !isIgnored(root, p))
-                        .forEach(file -> {
-                            Path rel = root.relativize(file);
-                            String relStr = rel.toString().replace('\\', '/');
-                            Path resolved = jail.validateAndResolve(relStr);
-                            RepoPath repoPath = RepoPath.of(resolved, root);
-                            uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
-                        });
-                } catch (IOException e) {
-                    throw new UncheckedIOException("Failed to scan directory: " + path, e);
-                }
-            } else if (Files.isRegularFile(path) && normalizedPattern.endsWith(".md")) {
-                Path rel = root.relativize(path);
-                String relStr = rel.toString().replace('\\', '/');
-                Path resolved = jail.validateAndResolve(relStr);
-                RepoPath repoPath = RepoPath.of(resolved, root);
-                uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
-            }
-        }
-    }
-
-    private boolean isIgnored(Path root, Path file) {
-        Path rel = root.relativize(file);
-        String relStr = rel.toString().replace('\\', '/');
-        return relStr.startsWith(".git/") || relStr.startsWith("target-agent/") || relStr.startsWith("target/") || relStr.contains("/node_modules/");
     }
 
     public List<TextSegment> parseAdrDocument(Path filePath, String rawContent) {
