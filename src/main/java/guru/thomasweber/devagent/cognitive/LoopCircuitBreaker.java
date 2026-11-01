@@ -2,6 +2,7 @@ package guru.thomasweber.devagent.cognitive;
 
 import guru.thomasweber.devagent.model.CircuitBreakerState;
 import guru.thomasweber.devagent.model.LoopAction;
+import guru.thomasweber.devagent.workspace.ProcessResult;
 import guru.thomasweber.devagent.workspace.SubprocessExecutor;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -60,6 +61,10 @@ public class LoopCircuitBreaker {
         TaskBreakerState taskState = taskStates.computeIfAbsent(effectiveTaskId, _ -> new TaskBreakerState());
         String sig = signatureExtractor.extractSignature(rawOutput);
 
+        if (taskState.state == CircuitBreakerState.TRIPPED) {
+            return LoopAction.TRIP_AND_HALT;
+        }
+
         if (taskState.state == CircuitBreakerState.PIVOT_ACTIVE) {
             taskState.postPivotFailures++;
             if (taskState.postPivotFailures >= MAX_POST_PIVOT_FAILURES) {
@@ -79,19 +84,35 @@ public class LoopCircuitBreaker {
                 return LoopAction.INJECT_WARNING;
             }
 
-            int firstIndex = taskState.history.indexOf(sig);
-            if (firstIndex >= 0) {
-                taskState.state = CircuitBreakerState.PIVOT_ACTIVE;
-                taskState.postPivotFailures = 0;
+            if (isOscillatingSequence(taskState.history, sig)) {
                 appendHistory(taskState, sig);
-                rollbackIfPossible(workingDir);
-                return LoopAction.ROLLBACK_AND_PIVOT;
+                boolean rolledBack = rollback(workingDir);
+                if (rolledBack) {
+                    taskState.state = CircuitBreakerState.PIVOT_ACTIVE;
+                    taskState.postPivotFailures = 0;
+                    return LoopAction.ROLLBACK_AND_PIVOT;
+                } else {
+                    taskState.state = CircuitBreakerState.TRIPPED;
+                    return LoopAction.TRIP_AND_HALT;
+                }
             }
         }
 
         taskState.state = CircuitBreakerState.NORMAL;
         appendHistory(taskState, sig);
         return LoopAction.CONTINUE;
+    }
+
+    private boolean isOscillatingSequence(List<String> history, String currentSig) {
+        int size = history.size();
+        if (size < 3) {
+            return false;
+        }
+        String a1 = history.get(size - 3);
+        String b1 = history.get(size - 2);
+        String a2 = history.get(size - 1);
+        String b2 = currentSig;
+        return Objects.equals(a1, a2) && Objects.equals(b1, b2) && !Objects.equals(a1, b1);
     }
 
     private void appendHistory(TaskBreakerState taskState, String sig) {
@@ -143,15 +164,20 @@ public class LoopCircuitBreaker {
         return taskState != null ? taskState.postPivotFailures : 0;
     }
 
-    private void rollbackIfPossible(Path workingDir) {
+    private boolean rollback(Path workingDir) {
         if (workingDir == null) {
-            return;
+            return false;
         }
         String normalized = workingDir.toAbsolutePath().normalize().toString().replace('\\', '/');
         if (!normalized.contains(WORKTREE_PATH_SEGMENT)) {
             throw new SecurityException("Refusing to rollback outside dedicated git worktree: " + workingDir);
         }
-        subprocessExecutor.execute(List.of("git", "reset", "--hard"), workingDir, ROLLBACK_TIMEOUT);
+        ProcessResult resetResult = subprocessExecutor.execute(List.of("git", "reset", "--hard"), workingDir, ROLLBACK_TIMEOUT);
+        if (!resetResult.isSuccess()) {
+            return false;
+        }
+        ProcessResult cleanResult = subprocessExecutor.execute(List.of("git", "clean", "-fd"), workingDir, ROLLBACK_TIMEOUT);
+        return cleanResult.isSuccess();
     }
 
     private String resolveTaskId(Path workingDir) {

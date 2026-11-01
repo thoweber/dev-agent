@@ -81,12 +81,24 @@ public class Bm25Retriever {
             return;
         }
 
+        Map<String, ArchitecturalRecord> uniqueRecords = new LinkedHashMap<>();
+        for (ArchitecturalRecord record : records) {
+            if (record != null && record.id() != null) {
+                uniqueRecords.put(record.id(), record);
+            }
+        }
+
+        if (uniqueRecords.isEmpty()) {
+            snapshot.set(IndexSnapshot.empty());
+            return;
+        }
+
         Map<String, ArchitecturalRecord> newDocs = new LinkedHashMap<>();
         Map<String, Integer> newLengths = new LinkedHashMap<>();
         Map<String, Map<String, Integer>> newInvertedIndex = new LinkedHashMap<>();
 
         long totalTokens = 0;
-        for (ArchitecturalRecord record : records) {
+        for (ArchitecturalRecord record : uniqueRecords.values()) {
             newDocs.put(record.id(), record);
             String fullText = String.join(" ",
                 Objects.toString(record.title(), ""),
@@ -130,14 +142,17 @@ public class Bm25Retriever {
 
     public double computeIdf(String term) {
         IndexSnapshot current = snapshot.get();
-        if (current.totalDocs() == 0) {
+        if (current.totalDocs() == 0 || term == null || term.isBlank()) {
             return 0.0;
         }
         List<String> tokens = tokenize(term);
         if (tokens.isEmpty()) {
             return 0.0;
         }
-        String stem = tokens.getFirst();
+        return computeIdfForStem(current, tokens.getFirst());
+    }
+
+    private double computeIdfForStem(IndexSnapshot current, String stem) {
         Map<String, Integer> postings = current.invertedIndex().get(stem);
         int docFreq = (postings != null) ? postings.size() : 0;
 
@@ -165,7 +180,7 @@ public class Bm25Retriever {
             Map<String, Integer> postings = current.invertedIndex().get(token);
             if (postings != null && postings.containsKey(docId)) {
                 int freq = postings.get(docId);
-                double idf = computeIdf(token);
+                double idf = computeIdfForStem(current, token);
                 double tfPart = (freq * (k1 + 1.0)) / (freq + k1 * lenNorm);
                 totalScore += idf * tfPart;
             }
@@ -192,7 +207,7 @@ public class Bm25Retriever {
                 continue;
             }
 
-            double idf = computeIdf(token);
+            double idf = computeIdfForStem(current, token);
             for (Map.Entry<String, Integer> entry : postings.entrySet()) {
                 String docId = entry.getKey();
                 int freq = entry.getValue();

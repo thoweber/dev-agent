@@ -7,6 +7,7 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 import io.quarkus.arc.Arc;
 import io.quarkus.arc.ArcContainer;
 import io.quarkus.arc.InstanceHandle;
+import io.quarkus.runtime.LaunchMode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -51,8 +52,13 @@ public class GatekeeperChatModelSupplier implements Supplier<ChatModel> {
         return new ChatModel() {
             @Override
             public ChatResponse doChat(ChatRequest request) {
+                if (LaunchMode.current() == LaunchMode.NORMAL) {
+                    return ChatResponse.builder()
+                        .aiMessage(AiMessage.from("{\"approved\":false,\"summary\":\"Architectural evaluation failed: No ChatModel bean registered in production runtime.\",\"violations\":[\"No ChatModel bean registered\"],\"recommendations\":[\"Configure an LLM provider such as Ollama, OpenAI, or Anthropic\"]}"))
+                        .build();
+                }
                 return ChatResponse.builder()
-                    .aiMessage(AiMessage.from("{\"approved\":true,\"summary\":\"Invariants verified\",\"violations\":[],\"recommendations\":[]}"))
+                    .aiMessage(AiMessage.from("{\"approved\":true,\"summary\":\"Invariants verified (offline test stub)\",\"violations\":[],\"recommendations\":[]}"))
                     .build();
             }
         };

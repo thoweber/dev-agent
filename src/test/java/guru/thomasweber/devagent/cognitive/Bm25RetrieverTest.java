@@ -34,6 +34,43 @@ class Bm25RetrieverTest {
             .build();
     }
 
+    @Test
+    @DisplayName("Given stemmed term query - when searching and scoring - then IDF is evaluated consistently without double stemming")
+    void givenStemmedTerm_whenComputingIdfAndSearching_thenConsistentWithoutDoubleStemming() {
+        Bm25Retriever retriever = new Bm25Retriever();
+        ArchitecturalRecord doc1 = createDoc("DOC-1", "Database Entities", "entities running smoothly");
+        retriever.index(List.of(doc1));
+
+        // "entities" stems to "entiti".
+        double idfOriginal = retriever.computeIdf("entities");
+        double idfStemmed = retriever.computeIdf("entiti");
+        assertThat(idfOriginal).isCloseTo(idfStemmed, Offset.offset(0.0001));
+
+        List<ArchitecturalRecord> results = retriever.search("entities", 5);
+        assertThat(results).hasSize(1);
+        double score = retriever.scoreDocument("DOC-1", "entities");
+        assertThat(score).isGreaterThan(0.0);
+    }
+
+    @Test
+    @DisplayName("Given duplicate record IDs - when indexing - then deduplicates with last-wins semantics and correct lengths")
+    void givenDuplicateRecordIds_whenIndexing_thenDeduplicatesWithLastWins() {
+        Bm25Retriever retriever = new Bm25Retriever();
+        ArchitecturalRecord doc1 = createDoc("DOC-1", "Original Doc", "initial text content");
+        ArchitecturalRecord doc1Updated = createDoc("DOC-1", "Updated Doc", "completely different modified keywords");
+        ArchitecturalRecord doc2 = createDoc("DOC-2", "Second Doc", "initial text content");
+
+        retriever.index(List.of(doc1, doc1Updated, doc2));
+
+        List<ArchitecturalRecord> results = retriever.search("modified", 5);
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().title()).isEqualTo("Updated Doc");
+
+        // Stale postings from original doc1 should not match
+        List<ArchitecturalRecord> staleResults = retriever.search("content", 5);
+        assertThat(staleResults).extracting(ArchitecturalRecord::id).containsExactly("DOC-2");
+    }
+
     // =========================================================================
     // 1. Mathematical Scoring Accuracy & Parameter Invariants
     // =========================================================================

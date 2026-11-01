@@ -100,4 +100,21 @@ class ErrorSignatureExtractorTest {
         String sig = extractor.extractSignature(massive);
         assertThat(sig).hasSize(64);
     }
+
+    @Test
+    @DisplayName("Given traces with exit codes - when extracting - then preserves exit code numbers and produces distinct signatures")
+    void givenTracesWithExitCodes_whenExtracting_thenPreservesExitCodesAndProducesDistinctSignatures() {
+        String trace1 = "Process finished with exit code: 1";
+        String trace2 = "Process finished with exit code: 2";
+
+        String norm1 = extractor.extractNormalizedText(trace1);
+        String norm2 = extractor.extractNormalizedText(trace2);
+
+        assertThat(norm1).contains("exit code: 1");
+        assertThat(norm2).contains("exit code: 2");
+
+        String sig1 = extractor.extractSignature(trace1);
+        String sig2 = extractor.extractSignature(trace2);
+        assertThat(sig1).isNotEqualTo(sig2);
+    }
 }

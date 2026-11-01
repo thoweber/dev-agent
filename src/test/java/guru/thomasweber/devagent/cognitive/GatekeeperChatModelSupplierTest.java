@@ -15,8 +15,8 @@ import static org.mockito.Mockito.when;
 class GatekeeperChatModelSupplierTest {
 
     @Test
-    @DisplayName("Given GatekeeperChatModelSupplier without bean - when calling get and doChat - then returns fallback verdict")
-    void givenSupplierWithoutBean_whenGettingAndChatting_thenReturnsFallbackVerdict() {
+    @DisplayName("Given GatekeeperChatModelSupplier without bean in production - when calling get and doChat - then fails closed with rejection")
+    void givenSupplierWithoutBean_whenGettingAndChatting_thenFailsClosedWithRejection() {
         GatekeeperChatModelSupplier supplier = new GatekeeperChatModelSupplier();
         ChatModel model = supplier.get();
         assertThat(model).isNotNull();
@@ -27,7 +27,8 @@ class GatekeeperChatModelSupplierTest {
 
         ChatResponse response = model.doChat(request);
         assertThat(response).isNotNull();
-        assertThat(response.aiMessage().text()).contains("\"approved\":true");
+        assertThat(response.aiMessage().text()).contains("\"approved\":false");
+        assertThat(response.aiMessage().text()).contains("No ChatModel bean registered");
     }
 
     @Test

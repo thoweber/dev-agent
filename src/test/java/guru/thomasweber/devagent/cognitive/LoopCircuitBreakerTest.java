@@ -74,13 +74,15 @@ class LoopCircuitBreakerTest {
     }
 
     @Test
-    @DisplayName("Given oscillating error (A -> B -> A) - when recording - then triggers git reset in worktree and returns ROLLBACK_AND_PIVOT")
+    @DisplayName("Given oscillating error (A -> B -> A -> B) - when recording - then triggers git reset and clean in worktree and returns ROLLBACK_AND_PIVOT")
     void givenOscillatingError_whenRecording_thenTriggersRollbackAndPivot() {
         circuitBreaker.recordFailure("error A", worktreeDir);
         circuitBreaker.recordFailure("error B", worktreeDir);
-        LoopAction action = circuitBreaker.recordFailure("error A", worktreeDir);
+        LoopAction action3 = circuitBreaker.recordFailure("error A", worktreeDir);
+        assertThat(action3).isEqualTo(LoopAction.CONTINUE);
 
-        assertThat(action).isEqualTo(LoopAction.ROLLBACK_AND_PIVOT);
+        LoopAction action4 = circuitBreaker.recordFailure("error B", worktreeDir);
+        assertThat(action4).isEqualTo(LoopAction.ROLLBACK_AND_PIVOT);
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.PIVOT_ACTIVE);
 
         verify(subprocessExecutor).execute(
@@ -88,6 +90,26 @@ class LoopCircuitBreakerTest {
             eq(worktreeDir),
             any(Duration.class)
         );
+        verify(subprocessExecutor).execute(
+            eq(List.of("git", "clean", "-fd")),
+            eq(worktreeDir),
+            any(Duration.class)
+        );
+    }
+
+    @Test
+    @DisplayName("Given oscillating error when git reset fails - then trips breaker and returns TRIP_AND_HALT")
+    void givenOscillatingError_whenRollbackFails_thenTripsBreaker() {
+        when(subprocessExecutor.execute(eq(List.of("git", "reset", "--hard")), eq(worktreeDir), any(Duration.class)))
+            .thenReturn(ProcessResult.builder().exitCode(1).stdOut("").stdErr("fatal: git error").timedOut(false).truncated(false).build());
+
+        circuitBreaker.recordFailure("error A", worktreeDir);
+        circuitBreaker.recordFailure("error B", worktreeDir);
+        circuitBreaker.recordFailure("error A", worktreeDir);
+        LoopAction action = circuitBreaker.recordFailure("error B", worktreeDir);
+
+        assertThat(action).isEqualTo(LoopAction.TRIP_AND_HALT);
+        assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.TRIPPED);
     }
 
     @Test
@@ -96,8 +118,9 @@ class LoopCircuitBreakerTest {
         Path dangerousDir = tempDir.resolve("primary-workspace");
         circuitBreaker.recordFailure("error A", dangerousDir);
         circuitBreaker.recordFailure("error B", dangerousDir);
+        circuitBreaker.recordFailure("error A", dangerousDir);
 
-        assertThatThrownBy(() -> circuitBreaker.recordFailure("error A", dangerousDir))
+        assertThatThrownBy(() -> circuitBreaker.recordFailure("error B", dangerousDir))
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Refusing to rollback outside dedicated git worktree");
     }
@@ -109,6 +132,7 @@ class LoopCircuitBreakerTest {
         circuitBreaker.recordFailure("error A", worktreeDir);
         circuitBreaker.recordFailure("error B", worktreeDir);
         circuitBreaker.recordFailure("error A", worktreeDir);
+        circuitBreaker.recordFailure("error B", worktreeDir);
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.PIVOT_ACTIVE);
 
         // Reset invocation count on mock
@@ -132,6 +156,11 @@ class LoopCircuitBreakerTest {
 
         // Verify git reset was NOT called during trip (diagnostic state preserved)
         verify(subprocessExecutor, never()).execute(any(), any(), any());
+
+        // Further failure remains TRIPPED until explicit reset
+        LoopAction actAfterTrip = circuitBreaker.recordFailure("error F", worktreeDir);
+        assertThat(actAfterTrip).isEqualTo(LoopAction.TRIP_AND_HALT);
+        assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.TRIPPED);
     }
 
     @Test
@@ -195,19 +224,13 @@ class LoopCircuitBreakerTest {
         assertThat(action3).isEqualTo(LoopAction.CONTINUE);
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.NORMAL);
 
-        // Test oscillation with workingDir == null
+        // Test oscillation with workingDir == null -> cannot rollback, so trips breaker
         circuitBreaker.reset();
         circuitBreaker.recordFailure("error 1");
         circuitBreaker.recordFailure("error 2");
-        LoopAction actionOscNoDir = circuitBreaker.recordFailure("error 1");
-        assertThat(actionOscNoDir).isEqualTo(LoopAction.ROLLBACK_AND_PIVOT);
-        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.PIVOT_ACTIVE);
-
-        // Test tripping with workingDir == null
-        circuitBreaker.recordFailure("error post 1");
-        circuitBreaker.recordFailure("error post 2");
-        LoopAction actionTripNoDir = circuitBreaker.recordFailure("error post 3");
-        assertThat(actionTripNoDir).isEqualTo(LoopAction.TRIP_AND_HALT);
+        circuitBreaker.recordFailure("error 1");
+        LoopAction actionOscNoDir = circuitBreaker.recordFailure("error 2");
+        assertThat(actionOscNoDir).isEqualTo(LoopAction.TRIP_AND_HALT);
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreakerState.TRIPPED);
 
         // Test exceeding MAX_HISTORY_SIZE
