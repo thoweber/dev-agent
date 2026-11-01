@@ -283,7 +283,7 @@ public class Bm25Retriever {
     }
 
     private String stem(String word) {
-        if (word.length() <= 3) {
+        if (word.length() <= 2) {
             return word;
         }
 
@@ -296,7 +296,7 @@ public class Bm25Retriever {
             w = w.substring(0, w.length() - 3) + "i";
         } else if (w.endsWith("ss") || w.endsWith("us") || w.endsWith("is")) {
             // Keep unchanged
-        } else if (w.endsWith("s")) {
+        } else if (w.endsWith("s") && w.length() > 3) {
             w = w.substring(0, w.length() - 1);
         }
 
@@ -334,8 +334,8 @@ public class Bm25Retriever {
             w = w.substring(0, w.length() - 1);
         }
 
-        // Stem trailing 'y' to 'i' if length > 3 (e.g., entity -> entiti, query -> queri)
-        if (w.endsWith("y") && w.length() > 3) {
+        // Stem trailing 'y' to 'i' if length >= 3 (e.g., try -> tri, entity -> entiti, query -> queri)
+        if (w.endsWith("y") && w.length() >= 3) {
             w = w.substring(0, w.length() - 1) + "i";
         }
 

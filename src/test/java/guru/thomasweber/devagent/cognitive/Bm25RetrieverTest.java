@@ -257,6 +257,17 @@ class Bm25RetrieverTest {
         assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
     }
 
+    @Test
+    @DisplayName("Given short 3-letter words ending in y - when querying plural ies - then matches record")
+    void givenShortWordsEndingInY_whenQueryingPluralIes_thenMatches() {
+        Bm25Retriever retriever = new Bm25Retriever();
+        ArchitecturalRecord doc = createDoc("D1", "Retry Logic", "Always try the operation once before failing.");
+        retriever.index(List.of(doc));
+
+        List<ArchitecturalRecord> results = retriever.search("tries", 5);
+        assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
+    }
+
     // =========================================================================
     // 3. Boundary & Edge Cases
     // =========================================================================

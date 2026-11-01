@@ -152,6 +152,22 @@ class NioWorkspaceFileScannerTest {
     }
 
     @Test
+    @DisplayName("Given Windows environment and drive-relative pattern - when findFiles - then throws SecurityException")
+    void givenDriveRelativePatternOnWindows_whenFindFiles_thenThrowsSecurityException() {
+        String originalOs = System.getProperty("os.name");
+        try {
+            System.setProperty("os.name", "Windows 11");
+            assertThatThrownBy(() -> scanner.findFiles(repoRoot, "C:docs/*.md"))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("drive-relative pattern not allowed on Windows");
+        } finally {
+            if (originalOs != null) {
+                System.setProperty("os.name", originalOs);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("Given non-existent search root prefix - when findFiles - then returns empty list")
     void givenNonExistentSearchRoot_whenFindFiles_thenReturnsEmptyList() {
         List<RepoPath> results = scanner.findFiles(repoRoot, "missing-dir/**/*.md");

@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -77,6 +78,10 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         String normalized = pattern.replace('\\', '/');
         if (normalized.startsWith("/") || normalized.matches("^[a-zA-Z]:/.*")) {
             throw new SecurityException("Jailbreak attempt: absolute pattern not allowed: " + pattern);
+        }
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        if (isWindows && normalized.matches("^[a-zA-Z]:.*")) {
+            throw new SecurityException("Jailbreak attempt: drive-relative pattern not allowed on Windows: " + pattern);
         }
         for (String segment : normalized.split("/")) {
             if ("..".equals(segment)) {
