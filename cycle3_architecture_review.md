@@ -269,11 +269,13 @@ All critical architectural mismatches (P0) and key design clumsiness smells (P1,
 | **C-4: BM25 Thread Safety Asymmetry** | MEDIUM | **RESOLVED** | Refactored `Bm25Retriever` to an immutable snapshot record (`IndexSnapshot`) swapped via `AtomicReference`, providing 100% lock-free reads. |
 | **C-5: Gatekeeper Architectural Inversion** | MEDIUM | **RESOLVED** | `ArchitectGatekeeper` accepts `List<ArchitecturalRecord>`, and `GatekeeperCacheKeyGenerator` sorts IDs deterministically for SHA-256 caching. |
 | **C-6: URL Port Coordinate Masking** | MEDIUM | **RESOLVED** | Refined line/col regex in `ErrorSignatureExtractor` to match source file extensions, preserving HTTP ports like `localhost:8080`. |
+| **C-7: Fragile YAML Parser** | MEDIUM | **RESOLVED** | Enhanced `AdrDiscoveryService.readConfiguredRulesPaths` with bracketed inline and multiline array parsing and inline comment stripping. |
 
 ### Final Verification Results
-* **Tests:** 306 tests run, 0 failures, 0 errors, 0 skipped.
-* **Line Coverage:** **96.32%** (Quality Gate: $\ge 95.0\%$).
-* **Condition/Branch Coverage:** **91.58%** (Quality Gate: $\ge 90.0\%$).
+* **Tests:** 308 tests run, 0 failures, 0 errors, 0 skipped.
+* **Line Coverage:** **96.27%** (Quality Gate: $\ge 95.0\%$).
+* **Condition/Branch Coverage:** **91.13%** (Quality Gate: $\ge 90.0\%$).
 * **ArchUnit Native Compliance:** 6/6 rules passed.
 * **Java Import Hygiene:** 0 inline FQN violations.
+* **Markdown Links:** 36 files scanned, 0 broken links.
 
