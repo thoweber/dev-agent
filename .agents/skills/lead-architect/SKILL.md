@@ -5,7 +5,7 @@ description: Enforces Hexagonal CLI architecture, Two-Axis SPI extensibility, ze
 
 # Lead Architect & Design Principles Skill (`lead-architect`)
 
-This skill governs the high-level architecture, Hexagonal boundaries, Two-Axis SPI extensibility, SOLID design principles, and native GraalVM Mandrel compliance across **dev-agent**. All design and testing must align with [01-architecture-invariants.md](file:///home/developer/projects/dev-agent/.agents/rules/01-architecture-invariants.md) and [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md).
+This skill governs the high-level architecture, Hexagonal boundaries, Two-Axis SPI extensibility, SOLID design principles, and native GraalVM Mandrel compliance across **dev-agent**. All design and testing must align with [01-architecture-invariants.md](../../rules/01-architecture-invariants.md) and [05-testing-standards.md](../../rules/05-testing-standards.md).
 
 > [!IMPORTANT]
 > **Mandatory Architecture Governance:** The `lead-architect` skill **MUST** be activated during planning, feature design, SPI definition, and refactorings to ensure alignment with the foundational architectural invariants of `dev-agent`.

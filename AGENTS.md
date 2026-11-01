@@ -35,6 +35,8 @@ Remote CI/CD runs are too slow for autonomous iteration. Execute these fast loca
   `./scripts/check_pr_reviews.py --check-status`
 * **Run Python Script Unit Tests ($< 2\text{ s}$):**  
   `python3 -m unittest discover -s tests/scripts`
+* **Verify Markdown Links & Relative Paths ($< 1\text{ s}$):**  
+  `python3 scripts/verify_markdown_links.py`
 * **Full Clean Build & Verification ($< 30\text{ s}$):**  
   `./mvnw clean verify`
 * **SonarCloud Quality Gate Analysis:**  

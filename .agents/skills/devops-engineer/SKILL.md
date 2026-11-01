@@ -5,7 +5,7 @@ description: Manages GraalVM Mandrel native compilation, GitHub Actions CI pipel
 
 # DevOps & Release Engineering Skill (`devops-engineer`)
 
-This skill governs native compilation, CI automation, artifact packaging, and installation scripting for **dev-agent**. All test lifecycle and quality gate enforcement must adhere to [05-testing-standards.md](file:///home/developer/projects/dev-agent/.agents/rules/05-testing-standards.md) and [03-quality-and-slas.md](file:///home/developer/projects/dev-agent/.agents/rules/03-quality-and-slas.md).
+This skill governs native compilation, CI automation, artifact packaging, and installation scripting for **dev-agent**. All test lifecycle and quality gate enforcement must adhere to [05-testing-standards.md](../../rules/05-testing-standards.md) and [03-quality-and-slas.md](../../rules/03-quality-and-slas.md).
 
 ---
 
