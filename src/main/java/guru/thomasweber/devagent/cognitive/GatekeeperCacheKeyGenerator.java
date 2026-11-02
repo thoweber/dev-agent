@@ -20,13 +20,11 @@ import java.util.List;
 @ApplicationScoped
 public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
 
-    private static final String DELIMITER = "\n---ADR_DIGEST---\n";
-
     @Override
     public Object generate(Method method, Object... methodParams) {
         String diff = extractDiff(methodParams);
         String adrs = extractAdrs(methodParams);
-        String compositePayload = diff + DELIMITER + adrs;
+        String compositePayload = "DIFF:" + diff.length() + ":" + diff + "\nADRS:" + adrs.length() + ":" + adrs;
         return sha256Hex(compositePayload);
     }
 

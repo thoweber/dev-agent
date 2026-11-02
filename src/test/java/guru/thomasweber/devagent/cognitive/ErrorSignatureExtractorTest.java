@@ -239,6 +239,10 @@ class ErrorSignatureExtractorTest {
             .isEqualTo("App.java:[abc, 15] error");
         assertThat(extractor.extractNormalizedText("App.java:[42, 15 error"))
             .isEqualTo("App.java:[42, 15 error");
+
+        // Ordinary bracket values without source location are left unchanged
+        assertThat(extractor.extractNormalizedText("expected: [1, 2] but was: [1, 3]"))
+            .isEqualTo("expected: [1, 2] but was: [1, 3]");
     }
 
     @Test

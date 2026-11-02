@@ -118,16 +118,27 @@ def fetch_quality_gate(project_key: str, pr_num: Optional[int]) -> Dict[str, Any
 
 
 def fetch_issues(project_key: str, pr_num: Optional[int], resolved: bool = False) -> List[Dict[str, Any]]:
-    """Fetch issues for project or PR."""
-    params: Dict[str, Any] = {
-        "componentKeys": project_key,
-        "resolved": "true" if resolved else "false",
-        "ps": 100,
-    }
-    if pr_num:
-        params["pullRequest"] = pr_num
-    data = make_sonarcloud_request("issues/search", params)
-    return data.get("issues", [])
+    """Fetch all issues for project or PR across all pages."""
+    all_issues: List[Dict[str, Any]] = []
+    page = 1
+    page_size = 100
+    while True:
+        params: Dict[str, Any] = {
+            "componentKeys": project_key,
+            "resolved": "true" if resolved else "false",
+            "ps": page_size,
+            "p": page,
+        }
+        if pr_num:
+            params["pullRequest"] = pr_num
+        data = make_sonarcloud_request("issues/search", params)
+        issues = data.get("issues", [])
+        all_issues.extend(issues)
+        total = data.get("total", len(all_issues))
+        if len(all_issues) >= total or not issues:
+            break
+        page += 1
+    return all_issues
 
 
 def format_condition(cond: Dict[str, Any]) -> str:
@@ -199,7 +210,11 @@ def main() -> None:
     pr_num = detect_pr_number(args.pr)
 
     qg_data = fetch_quality_gate(project_key, pr_num)
-    issues = fetch_issues(project_key, pr_num) if (args.issues or args.details or not args.check_status) else []
+    issues = (
+        fetch_issues(project_key, pr_num)
+        if (args.issues or args.details or args.fail_on_error or not args.check_status)
+        else []
+    )
 
     if args.json:
         result = {

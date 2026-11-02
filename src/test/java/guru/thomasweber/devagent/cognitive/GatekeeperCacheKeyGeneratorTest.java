@@ -137,4 +137,14 @@ class GatekeeperCacheKeyGeneratorTest {
         Object keyNullSummaryContent = generator.generate(method, diff, List.of(recNullSummaryContent));
         assertThat(keyNullSummaryContent).isNotNull();
     }
+
+    @Test
+    @DisplayName("Given inputs with embedded delimiter characters - when generating cache key - then length-framing avoids collisions")
+    void givenInputsWithDelimiters_whenGenerating_thenAvoidsCollisions() throws NoSuchMethodException {
+        Method method = Object.class.getMethod("toString");
+        Object key1 = generator.generate(method, "x\nADRS:1:y", "z");
+        Object key2 = generator.generate(method, "x", "y\nADRS:1:z");
+
+        assertThat(key1).isNotEqualTo(key2);
+    }
 }

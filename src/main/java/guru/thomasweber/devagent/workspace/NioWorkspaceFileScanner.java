@@ -123,8 +123,22 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (!Files.exists(searchRoot)) {
             return;
         }
-        PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + normalized);
-        walkAndCollect(rootPath, searchRoot, matcher, ignorePrefixes, fileFilter, uniqueFiles);
+        List<String> patterns = expandZeroLevelDoubleStarPatterns(normalized);
+        List<PathMatcher> matchers = patterns.stream()
+            .map(p -> FileSystems.getDefault().getPathMatcher("glob:" + p))
+            .toList();
+        walkAndCollect(rootPath, searchRoot, matchers, ignorePrefixes, fileFilter, uniqueFiles);
+    }
+
+    static List<String> expandZeroLevelDoubleStarPatterns(String pattern) {
+        List<String> results = new ArrayList<>();
+        results.add(pattern);
+        int idx = pattern.indexOf("**/");
+        if (idx >= 0) {
+            String withoutDoubleStar = pattern.substring(0, idx) + pattern.substring(idx + 3);
+            results.addAll(expandZeroLevelDoubleStarPatterns(withoutDoubleStar));
+        }
+        return results.stream().distinct().toList();
     }
 
     private void scanExactPattern(
@@ -149,7 +163,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
     private void walkAndCollect(
         Path rootPath,
         Path searchRoot,
-        PathMatcher matcher,
+        List<PathMatcher> matchers,
         Set<String> ignorePrefixes,
         Predicate<Path> fileFilter,
         Map<Path, RepoPath> uniqueFiles
@@ -169,7 +183,8 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
                     if (attrs.isRegularFile() && !Files.isSymbolicLink(file) && !isIgnored(rootPath, file, ignorePrefixes)) {
                         Path rel = rootPath.relativize(file);
                         String relStr = rel.toString().replace('\\', '/');
-                        boolean matchesPattern = (matcher == null) || matcher.matches(Path.of(relStr));
+                        boolean matchesPattern = (matchers == null || matchers.isEmpty())
+                            || matchers.stream().anyMatch(m -> m.matches(Path.of(relStr)));
                         if (matchesPattern && (fileFilter == null || fileFilter.test(file))) {
                             RepoPath repoPath = RepoPath.of(file, rootPath);
                             uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);

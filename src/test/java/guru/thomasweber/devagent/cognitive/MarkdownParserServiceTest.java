@@ -171,7 +171,6 @@ class MarkdownParserServiceTest {
         MarkdownParserService.ParsedMarkdown parsed = parserService.parse(markdown);
         assertThat(parsed.sections()).hasSize(1);
         assertThat(parsed.sections().getFirst().content())
-            .contains("First line")
-            .contains("Second line");
+            .containsSubsequence("First line", "\n", "Second line");
     }
 }

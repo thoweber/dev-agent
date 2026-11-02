@@ -143,6 +143,28 @@ class TestCheckSonarcloud(unittest.TestCase):
                 sc.main()
             self.assertEqual(cm.exception.code, 1)
 
+    @patch("scripts.check_sonarcloud.fetch_quality_gate")
+    @patch("scripts.check_sonarcloud.fetch_issues")
+    def test_main_cli_fail_on_error_with_open_issues(self, mock_issues, mock_qg):
+        mock_qg.return_value = {"projectStatus": {"status": "OK"}}
+        mock_issues.return_value = [{"key": "issue-1"}]
+        with patch.object(sys, "argv", ["check_sonarcloud.py", "--pr", "6", "--check-status", "--fail-on-error"]), patch("sys.stdout", io.StringIO()):
+            with self.assertRaises(SystemExit) as cm:
+                sc.main()
+            self.assertEqual(cm.exception.code, 1)
+
+    @patch("scripts.check_sonarcloud.make_sonarcloud_request")
+    def test_fetch_issues_pagination(self, mock_req):
+        mock_req.side_effect = [
+            {"total": 2, "issues": [{"key": "issue-1"}]},
+            {"total": 2, "issues": [{"key": "issue-2"}]},
+        ]
+        issues = sc.fetch_issues("my-proj", 6)
+        self.assertEqual(len(issues), 2)
+        self.assertEqual(issues[0]["key"], "issue-1")
+        self.assertEqual(issues[1]["key"], "issue-2")
+        self.assertEqual(mock_req.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -207,6 +207,9 @@ public class ErrorSignatureExtractor {
         }
 
         private Match tryMatchBracket(ScanCursor cursor) {
+            if (!cursor.outputEndsWith(PATH_REPLACEMENT) && !cursor.hasPrecedingSourceExtension()) {
+                return null;
+            }
             var probe = cursor.fork();
             if (!probe.consumeIf(":[") && !probe.consumeIf('[')) {
                 return null;

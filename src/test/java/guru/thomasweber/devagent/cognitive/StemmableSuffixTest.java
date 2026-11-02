@@ -136,7 +136,7 @@ class StemmableSuffixTest {
     }
 
     @Test
-    @DisplayName("Given null replacement in constructor - then defaults to empty string")
+    @DisplayName("Given null replacement - when constructing SuffixRule - then defaults to empty string")
     void givenNullReplacement_whenConstructing_thenDefaultsToEmptyString() {
         StemmableSuffix.SuffixRule rule = new StemmableSuffix.SuffixRule(List.of("ment"), 5, null, false);
 

@@ -49,6 +49,29 @@ class NioWorkspaceFileScannerTest {
     }
 
     @Test
+    @DisplayName("Given recursive wildcard pattern - when files exist at directory root and root level - then matches zero and more directory levels")
+    void givenRecursiveWildcard_whenFilesAtDirectoryRootAndRootLevel_thenMatchesZeroAndMoreLevels() throws IOException {
+        Path rulesDir = tempDir.resolve(".agents/rules");
+        Files.createDirectories(rulesDir);
+        Files.writeString(rulesDir.resolve("01-rule.md"), "# Rule 1");
+        Path subRulesDir = rulesDir.resolve("sub");
+        Files.createDirectories(subRulesDir);
+        Files.writeString(subRulesDir.resolve("sub-rule.md"), "# Sub Rule");
+
+        Files.writeString(tempDir.resolve("root.md"), "# Root Doc");
+
+        List<RepoPath> ruleResults = scanner.findFiles(repoRoot, ".agents/rules/**/*.md");
+        assertThat(ruleResults)
+            .extracting(r -> r.relativize().toString().replace('\\', '/'))
+            .containsExactlyInAnyOrder(".agents/rules/01-rule.md", ".agents/rules/sub/sub-rule.md");
+
+        List<RepoPath> allResults = scanner.findFiles(repoRoot, "**/*.md");
+        assertThat(allResults)
+            .extracting(r -> r.relativize().toString().replace('\\', '/'))
+            .contains("root.md", ".agents/rules/01-rule.md", ".agents/rules/sub/sub-rule.md");
+    }
+
+    @Test
     @DisplayName("Given directory pattern - when findFiles - then discovers all files within directory")
     void givenDirectoryPattern_whenFindFiles_thenDiscoversAllFilesInside() throws IOException {
         Path rulesDir = tempDir.resolve(".agents/rules");
@@ -237,13 +260,14 @@ class NioWorkspaceFileScannerTest {
 
             Path symlinkDir = tempDir.resolve("sym-dir");
             Files.createSymbolicLink(symlinkDir, docsDir);
-
-            List<RepoPath> results = scanner.findFiles(repoRoot, "**/*.md");
-            assertThat(results)
-                .extracting(r -> r.relativize().toString().replace('\\', '/'))
-                .containsExactly("docs/real.md");
         } catch (UnsupportedOperationException | SecurityException | IOException _) {
             // Symlink creation not permitted in environment; assumption passes
+            return;
         }
+
+        List<RepoPath> results = scanner.findFiles(repoRoot, "**/*.md");
+        assertThat(results)
+            .extracting(r -> r.relativize().toString().replace('\\', '/'))
+            .containsExactly("docs/real.md");
     }
 }
