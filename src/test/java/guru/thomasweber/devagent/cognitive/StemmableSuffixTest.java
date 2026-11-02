@@ -122,8 +122,9 @@ class StemmableSuffixTest {
         StemmableSuffix.SuffixRule rule = new StemmableSuffix.SuffixRule(mutableList, 6, "", false);
         mutableList.add("extra");
 
-        assertThat(rule.variations()).containsExactly("able", "ible");
-        assertThatThrownBy(() -> rule.variations().add("fail"))
+        List<String> variations = rule.variations();
+        assertThat(variations).containsExactly("able", "ible");
+        assertThatThrownBy(() -> variations.add("fail"))
             .isInstanceOf(UnsupportedOperationException.class);
     }
 
