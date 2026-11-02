@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
@@ -43,6 +44,41 @@ public class Bm25Retriever {
         "until", "up", "very", "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom",
         "why", "with", "would", "you", "your", "yours", "yourself", "yourselves"
     )));
+
+    private static final List<StemmableSuffix> PLURAL_RULES = List.of(
+        StemmableSuffix.replace("sses", "ss"),
+        StemmableSuffix.replace("ies", "i"),
+        StemmableSuffix.preserve("ss", "us", "is"),
+        StemmableSuffix.strip(4, "s")
+    );
+
+    private static final List<StemmableSuffix> NOUN_RULES = List.of(
+        StemmableSuffix.replace("ational", "at"),
+        StemmableSuffix.replace("tional", "tion"),
+        StemmableSuffix.replace("ization", "iz"),
+        StemmableSuffix.replace("isation", "is"),
+        StemmableSuffix.replace("ation", "at"),
+        StemmableSuffix.replace("ator", "at"),
+        StemmableSuffix.strip(6, "ment")
+    );
+
+    private static final List<StemmableSuffix> ADJECTIVE_RULES = List.of(
+        StemmableSuffix.strip(5, "al"),
+        StemmableSuffix.strip(6, "able", "ible"),
+        StemmableSuffix.strip(5, "ive")
+    );
+
+    private static final List<StemmableSuffix> VERB_RULES = List.of(
+        StemmableSuffix.strip(6, "ing"),
+        StemmableSuffix.strip(5, "ed"),
+        StemmableSuffix.strip(5, "er", "or"),
+        StemmableSuffix.strip(5, "ize", "ise")
+    );
+
+    private static final List<StemmableSuffix> TRAILING_VOWEL_RULES = List.of(
+        StemmableSuffix.strip(5, "e"),
+        StemmableSuffix.replace(3, "i", "y")
+    );
 
     private record IndexSnapshot(
         Map<String, ArchitecturalRecord> documents,
@@ -266,25 +302,9 @@ public class Bm25Retriever {
         if (word.length() <= 2) {
             return word;
         }
-        String w = stemPlural(word);
+        String w = applyFirst(word, PLURAL_RULES);
         w = stemDerivational(w);
-        return stemTrailingVowels(w);
-    }
-
-    private static String stemPlural(String w) {
-        if (w.endsWith("sses")) {
-            return w.substring(0, w.length() - 2);
-        }
-        if (w.endsWith("ies")) {
-            return w.substring(0, w.length() - 3) + "i";
-        }
-        if (w.endsWith("ss") || w.endsWith("us") || w.endsWith("is")) {
-            return w;
-        }
-        if (w.endsWith("s") && w.length() > 3) {
-            return w.substring(0, w.length() - 1);
-        }
-        return w;
+        return applyFirst(w, TRAILING_VOWEL_RULES);
     }
 
     private int indexSingleRecord(ArchitecturalRecord rec, Map<String, Integer> lengths, Map<String, Map<String, Integer>> invertedIndex) {
@@ -312,76 +332,24 @@ public class Bm25Retriever {
     }
 
     private static String stemDerivational(String w) {
-        String stemmed = stemNounSuffixes(w);
+        String stemmed = applyFirst(w, NOUN_RULES);
         if (!stemmed.equals(w)) {
             return stemmed;
         }
-        stemmed = stemAdjectiveSuffixes(w);
+        stemmed = applyFirst(w, ADJECTIVE_RULES);
         if (!stemmed.equals(w)) {
             return stemmed;
         }
-        return stemVerbSuffixes(w);
+        return applyFirst(w, VERB_RULES);
     }
 
-    private static String stemNounSuffixes(String w) {
-        if (w.endsWith("ational")) {
-            return w.substring(0, w.length() - 5);
+    private static String applyFirst(String word, List<StemmableSuffix> rules) {
+        for (StemmableSuffix rule : rules) {
+            Optional<String> result = rule.stem(word);
+            if (result.isPresent()) {
+                return result.get();
+            }
         }
-        if (w.endsWith("tional")) {
-            return w.substring(0, w.length() - 2);
-        }
-        if (w.endsWith("ization") || w.endsWith("isation")) {
-            return w.substring(0, w.length() - 5);
-        }
-        if (w.endsWith("ation")) {
-            return w.substring(0, w.length() - 3);
-        }
-        if (w.endsWith("ator")) {
-            return w.substring(0, w.length() - 2);
-        }
-        if (w.endsWith("ment") && w.length() > 5) {
-            return w.substring(0, w.length() - 4);
-        }
-        return w;
-    }
-
-    private static String stemAdjectiveSuffixes(String w) {
-        if (w.endsWith("al") && w.length() > 4) {
-            return w.substring(0, w.length() - 2);
-        }
-        if ((w.endsWith("able") || w.endsWith("ible")) && w.length() > 5) {
-            return w.substring(0, w.length() - 4);
-        }
-        if (w.endsWith("ive") && w.length() > 4) {
-            return w.substring(0, w.length() - 3);
-        }
-        return w;
-    }
-
-    private static String stemVerbSuffixes(String w) {
-        if (w.endsWith("ing") && w.length() > 5) {
-            return w.substring(0, w.length() - 3);
-        }
-        if (w.endsWith("ed") && w.length() > 4) {
-            return w.substring(0, w.length() - 2);
-        }
-        if ((w.endsWith("er") || w.endsWith("or")) && w.length() > 4) {
-            return w.substring(0, w.length() - 2);
-        }
-        if ((w.endsWith("ize") || w.endsWith("ise")) && w.length() > 4) {
-            return w.substring(0, w.length() - 3);
-        }
-        return w;
-    }
-
-    private static String stemTrailingVowels(String w) {
-        String res = w;
-        if (res.endsWith("e") && res.length() > 4) {
-            res = res.substring(0, res.length() - 1);
-        }
-        if (res.endsWith("y") && res.length() >= 3) {
-            res = res.substring(0, res.length() - 1) + "i";
-        }
-        return res;
+        return word;
     }
 }
