@@ -166,8 +166,8 @@ public class AdrParser {
         for (DocumentSection section : parsed.sections()) {
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("path", filePath != null ? filePath.toString() : "");
-            metadata.put("id", docId);
-            metadata.put("title", title);
+            metadata.put(METADATA_ID, docId);
+            metadata.put(METADATA_TITLE, title);
             metadata.put("section", section.heading());
 
             String segmentBody = String.format("[%s - %s] %s%n%s", docId, title, section.heading(), section.content());

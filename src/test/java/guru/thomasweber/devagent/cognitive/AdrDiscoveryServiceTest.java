@@ -5,7 +5,6 @@ import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.workspace.NioWorkspaceFileScanner;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
-import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,13 +24,11 @@ class AdrDiscoveryServiceTest {
     Path tempDir;
 
     private WorkspaceContextResolver contextResolver;
-    private WorkspaceJailValidator jailValidator;
     private AdrDiscoveryService discoveryService;
 
     @BeforeEach
     void setUp() {
         contextResolver = new WorkspaceContextResolver(tempDir);
-        jailValidator = new WorkspaceJailValidator(tempDir);
         discoveryService = new AdrDiscoveryService(contextResolver);
     }
 
@@ -409,12 +406,12 @@ class AdrDiscoveryServiceTest {
 
         List<ArchitecturalRecord> records = discoveryService.discoverRecords();
         assertThat(records).hasSize(1);
-        ArchitecturalRecord record = records.getFirst();
-        assertThat(record.id()).isEqualTo("ADR-042");
-        assertThat(record.title()).isEqualTo("Native CommonMark AST Parsing");
-        assertThat(record.status()).isEqualTo("ACCEPTED");
-        assertThat(record.summary()).isEqualTo("Replace regex markdown parsing with commonmark AST");
-        assertThat(record.tags()).contains("parser", "ast", "adr");
+        ArchitecturalRecord entry = records.getFirst();
+        assertThat(entry.id()).isEqualTo("ADR-042");
+        assertThat(entry.title()).isEqualTo("Native CommonMark AST Parsing");
+        assertThat(entry.status()).isEqualTo("ACCEPTED");
+        assertThat(entry.summary()).isEqualTo("Replace regex markdown parsing with commonmark AST");
+        assertThat(entry.tags()).contains("parser", "ast", "adr");
     }
 
     @Test
@@ -436,10 +433,10 @@ class AdrDiscoveryServiceTest {
 
         List<ArchitecturalRecord> records = discoveryService.discoverRecords();
         assertThat(records).hasSize(1);
-        ArchitecturalRecord record = records.getFirst();
-        assertThat(record.id()).isEqualTo("ADR-050");
-        assertThat(record.title()).isEqualTo("ADR-050: Code Block Safety");
-        assertThat(record.summary()).isEqualTo("Legitimate summary section.");
+        ArchitecturalRecord entry = records.getFirst();
+        assertThat(entry.id()).isEqualTo("ADR-050");
+        assertThat(entry.title()).isEqualTo("ADR-050: Code Block Safety");
+        assertThat(entry.summary()).isEqualTo("Legitimate summary section.");
     }
 
     @Test

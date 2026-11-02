@@ -82,13 +82,7 @@ public class ErrorSignatureExtractor {
                     continue;
                 }
 
-                Match match = null;
-                for (NormalizationRule rule : rules) {
-                    match = rule.tryMatch(cursor);
-                    if (match != null) {
-                        break;
-                    }
-                }
+                Match match = matchFirstRule(cursor);
 
                 if (pendingSpace) {
                     sb.append(' ');
@@ -105,6 +99,16 @@ public class ErrorSignatureExtractor {
             }
 
             return sb.toString().trim();
+        }
+
+        private Match matchFirstRule(ScanCursor cursor) {
+            for (NormalizationRule rule : rules) {
+                Match match = rule.tryMatch(cursor);
+                if (match != null) {
+                    return match;
+                }
+            }
+            return null;
         }
     }
 
@@ -490,10 +494,7 @@ public class ErrorSignatureExtractor {
             int lastDot = -1;
             int slashCount = (lastSlash >= 0) ? 1 : 0;
 
-            while (offset < input.length()) {
-                if (isPathTerminator()) {
-                    break;
-                }
+            while (offset < input.length() && !isPathTerminator()) {
                 char c = input.charAt(offset);
                 if (c == separator) {
                     lastSlash = offset;

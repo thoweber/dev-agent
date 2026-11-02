@@ -28,7 +28,8 @@ public class LoopCircuitBreaker {
     public static final int MAX_HISTORY_SIZE = 50;
     public static final Duration ROLLBACK_TIMEOUT = Duration.ofSeconds(10);
     private static final String DEFAULT_TASK_ID = "default";
-    private static final String WORKTREE_PATH_SEGMENT = "/.git/dev-agent-worktrees/";
+    private static final String WORKTREE_DIR_NAME = ".git/dev-agent-worktrees";
+    private static final String WORKTREE_PATH_SEGMENT = "/" + WORKTREE_DIR_NAME + "/";
 
     private final ErrorSignatureExtractor signatureExtractor;
     private final SubprocessExecutor subprocessExecutor;

@@ -100,27 +100,7 @@ public class Bm25Retriever {
         long totalTokens = 0;
         for (ArchitecturalRecord rec : uniqueRecords.values()) {
             newDocs.put(rec.id(), rec);
-            String fullText = String.join(" ",
-                Objects.toString(rec.title(), ""),
-                Objects.toString(rec.summary(), ""),
-                Objects.toString(rec.content(), ""),
-                String.join(" ", rec.tags() != null ? rec.tags() : Collections.emptyList())
-            );
-
-            List<String> tokens = tokenize(fullText);
-            int docLength = tokens.size();
-            newLengths.put(rec.id(), docLength);
-            totalTokens += docLength;
-
-            Map<String, Integer> freqs = new LinkedHashMap<>();
-            for (String token : tokens) {
-                freqs.merge(token, 1, Integer::sum);
-            }
-
-            for (Map.Entry<String, Integer> entry : freqs.entrySet()) {
-                newInvertedIndex.computeIfAbsent(entry.getKey(), _ -> new LinkedHashMap<>())
-                    .put(rec.id(), entry.getValue());
-            }
+            totalTokens += indexSingleRecord(rec, newLengths, newInvertedIndex);
         }
 
         int totalDocs = newDocs.size();
@@ -307,7 +287,39 @@ public class Bm25Retriever {
         return w;
     }
 
+    private int indexSingleRecord(ArchitecturalRecord rec, Map<String, Integer> lengths, Map<String, Map<String, Integer>> invertedIndex) {
+        String fullText = String.join(" ",
+            Objects.toString(rec.title(), ""),
+            Objects.toString(rec.summary(), ""),
+            Objects.toString(rec.content(), ""),
+            String.join(" ", rec.tags() != null ? rec.tags() : Collections.emptyList())
+        );
+
+        List<String> tokens = tokenize(fullText);
+        int docLength = tokens.size();
+        lengths.put(rec.id(), docLength);
+
+        Map<String, Integer> freqs = new LinkedHashMap<>();
+        for (String token : tokens) {
+            freqs.merge(token, 1, Integer::sum);
+        }
+
+        for (Map.Entry<String, Integer> entry : freqs.entrySet()) {
+            invertedIndex.computeIfAbsent(entry.getKey(), _ -> new LinkedHashMap<>())
+                .put(rec.id(), entry.getValue());
+        }
+        return docLength;
+    }
+
     private static String stemDerivational(String w) {
+        String stemmed = stemNounSuffixes(w);
+        if (!stemmed.equals(w)) {
+            return stemmed;
+        }
+        return stemVerbAdjectiveSuffixes(w);
+    }
+
+    private static String stemNounSuffixes(String w) {
         if (w.endsWith("ational")) {
             return w.substring(0, w.length() - 5);
         }
@@ -323,13 +335,17 @@ public class Bm25Retriever {
         if (w.endsWith("ator")) {
             return w.substring(0, w.length() - 2);
         }
+        if (w.endsWith("ment") && w.length() > 5) {
+            return w.substring(0, w.length() - 4);
+        }
+        return w;
+    }
+
+    private static String stemVerbAdjectiveSuffixes(String w) {
         if (w.endsWith("al") && w.length() > 4) {
             return w.substring(0, w.length() - 2);
         }
         if ((w.endsWith("able") || w.endsWith("ible")) && w.length() > 5) {
-            return w.substring(0, w.length() - 4);
-        }
-        if (w.endsWith("ment") && w.length() > 5) {
             return w.substring(0, w.length() - 4);
         }
         if (w.endsWith("ing") && w.length() > 5) {

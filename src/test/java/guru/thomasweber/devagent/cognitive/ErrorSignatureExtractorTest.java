@@ -246,8 +246,9 @@ class ErrorSignatureExtractorTest {
     void givenUrlWithPort_whenExtracting_thenPreservesPortWithoutMaskingAsLineCol() {
         String trace = "Connection refused to http://localhost:8080/api/v1/resource";
         String normalized = extractor.extractNormalizedText(trace);
-        assertThat(normalized).contains("localhost:8080");
-        assertThat(normalized).doesNotContain("<LINE>");
+        assertThat(normalized)
+            .contains("localhost:8080")
+            .doesNotContain("<LINE>");
     }
 
     @Test

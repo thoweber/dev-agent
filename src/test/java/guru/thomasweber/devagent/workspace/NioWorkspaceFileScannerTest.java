@@ -242,7 +242,7 @@ class NioWorkspaceFileScannerTest {
             assertThat(results)
                 .extracting(r -> r.relativize().toString().replace('\\', '/'))
                 .containsExactly("docs/real.md");
-        } catch (UnsupportedOperationException | SecurityException | IOException e) {
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
             // Symlink creation not permitted in environment; assumption passes
         }
     }
