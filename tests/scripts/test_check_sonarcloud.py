@@ -165,6 +165,15 @@ class TestCheckSonarcloud(unittest.TestCase):
         self.assertEqual(issues[1]["key"], "issue-2")
         self.assertEqual(mock_req.call_count, 2)
 
+    @patch("scripts.check_sonarcloud.make_sonarcloud_request")
+    def test_fetch_issues_respects_max_ceiling(self, mock_req):
+        # Even if total is reported as 20000, it stops at ceiling
+        mock_req.return_value = {"total": 20000, "issues": [{"key": f"issue-{i}"} for i in range(100)]}
+        with patch("scripts.check_sonarcloud.MAX_SONARCLOUD_RESULTS", 200):
+            issues = sc.fetch_issues("my-proj", 6)
+            self.assertEqual(len(issues), 200)
+            self.assertEqual(mock_req.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

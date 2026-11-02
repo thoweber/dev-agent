@@ -117,8 +117,11 @@ def fetch_quality_gate(project_key: str, pr_num: Optional[int]) -> Dict[str, Any
     return make_sonarcloud_request("qualitygates/project_status", params)
 
 
+MAX_SONARCLOUD_RESULTS = 10000
+
+
 def fetch_issues(project_key: str, pr_num: Optional[int], resolved: bool = False) -> List[Dict[str, Any]]:
-    """Fetch all issues for project or PR across all pages."""
+    """Fetch all issues for project or PR across all pages up to SonarCloud's 10,000-result ceiling."""
     all_issues: List[Dict[str, Any]] = []
     page = 1
     page_size = 100
@@ -135,7 +138,12 @@ def fetch_issues(project_key: str, pr_num: Optional[int], resolved: bool = False
         issues = data.get("issues", [])
         all_issues.extend(issues)
         total = data.get("total", len(all_issues))
-        if len(all_issues) >= total or not issues:
+        if (
+            len(all_issues) >= total
+            or not issues
+            or len(all_issues) >= MAX_SONARCLOUD_RESULTS
+            or (page * page_size) >= MAX_SONARCLOUD_RESULTS
+        ):
             break
         page += 1
     return all_issues

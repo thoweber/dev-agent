@@ -147,4 +147,32 @@ class GatekeeperCacheKeyGeneratorTest {
 
         assertThat(key1).isNotEqualTo(key2);
     }
+
+    @Test
+    @DisplayName("Given records with different field boundaries - when generating cache key - then length-framing produces distinct keys")
+    void givenRecordsWithDifferentFieldBoundaries_whenGenerating_thenProducesDistinctKeys() throws NoSuchMethodException {
+        Method method = Object.class.getMethod("toString");
+        String diff = "+line 1";
+
+        ArchitecturalRecord rec1 = ArchitecturalRecord.builder()
+            .id("ADR-001")
+            .title("Title")
+            .status("ACCEPTED")
+            .summary("s:x")
+            .content("y")
+            .build();
+
+        ArchitecturalRecord rec2 = ArchitecturalRecord.builder()
+            .id("ADR-001")
+            .title("Title")
+            .status("ACCEPTED")
+            .summary("s")
+            .content("x:y")
+            .build();
+
+        Object key1 = generator.generate(method, diff, List.of(rec1));
+        Object key2 = generator.generate(method, diff, List.of(rec2));
+
+        assertThat(key1).isNotEqualTo(key2);
+    }
 }

@@ -57,9 +57,17 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
         if (item instanceof ArchitecturalRecord rec) {
             String summary = rec.summary() != null ? rec.summary().strip() : "";
             String content = rec.content() != null ? rec.content().strip() : "";
-            return rec.id() + ":" + rec.title() + ":" + rec.status() + ":" + summary + ":" + content;
+            return frame(String.valueOf(rec.id()))
+                + frame(String.valueOf(rec.title()))
+                + frame(String.valueOf(rec.status()))
+                + frame(summary)
+                + frame(content);
         }
         return item.toString().strip();
+    }
+
+    private static String frame(String value) {
+        return value.length() + ":" + value;
     }
 
     private static String sha256Hex(String input) {
