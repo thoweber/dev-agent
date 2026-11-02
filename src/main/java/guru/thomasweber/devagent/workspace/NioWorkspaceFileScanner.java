@@ -8,6 +8,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
@@ -120,7 +121,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         int lastSlashBeforeWildcard = normalized.lastIndexOf('/', firstWildcard);
         String prefix = (lastSlashBeforeWildcard >= 0) ? normalized.substring(0, lastSlashBeforeWildcard) : "";
         Path searchRoot = prefix.isEmpty() ? rootPath : rootPath.resolve(prefix);
-        if (!Files.exists(searchRoot)) {
+        if (!Files.exists(searchRoot, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         RepoPath.of(searchRoot, rootPath);
@@ -150,13 +151,13 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         Map<Path, RepoPath> uniqueFiles
     ) {
         Path path = rootPath.resolve(normalized);
-        if (!Files.exists(path) || isIgnored(rootPath, path, ignorePrefixes)) {
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS) || isIgnored(rootPath, path, ignorePrefixes)) {
             return;
         }
         RepoPath repoPath = RepoPath.of(path, rootPath);
-        if (Files.isDirectory(path)) {
+        if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             walkAndCollect(rootPath, path, null, ignorePrefixes, fileFilter, uniqueFiles);
-        } else if (Files.isRegularFile(path) && (fileFilter == null || fileFilter.test(path))) {
+        } else if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && (fileFilter == null || fileFilter.test(path))) {
             uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
         }
     }
@@ -173,7 +174,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
             Files.walkFileTree(searchRoot, EnumSet.noneOf(FileVisitOption.class), Integer.MAX_VALUE, new SimpleFileVisitor<>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                    if (isIgnored(rootPath, dir, ignorePrefixes) || Files.isSymbolicLink(dir)) {
+                    if (isIgnored(rootPath, dir, ignorePrefixes) || attrs.isSymbolicLink() || Files.isSymbolicLink(dir)) {
                         return FileVisitResult.SKIP_SUBTREE;
                     }
                     return FileVisitResult.CONTINUE;
@@ -181,7 +182,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (attrs.isRegularFile() && !Files.isSymbolicLink(file) && !isIgnored(rootPath, file, ignorePrefixes)) {
+                    if (attrs.isRegularFile() && !attrs.isSymbolicLink() && !Files.isSymbolicLink(file) && !isIgnored(rootPath, file, ignorePrefixes)) {
                         Path rel = rootPath.relativize(file);
                         String relStr = rel.toString().replace('\\', '/');
                         boolean matchesPattern = (matchers == null || matchers.isEmpty())

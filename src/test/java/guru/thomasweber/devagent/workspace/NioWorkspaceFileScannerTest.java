@@ -274,15 +274,20 @@ class NioWorkspaceFileScannerTest {
     @Test
     @DisplayName("Given symlink ancestor directory as search root prefix - when findFiles - then throws SecurityException")
     void givenSymlinkAncestorPrefix_whenFindFiles_thenThrowsSecurityException() throws IOException {
-        Path outsideDir = Files.createTempDirectory("outside-dir");
-        Path symlinkPrefix = tempDir.resolve("sym-prefix");
+        Path workspace = tempDir.resolve("workspace");
+        Path outsideDir = tempDir.resolve("outside-dir");
+        Files.createDirectories(workspace);
+        Files.createDirectories(outsideDir);
+
+        RepoPath customRepoRoot = RepoPath.of(workspace, workspace);
+        Path symlinkPrefix = workspace.resolve("sym-prefix");
         try {
             Files.createSymbolicLink(symlinkPrefix, outsideDir);
         } catch (UnsupportedOperationException | SecurityException | IOException _) {
             return;
         }
 
-        assertThatThrownBy(() -> scanner.findFiles(repoRoot, "sym-prefix/**/*.md"))
+        assertThatThrownBy(() -> scanner.findFiles(customRepoRoot, "sym-prefix/**/*.md"))
             .isInstanceOf(SecurityException.class);
     }
 }

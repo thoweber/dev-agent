@@ -306,4 +306,25 @@ class AdrParserTest {
         List<TextSegment> emptyPathSegments = parser.parseSegments(Path.of(""), "# Title\nBody");
         assertThat(emptyPathSegments).hasSize(1);
     }
+
+    @Test
+    @DisplayName("Given symlink file path swapped after validation - when parseRecord - then throws SecurityException")
+    void givenSymlinkFile_whenParseRecord_thenThrowsSecurityException() throws IOException {
+        Path realFile = tempDir.resolve("real-doc.md");
+        Files.writeString(realFile, "# Real Doc\nContent here.");
+        Path targetFile = tempDir.resolve("target.md");
+        Files.writeString(targetFile, "# Target\nContent.");
+
+        RepoPath repoPath = RepoPath.of(realFile, tempDir);
+        Files.delete(realFile);
+        try {
+            Files.createSymbolicLink(realFile, targetFile);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        assertThatThrownBy(() -> parser.parseRecord(repoPath))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Refusing to read through symbolic link");
+    }
 }

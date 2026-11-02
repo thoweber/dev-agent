@@ -60,6 +60,9 @@ public class AdrParser {
      */
     public ArchitecturalRecord parseRecord(RepoPath repoPath) {
         try {
+            if (Files.isSymbolicLink(repoPath.toPath())) {
+                throw new SecurityException("Refusing to read through symbolic link: " + repoPath.toPath());
+            }
             String content = Files.readString(repoPath.toPath());
             return parseRecord(repoPath, content);
         } catch (IOException e) {
