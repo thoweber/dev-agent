@@ -4,12 +4,13 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import io.quarkus.runtime.LaunchMode;
 import jakarta.enterprise.inject.Instance;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class GatekeeperChatModelSupplierTest {
@@ -27,16 +28,30 @@ class GatekeeperChatModelSupplierTest {
 
         ChatResponse response = model.doChat(request);
         assertThat(response).isNotNull();
-        assertThat(response.aiMessage().text()).contains("\"approved\":false");
-        assertThat(response.aiMessage().text()).contains("No ChatModel bean registered");
+        assertThat(response.aiMessage().text())
+            .contains("\"approved\":false")
+            .contains("No ChatModel bean registered");
+    }
+
+    @Test
+    @DisplayName("Given fallback model in test mode - when calling doChat - then returns offline approval stub")
+    void givenFallbackModelInTestMode_whenCallingDoChat_thenReturnsApprovalStub() {
+        ChatModel testFallback = GatekeeperChatModelSupplier.createFallbackChatModel(LaunchMode.TEST);
+        ChatRequest request = ChatRequest.builder()
+            .messages(UserMessage.from("Check diff"))
+            .build();
+
+        ChatResponse response = testFallback.doChat(request);
+        assertThat(response).isNotNull();
+        assertThat(response.aiMessage().text()).contains("\"approved\":true");
     }
 
     @Test
     @DisplayName("Given GatekeeperChatModelSupplier with resolvable bean - when calling get - then delegates to resolvable bean")
     @SuppressWarnings("unchecked")
     void givenSupplierWithResolvableBean_whenGetting_thenDelegatesToBean() {
-        Instance<ChatModel> mockInstance = Mockito.mock(Instance.class);
-        ChatModel mockModel = Mockito.mock(ChatModel.class);
+        Instance<ChatModel> mockInstance = mock(Instance.class);
+        ChatModel mockModel = mock(ChatModel.class);
         when(mockInstance.isResolvable()).thenReturn(true);
         when(mockInstance.get()).thenReturn(mockModel);
 
@@ -50,7 +65,7 @@ class GatekeeperChatModelSupplierTest {
     @DisplayName("Given GatekeeperChatModelSupplier with unresolvable bean - when calling get - then falls back to fallback model")
     @SuppressWarnings("unchecked")
     void givenSupplierWithUnresolvableBean_whenGetting_thenFallsBack() {
-        Instance<ChatModel> mockInstance = Mockito.mock(Instance.class);
+        Instance<ChatModel> mockInstance = mock(Instance.class);
         when(mockInstance.isResolvable()).thenReturn(false);
 
         GatekeeperChatModelSupplier supplier = new GatekeeperChatModelSupplier(mockInstance);

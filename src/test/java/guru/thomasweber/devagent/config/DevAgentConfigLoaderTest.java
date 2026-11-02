@@ -140,6 +140,14 @@ class DevAgentConfigLoaderTest {
 
         DevAgentConfig config = loader.load(configFile);
 
+        verifyWorkspaceAndBuild(config);
+        verifyContract(config);
+        verifyModels(config);
+        verifyKnowledgeAndIsolation(config);
+        verifyDeliveryAndBudget(config);
+    }
+
+    private static void verifyWorkspaceAndBuild(DevAgentConfig config) {
         assertThat(config.archetype()).contains("REST_PANACHE");
         assertThat(config.workspace().backendRoot()).isEqualTo("backend");
         assertThat(config.workspace().frontendRoot()).isEqualTo("ui");
@@ -152,7 +160,9 @@ class DevAgentConfigLoaderTest {
         assertThat(config.build().frontend().executable()).contains("pnpm");
         assertThat(config.build().frontend().customTestCommand()).contains("pnpm test");
         assertThat(config.build().frontend().customTypeCheckCommand()).contains("pnpm typecheck");
+    }
 
+    private static void verifyContract(DevAgentConfig config) {
         assertThat(config.contract().enabled()).isTrue();
         assertThat(config.contract().spec().strategy()).contains("quarkus");
         assertThat(config.contract().spec().outputFile()).contains("target/openapi.yaml");
@@ -162,7 +172,9 @@ class DevAgentConfigLoaderTest {
         assertThat(config.contract().client().additionalProperties())
             .containsEntry("ngVersion", "18.0.0")
             .containsEntry("stringEnums", "true");
+    }
 
+    private static void verifyModels(DevAgentConfig config) {
         assertThat(config.models().planner().provider()).contains("gemini");
         assertThat(config.models().planner().modelName()).contains("gemini-1.5-pro");
         assertThat(config.models().planner().temperature()).contains(0.2);
@@ -176,7 +188,9 @@ class DevAgentConfigLoaderTest {
         assertThat(config.models().fallback().endpoint()).contains("http://localhost:11434");
         assertThat(config.models().fallback().modelName()).contains("qwen2.5-coder:7b");
         assertThat(config.models().fallback().temperature()).contains(0.5);
+    }
 
+    private static void verifyKnowledgeAndIsolation(DevAgentConfig config) {
         assertThat(config.knowledge().rulesPaths()).contains(List.of(".agents/rules/**/*.md", "docs/adr/*.md"));
         assertThat(config.knowledge().retrieval().engine()).isEqualTo("bm25");
         assertThat(config.knowledge().retrieval().maxAdrsPerPrompt()).isEqualTo(6);
@@ -186,7 +200,9 @@ class DevAgentConfigLoaderTest {
         assertThat(config.isolation().branchTemplate()).isEqualTo("custom/{task-id}");
         assertThat(config.isolation().autoStashUncommitted()).isFalse();
         assertThat(config.isolation().autoPruneOnComplete()).isFalse();
+    }
 
+    private static void verifyDeliveryAndBudget(DevAgentConfig config) {
         assertThat(config.delivery().github().targetBranch()).isEqualTo("develop");
         assertThat(config.delivery().github().draft()).isFalse();
         assertThat(config.delivery().github().labels()).contains(List.of("agent", "pr"));

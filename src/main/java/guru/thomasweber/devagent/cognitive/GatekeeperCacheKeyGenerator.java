@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 
@@ -25,36 +24,44 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
 
     @Override
     public Object generate(Method method, Object... methodParams) {
-        String diff = "";
-        String adrs = "";
-
-        if (methodParams != null && methodParams.length > 0) {
-            if (methodParams[0] != null) {
-                diff = methodParams[0].toString().strip();
-            }
-            if (methodParams.length > 1 && methodParams[1] != null) {
-                Object second = methodParams[1];
-                if (second instanceof List<?> list) {
-                    List<String> items = new ArrayList<>();
-                    for (Object item : list) {
-                        if (item instanceof ArchitecturalRecord record) {
-                            items.add(record.id() + ":" + record.title() + ":" + record.status() + ":"
-                                + (record.summary() != null ? record.summary().strip() : "") + ":"
-                                + (record.content() != null ? record.content().strip() : ""));
-                        } else if (item != null) {
-                            items.add(item.toString().strip());
-                        }
-                    }
-                    Collections.sort(items);
-                    adrs = String.join("\n---\n", items);
-                } else {
-                    adrs = second.toString().strip();
-                }
-            }
-        }
-
+        String diff = extractDiff(methodParams);
+        String adrs = extractAdrs(methodParams);
         String compositePayload = diff + DELIMITER + adrs;
         return sha256Hex(compositePayload);
+    }
+
+    private static String extractDiff(Object[] methodParams) {
+        if (methodParams != null && methodParams.length > 0 && methodParams[0] != null) {
+            return methodParams[0].toString().strip();
+        }
+        return "";
+    }
+
+    private static String extractAdrs(Object[] methodParams) {
+        if (methodParams == null || methodParams.length <= 1 || methodParams[1] == null) {
+            return "";
+        }
+        Object second = methodParams[1];
+        if (second instanceof List<?> list) {
+            List<String> items = new ArrayList<>();
+            for (Object item : list) {
+                if (item != null) {
+                    items.add(formatRecordItem(item));
+                }
+            }
+            items.sort(null);
+            return String.join("\n---\n", items);
+        }
+        return second.toString().strip();
+    }
+
+    private static String formatRecordItem(Object item) {
+        if (item instanceof ArchitecturalRecord rec) {
+            String summary = rec.summary() != null ? rec.summary().strip() : "";
+            String content = rec.content() != null ? rec.content().strip() : "";
+            return rec.id() + ":" + rec.title() + ":" + rec.status() + ":" + summary + ":" + content;
+        }
+        return item.toString().strip();
     }
 
     private static String sha256Hex(String input) {

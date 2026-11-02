@@ -102,30 +102,47 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
             normalized = normalized.substring(2);
         }
 
-        boolean hasWildcard = normalized.contains("*") || normalized.contains("?");
-        if (hasWildcard) {
-            int firstWildcard = findFirstWildcard(normalized);
-            int lastSlashBeforeWildcard = normalized.lastIndexOf('/', firstWildcard);
-            String prefix = (lastSlashBeforeWildcard >= 0) ? normalized.substring(0, lastSlashBeforeWildcard) : "";
-            Path searchRoot = prefix.isEmpty() ? rootPath : rootPath.resolve(prefix);
-            if (!Files.exists(searchRoot)) {
-                return;
-            }
-            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + normalized);
-            walkAndCollect(rootPath, searchRoot, matcher, ignorePrefixes, fileFilter, uniqueFiles);
+        if (normalized.contains("*") || normalized.contains("?")) {
+            scanWildcardPattern(rootPath, normalized, ignorePrefixes, fileFilter, uniqueFiles);
         } else {
-            Path path = rootPath.resolve(normalized);
-            if (!Files.exists(path) || isIgnored(rootPath, path, ignorePrefixes)) {
-                return;
-            }
-            if (Files.isDirectory(path)) {
-                walkAndCollect(rootPath, path, null, ignorePrefixes, fileFilter, uniqueFiles);
-            } else if (Files.isRegularFile(path)) {
-                if (fileFilter == null || fileFilter.test(path)) {
-                    RepoPath repoPath = RepoPath.of(path, rootPath);
-                    uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
-                }
-            }
+            scanExactPattern(rootPath, normalized, ignorePrefixes, fileFilter, uniqueFiles);
+        }
+    }
+
+    private void scanWildcardPattern(
+        Path rootPath,
+        String normalized,
+        Set<String> ignorePrefixes,
+        Predicate<Path> fileFilter,
+        Map<Path, RepoPath> uniqueFiles
+    ) {
+        int firstWildcard = findFirstWildcard(normalized);
+        int lastSlashBeforeWildcard = normalized.lastIndexOf('/', firstWildcard);
+        String prefix = (lastSlashBeforeWildcard >= 0) ? normalized.substring(0, lastSlashBeforeWildcard) : "";
+        Path searchRoot = prefix.isEmpty() ? rootPath : rootPath.resolve(prefix);
+        if (!Files.exists(searchRoot)) {
+            return;
+        }
+        PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + normalized);
+        walkAndCollect(rootPath, searchRoot, matcher, ignorePrefixes, fileFilter, uniqueFiles);
+    }
+
+    private void scanExactPattern(
+        Path rootPath,
+        String normalized,
+        Set<String> ignorePrefixes,
+        Predicate<Path> fileFilter,
+        Map<Path, RepoPath> uniqueFiles
+    ) {
+        Path path = rootPath.resolve(normalized);
+        if (!Files.exists(path) || isIgnored(rootPath, path, ignorePrefixes)) {
+            return;
+        }
+        if (Files.isDirectory(path)) {
+            walkAndCollect(rootPath, path, null, ignorePrefixes, fileFilter, uniqueFiles);
+        } else if (Files.isRegularFile(path) && (fileFilter == null || fileFilter.test(path))) {
+            RepoPath repoPath = RepoPath.of(path, rootPath);
+            uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
         }
     }
 

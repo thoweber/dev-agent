@@ -163,4 +163,15 @@ class MarkdownParserServiceTest {
         assertThat(parsed.sections()).hasSize(1);
         assertThat(parsed.sections().getFirst().heading()).isEqualTo("The WorkspaceJailValidator Component");
     }
+
+    @Test
+    @DisplayName("Given markdown with hard line break - when parsing - then preserves line breaks")
+    void givenHardLineBreak_whenParsing_thenPreservesLineBreaks() {
+        String markdown = "First line  \nSecond line";
+        MarkdownParserService.ParsedMarkdown parsed = parserService.parse(markdown);
+        assertThat(parsed.sections()).hasSize(1);
+        assertThat(parsed.sections().getFirst().content())
+            .contains("First line")
+            .contains("Second line");
+    }
 }

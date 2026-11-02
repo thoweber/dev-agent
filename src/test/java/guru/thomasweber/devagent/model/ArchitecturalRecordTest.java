@@ -19,7 +19,7 @@ class ArchitecturalRecordTest {
     @DisplayName("Given valid parameters - when building ArchitecturalRecord - then creates expected immutable record")
     void givenValidParameters_whenBuilding_thenCreatesRecord() {
         RepoPath path = RepoPath.of(tempDir.resolve("docs/adr/ADR-001.md"), tempDir);
-        ArchitecturalRecord record = ArchitecturalRecord.builder()
+        ArchitecturalRecord rec = ArchitecturalRecord.builder()
             .id("ADR-001")
             .title("Quarkus Picocli Native CLI")
             .status("Accepted")
@@ -29,13 +29,13 @@ class ArchitecturalRecordTest {
             .content("# ADR-001: Quarkus Picocli Native CLI\n\nFull body content.")
             .build();
 
-        assertThat(record.id()).isEqualTo("ADR-001");
-        assertThat(record.title()).isEqualTo("Quarkus Picocli Native CLI");
-        assertThat(record.status()).isEqualTo("Accepted");
-        assertThat(record.tags()).containsExactly("cli", "native");
-        assertThat(record.path()).isEqualTo(path);
-        assertThat(record.summary()).isEqualTo("Ahead-of-Time native binary targeting sub-50ms cold boot.");
-        assertThat(record.content()).contains("Full body content.");
+        assertThat(rec.id()).isEqualTo("ADR-001");
+        assertThat(rec.title()).isEqualTo("Quarkus Picocli Native CLI");
+        assertThat(rec.status()).isEqualTo("Accepted");
+        assertThat(rec.tags()).containsExactly("cli", "native");
+        assertThat(rec.path()).isEqualTo(path);
+        assertThat(rec.summary()).isEqualTo("Ahead-of-Time native binary targeting sub-50ms cold boot.");
+        assertThat(rec.content()).contains("Full body content.");
     }
 
     @Test

@@ -6,6 +6,8 @@ import guru.thomasweber.devagent.workspace.RepoPath;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Path;
 import java.util.Collections;
@@ -123,8 +125,9 @@ class Bm25RetrieverTest {
         double score2 = retriever.scoreDocument(doc2.id(), "cache");
 
         assertThat(score1).isGreaterThan(0.0);
-        assertThat(score2).isGreaterThan(score1);
-        assertThat(score2).isLessThan(score1 * 2.0);
+        assertThat(score2)
+            .isGreaterThan(score1)
+            .isLessThan(score1 * 2.0);
     }
 
     @Test
@@ -235,36 +238,19 @@ class Bm25RetrieverTest {
         assertThat(retriever.search("cache", 5)).extracting(ArchitecturalRecord::id).contains("D1");
     }
 
-    @Test
-    @DisplayName("Given document containing singular entity - when querying with plural entities - then matches record")
-    void givenDocWithSingularEntity_whenQueryingWithPluralEntities_thenMatches() {
+    @ParameterizedTest
+    @CsvSource({
+        "Entity Pattern, Panache entity encapsulation and domain decoupling., entities",
+        "Cookie Auth, HTTP cookie based authentication session tokens., cookies",
+        "Retry Logic, Always try the operation once before failing., tries"
+    })
+    @DisplayName("Given document containing singular word - when querying with plural - then matches record")
+    void givenDocWithSingularWord_whenQueryingWithPlural_thenMatches(String title, String content, String query) {
         Bm25Retriever retriever = new Bm25Retriever();
-        ArchitecturalRecord doc = createDoc("D1", "Entity Pattern", "Panache entity encapsulation and domain decoupling.");
+        ArchitecturalRecord doc = createDoc("D1", title, content);
         retriever.index(List.of(doc));
 
-        List<ArchitecturalRecord> results = retriever.search("entities", 5);
-        assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
-    }
-
-    @Test
-    @DisplayName("Given document containing singular cookie - when querying with plural cookies - then matches record")
-    void givenDocWithSingularCookie_whenQueryingWithPluralCookies_thenMatches() {
-        Bm25Retriever retriever = new Bm25Retriever();
-        ArchitecturalRecord doc = createDoc("D1", "Cookie Auth", "HTTP cookie based authentication session tokens.");
-        retriever.index(List.of(doc));
-
-        List<ArchitecturalRecord> results = retriever.search("cookies", 5);
-        assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
-    }
-
-    @Test
-    @DisplayName("Given short 3-letter words ending in y - when querying plural ies - then matches record")
-    void givenShortWordsEndingInY_whenQueryingPluralIes_thenMatches() {
-        Bm25Retriever retriever = new Bm25Retriever();
-        ArchitecturalRecord doc = createDoc("D1", "Retry Logic", "Always try the operation once before failing.");
-        retriever.index(List.of(doc));
-
-        List<ArchitecturalRecord> results = retriever.search("tries", 5);
+        List<ArchitecturalRecord> results = retriever.search(query, 5);
         assertThat(results).extracting(ArchitecturalRecord::id).contains("D1");
     }
 
@@ -401,8 +387,9 @@ class Bm25RetrieverTest {
         List<ArchitecturalRecord> top2 = retriever.search("bm25 lexical retrieval", 2);
         String formattedPrompt = retriever.formatForPrompt(top2);
 
-        assertThat(formattedPrompt).contains("ADR-005");
-        assertThat(formattedPrompt).doesNotContain("ADR-001");
+        assertThat(formattedPrompt)
+            .contains("ADR-005")
+            .doesNotContain("ADR-001");
 
         int fullLength = fullCorpus.stream().mapToInt(d -> d.content().length()).sum();
         int formattedLength = formattedPrompt.length();

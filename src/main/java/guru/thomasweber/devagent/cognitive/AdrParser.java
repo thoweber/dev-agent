@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,9 +29,17 @@ import java.util.regex.Pattern;
 @ApplicationScoped
 public class AdrParser {
 
-    private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([A-Za-z0-9_-]+)");
+    private static final String METADATA_ID = "id";
+    private static final String METADATA_TITLE = "title";
+    private static final String METADATA_STATUS = "status";
+    private static final String METADATA_SUMMARY = "summary";
+    private static final String METADATA_TAGS = "tags";
+
+    private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([a-z0-9_-]+)");
     private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b([A-Z0-9]+-\\d+)\\b");
     private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^([A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
+    private static final Pattern ADR_TAG_PATTERN = Pattern.compile("(?i)(?:^|/)adrs?(?:/|[-_.]|$)");
+    private static final Pattern RULE_TAG_PATTERN = Pattern.compile("(?i)(?:^|/)rules?(?:/|[-_.]|$)");
 
     private final MarkdownParserService markdownParserService;
 
@@ -71,45 +80,11 @@ public class AdrParser {
 
         ParsedMarkdown parsed = markdownParserService.parse(content);
 
-        // 1. Title
         String title = deriveTitle(parsed, nameWithoutExt);
-
-        // 2. ID
         String id = deriveId(parsed, fileName, title, nameWithoutExt);
-
-        // 3. Status
-        String status = getFirstMetadata(parsed.metadata(), "status");
-        if (status == null) {
-            Matcher statusMatcher = STATUS_PATTERN.matcher(content);
-            status = statusMatcher.find() ? statusMatcher.group(1).trim() : "Active";
-        }
-
-        // 4. Summary
-        String summary = getFirstMetadata(parsed.metadata(), "summary");
-        if (summary == null) {
-            summary = parsed.sections().stream()
-                .filter(s -> "Summary".equalsIgnoreCase(s.heading()) || "Context".equalsIgnoreCase(s.heading()))
-                .map(DocumentSection::content)
-                .findFirst()
-                .orElse(null);
-        }
-        if (summary == null || summary.isBlank()) {
-            summary = parsed.sections().stream()
-                .map(DocumentSection::content)
-                .flatMap(c -> c.lines())
-                .map(String::trim)
-                .filter(line -> !line.isBlank() && !line.toLowerCase().startsWith("status:"))
-                .findFirst()
-                .orElse(title);
-        }
-
-        // 5. Tags
-        List<String> tags = new ArrayList<>();
-        if (parsed.metadata().containsKey("tags")) {
-            tags.addAll(parsed.metadata().get("tags"));
-        }
-        tags.addAll(deriveTags(repoPath));
-        tags = tags.stream().distinct().toList();
+        String status = deriveStatus(parsed, content);
+        String summary = deriveSummary(parsed, title);
+        List<String> tags = deriveTags(repoPath, parsed);
 
         return ArchitecturalRecord.builder()
             .id(id)
@@ -120,6 +95,51 @@ public class AdrParser {
             .summary(summary)
             .content(content)
             .build();
+    }
+
+    private String deriveStatus(ParsedMarkdown parsed, String content) {
+        String status = getFirstMetadata(parsed.metadata(), METADATA_STATUS);
+        if (status == null) {
+            Matcher statusMatcher = STATUS_PATTERN.matcher(content);
+            status = statusMatcher.find() ? statusMatcher.group(1).trim() : "Active";
+        }
+        return status;
+    }
+
+    private String deriveSummary(ParsedMarkdown parsed, String title) {
+        String summary = getFirstMetadata(parsed.metadata(), METADATA_SUMMARY);
+        if (summary == null) {
+            summary = parsed.sections().stream()
+                .filter(s -> "Summary".equalsIgnoreCase(s.heading()) || "Context".equalsIgnoreCase(s.heading()))
+                .map(DocumentSection::content)
+                .findFirst()
+                .orElse(null);
+        }
+        if (summary == null || summary.isBlank()) {
+            summary = parsed.sections().stream()
+                .map(DocumentSection::content)
+                .flatMap(String::lines)
+                .map(String::trim)
+                .filter(line -> !line.isBlank() && !line.toLowerCase(Locale.ROOT).startsWith("status:"))
+                .findFirst()
+                .orElse(title);
+        }
+        return summary;
+    }
+
+    private List<String> deriveTags(RepoPath repoPath, ParsedMarkdown parsed) {
+        List<String> tags = new ArrayList<>();
+        if (parsed.metadata().containsKey(METADATA_TAGS)) {
+            tags.addAll(parsed.metadata().get(METADATA_TAGS));
+        }
+        String rel = repoPath.relativize().toString().replace('\\', '/');
+        if (ADR_TAG_PATTERN.matcher(rel).find()) {
+            tags.add("adr");
+        }
+        if (RULE_TAG_PATTERN.matcher(rel).find()) {
+            tags.add("rule");
+        }
+        return tags.stream().distinct().toList();
     }
 
     /**
@@ -150,14 +170,14 @@ public class AdrParser {
             metadata.put("title", title);
             metadata.put("section", section.heading());
 
-            String segmentBody = String.format("[%s - %s] %s\n%s", docId, title, section.heading(), section.content());
+            String segmentBody = String.format("[%s - %s] %s%n%s", docId, title, section.heading(), section.content());
             segments.add(TextSegment.from(segmentBody, new Metadata(metadata)));
         }
         return segments;
     }
 
     private String deriveTitle(ParsedMarkdown parsed, String fallback) {
-        String title = getFirstMetadata(parsed.metadata(), "title");
+        String title = getFirstMetadata(parsed.metadata(), METADATA_TITLE);
         if (title == null) {
             title = parsed.sections().stream()
                 .map(DocumentSection::heading)
@@ -169,7 +189,7 @@ public class AdrParser {
     }
 
     private String deriveId(ParsedMarkdown parsed, String fileName, String title, String nameWithoutExt) {
-        String id = getFirstMetadata(parsed.metadata(), "id");
+        String id = getFirstMetadata(parsed.metadata(), METADATA_ID);
         if (id == null) {
             Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
             if (fileIdMatcher.find()) {
@@ -195,17 +215,5 @@ public class AdrParser {
             }
         }
         return null;
-    }
-
-    private List<String> deriveTags(RepoPath repoPath) {
-        List<String> tags = new ArrayList<>();
-        String rel = repoPath.relativize().toString().toLowerCase().replace('\\', '/');
-        if (rel.matches(".*(?i)(?:^|/)(?:adr|adrs)(?:/|[-_.]|$).*")) {
-            tags.add("adr");
-        }
-        if (rel.matches(".*(?i)(?:^|/)(?:rule|rules)(?:/|[-_.]|$).*")) {
-            tags.add("rule");
-        }
-        return Collections.unmodifiableList(tags);
     }
 }

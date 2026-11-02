@@ -6,13 +6,13 @@ import guru.thomasweber.devagent.testutil.ArchitecturalRecordMother;
 import guru.thomasweber.devagent.testutil.GateVerdictMother;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,7 +21,7 @@ class ArchitectGatekeeperTest {
     @Test
     @DisplayName("Given ArchitectGatekeeper - when evaluate called - then delegates to UniversalArchitectGatekeeperAiService")
     void givenGatekeeper_whenEvaluate_thenDelegatesToAiService() {
-        UniversalArchitectGatekeeperAiService mockAiService = Mockito.mock(UniversalArchitectGatekeeperAiService.class);
+        UniversalArchitectGatekeeperAiService mockAiService = mock(UniversalArchitectGatekeeperAiService.class);
         ArchitectGatekeeper gatekeeper = new ArchitectGatekeeper(mockAiService);
 
         GateVerdict expected = GateVerdictMother.approved("All rules pass");
@@ -36,7 +36,7 @@ class ArchitectGatekeeperTest {
     @Test
     @DisplayName("Given ArchitectGatekeeper with List of records - when evaluate called - then formats prompt and delegates")
     void givenGatekeeperWithRecords_whenEvaluate_thenFormatsAndDelegates() {
-        UniversalArchitectGatekeeperAiService mockAiService = Mockito.mock(UniversalArchitectGatekeeperAiService.class);
+        UniversalArchitectGatekeeperAiService mockAiService = mock(UniversalArchitectGatekeeperAiService.class);
         ArchitectGatekeeper gatekeeper = new ArchitectGatekeeper(mockAiService);
 
         GateVerdict expected = GateVerdictMother.approved("All rules pass");
@@ -45,8 +45,9 @@ class ArchitectGatekeeperTest {
         ArchitecturalRecord rec1 = ArchitecturalRecordMother.adr001();
         ArchitecturalRecord rec2 = ArchitecturalRecordMother.adr003();
         ArchitecturalRecord rec3 = rec1.toBuilder().summary(null).content("   ").build();
+        ArchitecturalRecord rec4 = rec1.toBuilder().summary("   ").content(null).build();
 
-        GateVerdict actual = gatekeeper.evaluate("diff-content", List.of(rec1, rec2, rec3));
+        GateVerdict actual = gatekeeper.evaluate("diff-content", List.of(rec1, rec2, rec3, rec4));
         assertThat(actual).isEqualTo(expected);
 
         // Edge case: null or empty records

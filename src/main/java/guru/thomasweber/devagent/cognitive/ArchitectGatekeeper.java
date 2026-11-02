@@ -37,14 +37,14 @@ public class ArchitectGatekeeper {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("### RETRIEVED ARCHITECTURAL DECISIONS & RULES:\n");
-        for (ArchitecturalRecord record : records) {
-            sb.append(String.format("- [%s] %s (Status: %s)%n", record.id(), record.title(), record.status()));
-            if (record.summary() != null && !record.summary().isBlank()) {
-                sb.append("  Summary: ").append(record.summary().strip()).append("\n");
+        sb.append(String.format("### RETRIEVED ARCHITECTURAL DECISIONS & RULES:%n"));
+        for (ArchitecturalRecord rec : records) {
+            sb.append(String.format("- [%s] %s (Status: %s)%n", rec.id(), rec.title(), rec.status()));
+            if (rec.summary() != null && !rec.summary().isBlank()) {
+                sb.append(String.format("  Summary: %s%n", rec.summary().strip()));
             }
-            if (record.content() != null && !record.content().isBlank()) {
-                sb.append("  Content: ").append(record.content().strip()).append("\n");
+            if (rec.content() != null && !rec.content().isBlank()) {
+                sb.append(String.format("  Content: %s%n", rec.content().strip()));
             }
         }
         return sb.toString();

@@ -27,9 +27,10 @@ class ErrorSignatureExtractorTest {
         String sig1 = extractor.extractSignature(trace1);
         String sig2 = extractor.extractSignature(trace2);
 
-        assertThat(sig1).hasSize(64);
-        assertThat(sig1).matches("^[0-9a-f]{64}$");
-        assertThat(sig1).isEqualTo(sig2);
+        assertThat(sig1)
+            .hasSize(64)
+            .matches("^[0-9a-f]{64}$")
+            .isEqualTo(sig2);
 
         // Windows path normalization
         String winTrace = "[ERROR] C:\\Users\\developer\\projects\\dev-agent\\src\\main\\java\\App.java:[42,15] cannot find symbol\n  symbol:   class Foo\n  location: class App";

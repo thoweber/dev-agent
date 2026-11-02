@@ -29,9 +29,10 @@ class GatekeeperCacheKeyGeneratorTest {
         String hex1 = (String) key1;
         String hex2 = (String) key2;
 
-        assertThat(hex1).hasSize(64);
-        assertThat(hex1).matches("^[0-9a-f]{64}$");
-        assertThat(hex1).isEqualTo(hex2);
+        assertThat(hex1)
+            .hasSize(64)
+            .matches("^[0-9a-f]{64}$")
+            .isEqualTo(hex2);
     }
 
     @Test
@@ -126,5 +127,14 @@ class GatekeeperCacheKeyGeneratorTest {
         Object keyMixed1 = generator.generate(method, diff, mixed1);
         Object keyMixed2 = generator.generate(method, diff, mixed2);
         assertThat(keyMixed1).isEqualTo(keyMixed2);
+
+        // Record with null summary and null content
+        ArchitecturalRecord recNullSummaryContent = ArchitecturalRecord.builder()
+            .id("ADR-999")
+            .title("Title")
+            .status("ACCEPTED")
+            .build();
+        Object keyNullSummaryContent = generator.generate(method, diff, List.of(recNullSummaryContent));
+        assertThat(keyNullSummaryContent).isNotNull();
     }
 }

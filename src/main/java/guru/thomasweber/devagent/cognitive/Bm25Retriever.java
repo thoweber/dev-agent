@@ -82,9 +82,9 @@ public class Bm25Retriever {
         }
 
         Map<String, ArchitecturalRecord> uniqueRecords = new LinkedHashMap<>();
-        for (ArchitecturalRecord record : records) {
-            if (record != null && record.id() != null) {
-                uniqueRecords.put(record.id(), record);
+        for (ArchitecturalRecord rec : records) {
+            if (rec != null && rec.id() != null) {
+                uniqueRecords.put(rec.id(), rec);
             }
         }
 
@@ -98,18 +98,18 @@ public class Bm25Retriever {
         Map<String, Map<String, Integer>> newInvertedIndex = new LinkedHashMap<>();
 
         long totalTokens = 0;
-        for (ArchitecturalRecord record : uniqueRecords.values()) {
-            newDocs.put(record.id(), record);
+        for (ArchitecturalRecord rec : uniqueRecords.values()) {
+            newDocs.put(rec.id(), rec);
             String fullText = String.join(" ",
-                Objects.toString(record.title(), ""),
-                Objects.toString(record.summary(), ""),
-                Objects.toString(record.content(), ""),
-                String.join(" ", record.tags() != null ? record.tags() : Collections.emptyList())
+                Objects.toString(rec.title(), ""),
+                Objects.toString(rec.summary(), ""),
+                Objects.toString(rec.content(), ""),
+                String.join(" ", rec.tags() != null ? rec.tags() : Collections.emptyList())
             );
 
             List<String> tokens = tokenize(fullText);
             int docLength = tokens.size();
-            newLengths.put(record.id(), docLength);
+            newLengths.put(rec.id(), docLength);
             totalTokens += docLength;
 
             Map<String, Integer> freqs = new LinkedHashMap<>();
@@ -119,7 +119,7 @@ public class Bm25Retriever {
 
             for (Map.Entry<String, Integer> entry : freqs.entrySet()) {
                 newInvertedIndex.computeIfAbsent(entry.getKey(), _ -> new LinkedHashMap<>())
-                    .put(record.id(), entry.getValue());
+                    .put(rec.id(), entry.getValue());
             }
         }
 
@@ -245,11 +245,11 @@ public class Bm25Retriever {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("### RETRIEVED ARCHITECTURAL DECISIONS & RULES:\n");
-        for (ArchitecturalRecord record : records) {
-            sb.append(String.format("- [%s] %s (Status: %s)%n", record.id(), record.title(), record.status()));
-            if (record.summary() != null && !record.summary().isBlank()) {
-                sb.append("  Summary: ").append(record.summary().strip()).append("\n");
+        sb.append(String.format("### RETRIEVED ARCHITECTURAL DECISIONS & RULES:%n"));
+        for (ArchitecturalRecord rec : records) {
+            sb.append(String.format("- [%s] %s (Status: %s)%n", rec.id(), rec.title(), rec.status()));
+            if (rec.summary() != null && !rec.summary().isBlank()) {
+                sb.append(String.format("  Summary: %s%n", rec.summary().strip()));
             }
         }
         return sb.toString();
@@ -286,59 +286,78 @@ public class Bm25Retriever {
         if (word.length() <= 2) {
             return word;
         }
+        String w = stemPlural(word);
+        w = stemDerivational(w);
+        return stemTrailingVowels(w);
+    }
 
-        String w = word;
-
-        // Plural / s endings
+    private static String stemPlural(String w) {
         if (w.endsWith("sses")) {
-            w = w.substring(0, w.length() - 2);
-        } else if (w.endsWith("ies")) {
-            w = w.substring(0, w.length() - 3) + "i";
-        } else if (w.endsWith("ss") || w.endsWith("us") || w.endsWith("is")) {
-            // Keep unchanged
-        } else if (w.endsWith("s") && w.length() > 3) {
-            w = w.substring(0, w.length() - 1);
+            return w.substring(0, w.length() - 2);
         }
-
-        // Common derivational suffixes
-        if (w.endsWith("ational")) {
-            w = w.substring(0, w.length() - 5);
-        } else if (w.endsWith("tional")) {
-            w = w.substring(0, w.length() - 2);
-        } else if (w.endsWith("ization") || w.endsWith("isation")) {
-            w = w.substring(0, w.length() - 5);
-        } else if (w.endsWith("ation")) {
-            w = w.substring(0, w.length() - 3);
-        } else if (w.endsWith("ator")) {
-            w = w.substring(0, w.length() - 2);
-        } else if (w.endsWith("al") && w.length() > 4) {
-            w = w.substring(0, w.length() - 2);
-        } else if ((w.endsWith("able") || w.endsWith("ible")) && w.length() > 5) {
-            w = w.substring(0, w.length() - 4);
-        } else if (w.endsWith("ment") && w.length() > 5) {
-            w = w.substring(0, w.length() - 4);
-        } else if (w.endsWith("ing") && w.length() > 5) {
-            w = w.substring(0, w.length() - 3);
-        } else if (w.endsWith("ed") && w.length() > 4) {
-            w = w.substring(0, w.length() - 2);
-        } else if ((w.endsWith("er") || w.endsWith("or")) && w.length() > 4) {
-            w = w.substring(0, w.length() - 2);
-        } else if (w.endsWith("ive") && w.length() > 4) {
-            w = w.substring(0, w.length() - 3);
-        } else if ((w.endsWith("ize") || w.endsWith("ise")) && w.length() > 4) {
-            w = w.substring(0, w.length() - 3);
+        if (w.endsWith("ies")) {
+            return w.substring(0, w.length() - 3) + "i";
         }
-
-        // Strip trailing 'e' if root is sufficiently long (e.g., retrieve -> retriev, cache -> cach)
-        if (w.endsWith("e") && w.length() > 4) {
-            w = w.substring(0, w.length() - 1);
+        if (w.endsWith("ss") || w.endsWith("us") || w.endsWith("is")) {
+            return w;
         }
-
-        // Stem trailing 'y' to 'i' if length >= 3 (e.g., try -> tri, entity -> entiti, query -> queri)
-        if (w.endsWith("y") && w.length() >= 3) {
-            w = w.substring(0, w.length() - 1) + "i";
+        if (w.endsWith("s") && w.length() > 3) {
+            return w.substring(0, w.length() - 1);
         }
-
         return w;
+    }
+
+    private static String stemDerivational(String w) {
+        if (w.endsWith("ational")) {
+            return w.substring(0, w.length() - 5);
+        }
+        if (w.endsWith("tional")) {
+            return w.substring(0, w.length() - 2);
+        }
+        if (w.endsWith("ization") || w.endsWith("isation")) {
+            return w.substring(0, w.length() - 5);
+        }
+        if (w.endsWith("ation")) {
+            return w.substring(0, w.length() - 3);
+        }
+        if (w.endsWith("ator")) {
+            return w.substring(0, w.length() - 2);
+        }
+        if (w.endsWith("al") && w.length() > 4) {
+            return w.substring(0, w.length() - 2);
+        }
+        if ((w.endsWith("able") || w.endsWith("ible")) && w.length() > 5) {
+            return w.substring(0, w.length() - 4);
+        }
+        if (w.endsWith("ment") && w.length() > 5) {
+            return w.substring(0, w.length() - 4);
+        }
+        if (w.endsWith("ing") && w.length() > 5) {
+            return w.substring(0, w.length() - 3);
+        }
+        if (w.endsWith("ed") && w.length() > 4) {
+            return w.substring(0, w.length() - 2);
+        }
+        if ((w.endsWith("er") || w.endsWith("or")) && w.length() > 4) {
+            return w.substring(0, w.length() - 2);
+        }
+        if (w.endsWith("ive") && w.length() > 4) {
+            return w.substring(0, w.length() - 3);
+        }
+        if ((w.endsWith("ize") || w.endsWith("ise")) && w.length() > 4) {
+            return w.substring(0, w.length() - 3);
+        }
+        return w;
+    }
+
+    private static String stemTrailingVowels(String w) {
+        String res = w;
+        if (res.endsWith("e") && res.length() > 4) {
+            res = res.substring(0, res.length() - 1);
+        }
+        if (res.endsWith("y") && res.length() >= 3) {
+            res = res.substring(0, res.length() - 1) + "i";
+        }
+        return res;
     }
 }

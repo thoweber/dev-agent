@@ -32,7 +32,7 @@ class AdrDiscoveryServiceTest {
     void setUp() {
         contextResolver = new WorkspaceContextResolver(tempDir);
         jailValidator = new WorkspaceJailValidator(tempDir);
-        discoveryService = new AdrDiscoveryService(contextResolver, jailValidator);
+        discoveryService = new AdrDiscoveryService(contextResolver);
     }
 
     @Test
@@ -175,9 +175,9 @@ class AdrDiscoveryServiceTest {
         List<ArchitecturalRecord> records = discoveryService.discoverRecords();
 
         assertThat(records).hasSize(1);
-        ArchitecturalRecord record = records.getFirst();
-        assertThat(record.status()).isEqualTo("Proposed");
-        assertThat(record.summary()).contains("Background context snippet");
+        ArchitecturalRecord rec = records.getFirst();
+        assertThat(rec.status()).isEqualTo("Proposed");
+        assertThat(rec.summary()).contains("Background context snippet");
     }
 
     @Test
@@ -226,11 +226,11 @@ class AdrDiscoveryServiceTest {
         List<ArchitecturalRecord> records = discoveryService.discoverRecords();
 
         assertThat(records).hasSize(1);
-        ArchitecturalRecord record = records.getFirst();
-        assertThat(record.id()).isEqualTo("ADR");
-        assertThat(record.title()).isEqualTo("Root ADR: Unified Architecture Decisions");
-        assertThat(record.status()).isEqualTo("Accepted");
-        assertThat(record.summary()).contains("Unified single-file ADR document");
+        ArchitecturalRecord rec = records.getFirst();
+        assertThat(rec.id()).isEqualTo("ADR");
+        assertThat(rec.title()).isEqualTo("Root ADR: Unified Architecture Decisions");
+        assertThat(rec.status()).isEqualTo("Accepted");
+        assertThat(rec.summary()).contains("Unified single-file ADR document");
     }
 
     @Test
@@ -520,8 +520,6 @@ class AdrDiscoveryServiceTest {
     void givenExplicitConfigLoaderConstructor_whenDiscovering_thenExecutesProperly() {
         AdrDiscoveryService service = new AdrDiscoveryService(
             contextResolver,
-            jailValidator,
-            new MarkdownParserService(),
             new DevAgentConfigLoader()
         );
         List<ArchitecturalRecord> records = service.discoverRecords();
@@ -533,25 +531,8 @@ class AdrDiscoveryServiceTest {
     void givenExplicitFileScannerConstructor_whenDiscovering_thenExecutesProperly() {
         AdrDiscoveryService service = new AdrDiscoveryService(
             contextResolver,
-            jailValidator,
-            new MarkdownParserService(),
             new DevAgentConfigLoader(),
             new NioWorkspaceFileScanner()
-        );
-        List<ArchitecturalRecord> records = service.discoverRecords();
-        assertThat(records).isNotNull();
-    }
-
-    @Test
-    @DisplayName("Given explicit adrParser constructor - when discovering - then executes properly")
-    void givenExplicitAdrParserConstructor_whenDiscovering_thenExecutesProperly() {
-        AdrDiscoveryService service = new AdrDiscoveryService(
-            contextResolver,
-            jailValidator,
-            new MarkdownParserService(),
-            new DevAgentConfigLoader(),
-            new NioWorkspaceFileScanner(),
-            new AdrParser()
         );
         List<ArchitecturalRecord> records = service.discoverRecords();
         assertThat(records).isNotNull();

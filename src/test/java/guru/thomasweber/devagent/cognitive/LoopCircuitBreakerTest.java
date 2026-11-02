@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +19,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,7 +41,7 @@ class LoopCircuitBreakerTest {
         Files.createDirectories(worktreeDir);
 
         signatureExtractor = new ErrorSignatureExtractor();
-        subprocessExecutor = Mockito.mock(SubprocessExecutor.class);
+        subprocessExecutor = mock(SubprocessExecutor.class);
         circuitBreaker = new LoopCircuitBreaker(signatureExtractor, subprocessExecutor);
 
         when(subprocessExecutor.execute(any(), any(), any()))
@@ -136,7 +137,7 @@ class LoopCircuitBreakerTest {
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.PIVOT_ACTIVE);
 
         // Reset invocation count on mock
-        Mockito.clearInvocations(subprocessExecutor);
+        clearInvocations(subprocessExecutor);
 
         // Failure 1 post-pivot
         LoopAction act1 = circuitBreaker.recordFailure("error C", worktreeDir);

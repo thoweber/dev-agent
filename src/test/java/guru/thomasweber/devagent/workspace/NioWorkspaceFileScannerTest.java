@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -200,5 +201,49 @@ class NioWorkspaceFileScannerTest {
 
         List<RepoPath> results = scanner.findFiles(repoRoot, "docs/*.md");
         assertThat(results).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Given relative dot-slash prefix and question mark wildcard - when findFiles - then matches correctly")
+    void givenDotSlashAndQuestionMark_whenFindFiles_thenMatches() throws IOException {
+        Path validDir = tempDir.resolve("docs");
+        Files.createDirectories(validDir);
+        Files.writeString(validDir.resolve("ADR-001.md"), "# ADR 1");
+        Files.writeString(validDir.resolve("ADR-002.md"), "# ADR 2");
+
+        List<RepoPath> results = scanner.findFiles(repoRoot, "./docs/ADR-00?.md");
+        assertThat(results).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Given empty or blank patterns collection - when findFiles - then returns empty list")
+    void givenEmptyOrBlankPatterns_whenFindFiles_thenReturnsEmpty() {
+        assertThat(scanner.findFiles(repoRoot, List.of(), Set.of())).isEmpty();
+        assertThat(scanner.findFiles(repoRoot, (Collection<String>) null, Set.of())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Given symlink directory or file - when findFiles - then skips symlinks strictly")
+    void givenSymlinks_whenFindFiles_thenSkipsSymlinks() throws IOException {
+        Path docsDir = tempDir.resolve("docs");
+        Files.createDirectories(docsDir);
+        Path targetFile = docsDir.resolve("real.md");
+        Files.writeString(targetFile, "# Real");
+
+        // Try creating symlinks if OS supports them
+        try {
+            Path symlinkFile = docsDir.resolve("sym-file.md");
+            Files.createSymbolicLink(symlinkFile, targetFile);
+
+            Path symlinkDir = tempDir.resolve("sym-dir");
+            Files.createSymbolicLink(symlinkDir, docsDir);
+
+            List<RepoPath> results = scanner.findFiles(repoRoot, "**/*.md");
+            assertThat(results)
+                .extracting(r -> r.relativize().toString().replace('\\', '/'))
+                .containsExactly("docs/real.md");
+        } catch (UnsupportedOperationException | SecurityException | IOException e) {
+            // Symlink creation not permitted in environment; assumption passes
+        }
     }
 }

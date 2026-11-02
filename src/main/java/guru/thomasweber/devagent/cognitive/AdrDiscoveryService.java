@@ -8,7 +8,6 @@ import guru.thomasweber.devagent.workspace.NioWorkspaceFileScanner;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import guru.thomasweber.devagent.workspace.WorkspaceFileScanner;
-import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -52,43 +51,20 @@ public class AdrDiscoveryService {
 
     public AdrDiscoveryService(
         WorkspaceContextResolver contextResolver,
-        WorkspaceJailValidator jailValidator,
-        MarkdownParserService markdownParserService,
-        DevAgentConfigLoader configLoader,
-        WorkspaceFileScanner fileScanner,
-        AdrParser adrParser
-    ) {
-        this(contextResolver, configLoader, fileScanner, adrParser);
-    }
-
-    public AdrDiscoveryService(
-        WorkspaceContextResolver contextResolver,
-        WorkspaceJailValidator jailValidator,
-        MarkdownParserService markdownParserService,
         DevAgentConfigLoader configLoader,
         WorkspaceFileScanner fileScanner
     ) {
-        this(contextResolver, configLoader, fileScanner, new AdrParser(markdownParserService));
+        this(contextResolver, configLoader, fileScanner, new AdrParser());
     }
 
     public AdrDiscoveryService(
         WorkspaceContextResolver contextResolver,
-        WorkspaceJailValidator jailValidator,
-        MarkdownParserService markdownParserService,
         DevAgentConfigLoader configLoader
     ) {
-        this(contextResolver, configLoader, new NioWorkspaceFileScanner(), new AdrParser(markdownParserService));
+        this(contextResolver, configLoader, new NioWorkspaceFileScanner(), new AdrParser());
     }
 
-    public AdrDiscoveryService(
-        WorkspaceContextResolver contextResolver,
-        WorkspaceJailValidator jailValidator,
-        MarkdownParserService markdownParserService
-    ) {
-        this(contextResolver, new DevAgentConfigLoader(), new NioWorkspaceFileScanner(), new AdrParser(markdownParserService));
-    }
-
-    public AdrDiscoveryService(WorkspaceContextResolver contextResolver, WorkspaceJailValidator jailValidator) {
+    public AdrDiscoveryService(WorkspaceContextResolver contextResolver) {
         this(contextResolver, new DevAgentConfigLoader(), new NioWorkspaceFileScanner(), new AdrParser());
     }
 

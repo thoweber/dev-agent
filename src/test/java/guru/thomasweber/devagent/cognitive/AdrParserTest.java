@@ -23,12 +23,10 @@ class AdrParserTest {
     Path tempDir;
 
     private AdrParser parser;
-    private RepoPath repoRoot;
 
     @BeforeEach
     void setUp() {
         parser = new AdrParser(new MarkdownParserService());
-        repoRoot = RepoPath.of(tempDir, tempDir);
     }
 
     @Test
@@ -52,13 +50,13 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(adrFile, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("ADR-042");
-        assertThat(record.title()).isEqualTo("Native CommonMark AST Parsing");
-        assertThat(record.status()).isEqualTo("ACCEPTED");
-        assertThat(record.summary()).isEqualTo("Replace regex markdown parsing with commonmark AST");
-        assertThat(record.tags()).contains("parser", "ast", "adr");
+        assertThat(rec.id()).isEqualTo("ADR-042");
+        assertThat(rec.title()).isEqualTo("Native CommonMark AST Parsing");
+        assertThat(rec.status()).isEqualTo("ACCEPTED");
+        assertThat(rec.summary()).isEqualTo("Replace regex markdown parsing with commonmark AST");
+        assertThat(rec.tags()).contains("parser", "ast", "adr");
     }
 
     @Test
@@ -78,13 +76,13 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(adrFile, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("ADR-001");
-        assertThat(record.title()).isEqualTo("ADR-001: Quarkus Picocli Native CLI");
-        assertThat(record.status()).isEqualTo("Active");
-        assertThat(record.summary()).contains("Ahead-of-Time native binary");
-        assertThat(record.tags()).contains("adr");
+        assertThat(rec.id()).isEqualTo("ADR-001");
+        assertThat(rec.title()).isEqualTo("ADR-001: Quarkus Picocli Native CLI");
+        assertThat(rec.status()).isEqualTo("Active");
+        assertThat(rec.summary()).contains("Ahead-of-Time native binary");
+        assertThat(rec.tags()).contains("adr");
     }
 
     @Test
@@ -101,13 +99,13 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(adrFile, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("01-rule");
-        assertThat(record.title()).isEqualTo("Architecture Rule");
-        assertThat(record.status()).isEqualTo("Active");
-        assertThat(record.summary()).isEqualTo("Actual summary description of the architectural rule.");
-        assertThat(record.tags()).contains("rule");
+        assertThat(rec.id()).isEqualTo("01-rule");
+        assertThat(rec.title()).isEqualTo("Architecture Rule");
+        assertThat(rec.status()).isEqualTo("Active");
+        assertThat(rec.summary()).isEqualTo("Actual summary description of the architectural rule.");
+        assertThat(rec.tags()).contains("rule");
     }
 
     @Test
@@ -121,10 +119,10 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(file, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("REM-05");
-        assertThat(record.title()).isEqualTo("REM-05: Entity Encapsulation");
+        assertThat(rec.id()).isEqualTo("REM-05");
+        assertThat(rec.title()).isEqualTo("REM-05: Entity Encapsulation");
     }
 
     @Test
@@ -138,10 +136,10 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(file, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("coding-standards");
-        assertThat(record.title()).isEqualTo("Coding Standards");
+        assertThat(rec.id()).isEqualTo("coding-standards");
+        assertThat(rec.title()).isEqualTo("Coding Standards");
     }
 
     @Test
@@ -207,12 +205,12 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(file, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("ADR-099");
-        assertThat(record.title()).isEqualTo("Context");
-        assertThat(record.status()).isEqualTo("Active");
-        assertThat(record.summary()).isEqualTo("Context background for ADR 99.");
+        assertThat(rec.id()).isEqualTo("ADR-099");
+        assertThat(rec.title()).isEqualTo("Context");
+        assertThat(rec.status()).isEqualTo("Active");
+        assertThat(rec.summary()).isEqualTo("Context background for ADR 99.");
     }
 
     @Test
@@ -222,11 +220,11 @@ class AdrParserTest {
         Files.writeString(file, "Just plain text without any markdown headings.");
 
         RepoPath repoPath = RepoPath.of(file, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.id()).isEqualTo("plain-note");
-        assertThat(record.title()).isEqualTo("plain-note");
-        assertThat(record.summary()).isEqualTo("Just plain text without any markdown headings.");
+        assertThat(rec.id()).isEqualTo("plain-note");
+        assertThat(rec.title()).isEqualTo("plain-note");
+        assertThat(rec.summary()).isEqualTo("Just plain text without any markdown headings.");
     }
 
     @Test
@@ -239,11 +237,11 @@ class AdrParserTest {
             """);
 
         RepoPath repoPath = RepoPath.of(file, tempDir);
-        ArchitecturalRecord record = parser.parseRecord(repoPath);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
 
-        assertThat(record.title()).isEqualTo("Empty Body Record");
-        assertThat(record.status()).isEqualTo("Draft");
-        assertThat(record.summary()).isEqualTo("Empty Body Record");
+        assertThat(rec.title()).isEqualTo("Empty Body Record");
+        assertThat(rec.status()).isEqualTo("Draft");
+        assertThat(rec.summary()).isEqualTo("Empty Body Record");
     }
 
     @Test
@@ -287,5 +285,25 @@ class AdrParserTest {
     void givenDefaultConstructor_whenInstantiated_thenNotNull() {
         AdrParser defaultParser = new AdrParser();
         assertThat(defaultParser).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given file without markdown extension - when parseRecord - then preserves full name as ID fallback")
+    void givenFileWithoutMdExtension_whenParseRecord_thenPreservesName() throws IOException {
+        Path file = tempDir.resolve("plain-doc");
+        Files.writeString(file, "# Just Plain Title\nContent here.");
+        RepoPath repoPath = RepoPath.of(file, tempDir);
+        ArchitecturalRecord rec = parser.parseRecord(repoPath);
+        assertThat(rec.id()).isEqualTo("plain-doc");
+    }
+
+    @Test
+    @DisplayName("Given blank content or path without filename - when parseSegments - then handles gracefully")
+    void givenBlankContentOrEmptyPath_whenParseSegments_thenHandlesGracefully() {
+        List<TextSegment> blankSegments = parser.parseSegments(Path.of("docs/test.md"), "   ");
+        assertThat(blankSegments).isEmpty();
+
+        List<TextSegment> emptyPathSegments = parser.parseSegments(Path.of(""), "# Title\nBody");
+        assertThat(emptyPathSegments).hasSize(1);
     }
 }

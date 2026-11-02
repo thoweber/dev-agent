@@ -16,13 +16,14 @@ import java.util.regex.Pattern;
 public class ErrorSignatureExtractor {
 
     private static final Pattern MEMORY_ADDR_PATTERN = Pattern.compile("@[0-9a-fA-F]{6,16}");
-    private static final Pattern ISO_TIMESTAMP_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?");
+    private static final Pattern ISO_TIMESTAMP_PATTERN = Pattern.compile("\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Z+-][0-9:]*)?");
     private static final Pattern CLOCK_TIME_PATTERN = Pattern.compile("\\b\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?\\b");
     private static final Pattern DURATION_PATTERN = Pattern.compile("\\b\\d+(?:\\.\\d+)?\\s*(?:ms|s|seconds|milliseconds)\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern LINUX_PATH_PATTERN = Pattern.compile("(?:/[a-zA-Z0-9_.-]+)+/[a-zA-Z0-9_.-]+\\.[a-zA-Z0-9]+");
+    private static final Pattern LINUX_PATH_PATTERN = Pattern.compile("/(?:[a-zA-Z0-9_.-]+/)+[a-zA-Z0-9_.-]+\\.[a-zA-Z0-9]+");
     private static final Pattern WINDOWS_PATH_PATTERN = Pattern.compile("[a-zA-Z]:\\\\\\S+\\.[a-zA-Z0-9]+");
     private static final Pattern LINE_COL_BRACKET_PATTERN = Pattern.compile(":\\[\\d+,\\s*\\d+\\]|\\[\\d+,\\s*\\d+\\]");
-    private static final Pattern SOURCE_LINE_COL_PATTERN = Pattern.compile("(?i)(?:(?<=\\.[a-zA-Z][a-zA-Z0-9_]{0,7}):\\d+(?::\\d+)?|\\bline\\s+\\d+(?:,?\\s*col(?:umn)?\\s*\\d+)?)");
+    private static final Pattern COLON_LINE_COL_PATTERN = Pattern.compile("(?<=\\.[a-zA-Z]\\w{0,7}):\\d+(?::\\d+)?");
+    private static final Pattern WORD_LINE_COL_PATTERN = Pattern.compile("(?i)\\bline\\s+\\d+(?:,?\\s*col(?:umn)?\\s*\\d+)?");
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
     public static final int MAX_INPUT_CHARS = 65536;
 
@@ -37,7 +38,8 @@ public class ErrorSignatureExtractor {
         s = CLOCK_TIME_PATTERN.matcher(s).replaceAll("<TIME>");
         s = DURATION_PATTERN.matcher(s).replaceAll("<DURATION>");
         s = LINE_COL_BRACKET_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
-        s = SOURCE_LINE_COL_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
+        s = COLON_LINE_COL_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
+        s = WORD_LINE_COL_PATTERN.matcher(s).replaceAll(":<LINE>:<COL>");
         s = LINUX_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
         s = WINDOWS_PATH_PATTERN.matcher(s).replaceAll("<PATH>");
         s = WHITESPACE_PATTERN.matcher(s).replaceAll(" ").trim();
