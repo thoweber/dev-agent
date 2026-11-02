@@ -129,10 +129,12 @@ class GatekeeperCacheKeyGeneratorTest {
         assertThat(keyMixed1).isEqualTo(keyMixed2);
 
         // Record with null summary and null content
-        ArchitecturalRecord recNullSummaryContent = ArchitecturalRecord.builder()
+        ArchitecturalRecord recNullSummaryContent = ArchitecturalRecordMother.adr001().toBuilder()
             .id("ADR-999")
             .title("Title")
             .status("ACCEPTED")
+            .summary(null)
+            .content(null)
             .build();
         Object keyNullSummaryContent = generator.generate(method, diff, List.of(recNullSummaryContent));
         assertThat(keyNullSummaryContent).isNotNull();
@@ -154,18 +156,12 @@ class GatekeeperCacheKeyGeneratorTest {
         Method method = Object.class.getMethod("toString");
         String diff = "+line 1";
 
-        ArchitecturalRecord rec1 = ArchitecturalRecord.builder()
-            .id("ADR-001")
-            .title("Title")
-            .status("ACCEPTED")
+        ArchitecturalRecord rec1 = ArchitecturalRecordMother.adr001().toBuilder()
             .summary("s:x")
             .content("y")
             .build();
 
-        ArchitecturalRecord rec2 = ArchitecturalRecord.builder()
-            .id("ADR-001")
-            .title("Title")
-            .status("ACCEPTED")
+        ArchitecturalRecord rec2 = ArchitecturalRecordMother.adr001().toBuilder()
             .summary("s")
             .content("x:y")
             .build();

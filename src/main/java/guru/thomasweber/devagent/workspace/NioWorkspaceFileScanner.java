@@ -123,6 +123,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (!Files.exists(searchRoot)) {
             return;
         }
+        RepoPath.of(searchRoot, rootPath);
         List<String> patterns = expandZeroLevelDoubleStarPatterns(normalized);
         List<PathMatcher> matchers = patterns.stream()
             .map(p -> FileSystems.getDefault().getPathMatcher("glob:" + p))
@@ -152,10 +153,10 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (!Files.exists(path) || isIgnored(rootPath, path, ignorePrefixes)) {
             return;
         }
+        RepoPath repoPath = RepoPath.of(path, rootPath);
         if (Files.isDirectory(path)) {
             walkAndCollect(rootPath, path, null, ignorePrefixes, fileFilter, uniqueFiles);
         } else if (Files.isRegularFile(path) && (fileFilter == null || fileFilter.test(path))) {
-            RepoPath repoPath = RepoPath.of(path, rootPath);
             uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
         }
     }
