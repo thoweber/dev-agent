@@ -108,15 +108,214 @@ public class ErrorSignatureExtractor {
         }
     }
 
+    private static final class MemoryAddressRule implements NormalizationRule {
+        @Override
+        public Match tryMatch(ScanCursor cursor) {
+            if (cursor.current() != '@') {
+                return null;
+            }
+            var probe = cursor.fork();
+            probe.skip(1);
+            int hexCount = probe.skipHexDigits();
+            if (hexCount < 6 || hexCount > 16) {
+                return null;
+            }
+            if (!probe.isAtTokenBoundary() || probe.isEmailDomain()) {
+                return null;
+            }
+            return probe.match(ADDR_REPLACEMENT);
+        }
+    }
+
+    private static final class TimestampRule implements NormalizationRule {
+        @Override
+        public Match tryMatch(ScanCursor cursor) {
+            var probe = cursor.fork();
+            if (!probe.consumePattern("####-##-## ##:##:##")) {
+                return null;
+            }
+            if (probe.consumeIf('.')) {
+                probe.skipDigits();
+            }
+            if (probe.consumeIf('Z')) {
+                // UTC Zulu
+            } else if (probe.consumeIf('+') || probe.consumeIf('-')) {
+                probe.skipWhileDigitsOrColon();
+            }
+            if (!probe.isAtTokenBoundary()) {
+                return null;
+            }
+            return probe.match(TIME_REPLACEMENT);
+        }
+    }
+
+    private static final class ClockTimeRule implements NormalizationRule {
+        @Override
+        public Match tryMatch(ScanCursor cursor) {
+            if (cursor.hasPrecedingWordChar()) {
+                return null;
+            }
+            var probe = cursor.fork();
+            if (!probe.consumePattern("##:##:##")) {
+                return null;
+            }
+            if (probe.consumeIf('.')) {
+                probe.skipDigits();
+            }
+            if (!probe.isAtTokenBoundary()) {
+                return null;
+            }
+            return probe.match(TIME_REPLACEMENT);
+        }
+    }
+
+    private static final class DurationRule implements NormalizationRule {
+        @Override
+        public Match tryMatch(ScanCursor cursor) {
+            if (cursor.hasPrecedingWordCharOrDot() || !cursor.isDigit()) {
+                return null;
+            }
+            var probe = cursor.fork();
+            probe.skipDecimalNumber();
+            probe.skipInlineWhitespace();
+            if (!probe.consumeAnyIgnoreCase("milliseconds", "seconds", "ms", "s")) {
+                return null;
+            }
+            if (!probe.isAtTokenBoundary()) {
+                return null;
+            }
+            return probe.match(DURATION_REPLACEMENT);
+        }
+    }
+
+    private static final class LineColumnRule implements NormalizationRule {
+        @Override
+        public Match tryMatch(ScanCursor cursor) {
+            Match bracket = tryMatchBracket(cursor);
+            if (bracket != null) {
+                return bracket;
+            }
+            Match word = tryMatchWord(cursor);
+            if (word != null) {
+                return word;
+            }
+            return tryMatchColon(cursor);
+        }
+
+        private Match tryMatchBracket(ScanCursor cursor) {
+            var probe = cursor.fork();
+            if (!probe.consumeIf(":[") && !probe.consumeIf('[')) {
+                return null;
+            }
+            if (probe.skipDigits() == 0 || !probe.consumeIf(',')) {
+                return null;
+            }
+            probe.skipWhitespace();
+            if (probe.skipDigits() == 0 || !probe.consumeIf(']')) {
+                return null;
+            }
+            return probe.match(LINE_COL_REPLACEMENT);
+        }
+
+        private Match tryMatchWord(ScanCursor cursor) {
+            if (cursor.hasPrecedingWordChar()) {
+                return null;
+            }
+            var probe = cursor.fork();
+            if (!probe.consumeIfIgnoreCase("line")) {
+                return null;
+            }
+            if (probe.skipWhitespace() == 0 || probe.skipDigits() == 0) {
+                return null;
+            }
+            var colProbe = probe.fork();
+            colProbe.consumeIf(',');
+            colProbe.skipWhitespace();
+            if (colProbe.consumeAnyIgnoreCase("column", "col")) {
+                colProbe.skipWhitespace();
+                if (colProbe.skipDigits() > 0) {
+                    probe = colProbe;
+                }
+            }
+            if (!probe.isAtTokenBoundary()) {
+                return null;
+            }
+            return probe.match(LINE_COL_REPLACEMENT);
+        }
+
+        private Match tryMatchColon(ScanCursor cursor) {
+            if (cursor.current() != ':') {
+                return null;
+            }
+            if (!cursor.outputEndsWith(PATH_REPLACEMENT) && !cursor.hasPrecedingSourceExtension()) {
+                return null;
+            }
+            var probe = cursor.fork();
+            probe.skip(1);
+            if (probe.skipDigits() == 0) {
+                return null;
+            }
+            var colProbe = probe.fork();
+            if (colProbe.consumeIf(':') && colProbe.skipDigits() > 0) {
+                probe = colProbe;
+            }
+            if (!probe.isAtTokenBoundary()) {
+                return null;
+            }
+            return probe.match(LINE_COL_REPLACEMENT);
+        }
+    }
+
+    private static final class PathRule implements NormalizationRule {
+        @Override
+        public Match tryMatch(ScanCursor cursor) {
+            Match winPath = tryMatchWindowsPath(cursor);
+            if (winPath != null) {
+                return winPath;
+            }
+            return tryMatchLinuxPath(cursor);
+        }
+
+        private Match tryMatchWindowsPath(ScanCursor cursor) {
+            var probe = cursor.fork();
+            if (!probe.consumeWindowsDrive()) {
+                return null;
+            }
+            if (!probe.consumePathWithExtension('\\')) {
+                return null;
+            }
+            return probe.match(PATH_REPLACEMENT);
+        }
+
+        private Match tryMatchLinuxPath(ScanCursor cursor) {
+            if (cursor.current() != '/' || !cursor.hasPrecedingLinuxPathBoundary()) {
+                return null;
+            }
+            var probe = cursor.fork();
+            if (!probe.consumePathWithExtension('/')) {
+                return null;
+            }
+            return probe.match(PATH_REPLACEMENT);
+        }
+    }
+
     private static final class ScanCursor {
         private final String input;
         private final StringBuilder output;
         private int offset;
 
         private ScanCursor(String input, StringBuilder output) {
+            this(input, output, 0);
+        }
+
+        private ScanCursor(String input, StringBuilder output, int offset) {
             this.input = input;
             this.output = output;
-            this.offset = 0;
+            this.offset = offset;
+        }
+
+        public ScanCursor fork() {
+            return new ScanCursor(input, output, offset);
         }
 
         public int offset() {
@@ -135,103 +334,130 @@ public class ErrorSignatureExtractor {
             return offset >= input.length();
         }
 
-        public int length() {
-            return input.length();
-        }
-
         public char current() {
             return input.charAt(offset);
         }
 
-        public char charAt(int index) {
-            return input.charAt(index);
+        public Match match(String replacement) {
+            return new Match(offset, replacement);
         }
 
-        public boolean hasRemaining(int count) {
-            return offset + count <= input.length();
+        public boolean isDigit() {
+            return offset < input.length() && Character.isDigit(input.charAt(offset));
         }
 
-        public boolean hasChar(int index, char expected) {
-            return index >= 0 && index < input.length() && input.charAt(index) == expected;
+        public boolean isAtTokenBoundary() {
+            return offset >= input.length() || !Character.isLetterOrDigit(input.charAt(offset));
         }
 
-        public boolean isDigit(int index) {
-            return index >= 0 && index < input.length() && Character.isDigit(input.charAt(index));
+        public boolean hasPrecedingWordChar() {
+            return offset > 0 && Character.isLetterOrDigit(input.charAt(offset - 1));
         }
 
-        public boolean isWhitespace(int index) {
-            return index >= 0 && index < input.length() && Character.isWhitespace(input.charAt(index));
-        }
-
-        public boolean isTokenBoundary(int index) {
-            return index >= input.length() || !Character.isLetterOrDigit(input.charAt(index));
-        }
-
-        public int readDigits(int from) {
-            int idx = from;
-            while (idx < input.length() && Character.isDigit(input.charAt(idx))) {
-                idx++;
-            }
-            return idx;
-        }
-
-        public int readHexDigits(int from) {
-            int idx = from;
-            while (idx < input.length() && isHexDigit(input.charAt(idx))) {
-                idx++;
-            }
-            return idx;
-        }
-
-        public int readDecimalNumber(int from) {
-            int idx = readDigits(from);
-            if (idx > from && hasChar(idx, '.') && isDigit(idx + 1)) {
-                idx = readDigits(idx + 2);
-            }
-            return idx;
-        }
-
-        public int skipInlineWhitespace(int from) {
-            int idx = from;
-            while (idx < input.length() && (input.charAt(idx) == ' ' || input.charAt(idx) == '\t')) {
-                idx++;
-            }
-            return idx;
-        }
-
-        public int skipWhitespace(int from) {
-            int idx = from;
-            while (idx < input.length() && Character.isWhitespace(input.charAt(idx))) {
-                idx++;
-            }
-            return idx;
-        }
-
-        public boolean startsWith(String prefix, int from) {
-            return input.startsWith(prefix, from);
-        }
-
-        public boolean startsWithIgnoreCase(String prefix, int from) {
-            if (from + prefix.length() > input.length()) {
+        public boolean hasPrecedingWordCharOrDot() {
+            if (offset <= 0) {
                 return false;
             }
-            for (int k = 0; k < prefix.length(); k++) {
-                char c1 = Character.toLowerCase(input.charAt(from + k));
-                char c2 = Character.toLowerCase(prefix.charAt(k));
-                if (c1 != c2) {
-                    return false;
-                }
-            }
-            return true;
+            char prev = input.charAt(offset - 1);
+            return Character.isLetterOrDigit(prev) || prev == '.';
         }
 
-        public boolean matchPattern(String pattern, int from) {
-            if (from + pattern.length() > input.length()) {
+        public boolean hasPrecedingLinuxPathBoundary() {
+            if (offset <= 0) {
+                return true;
+            }
+            char prev = input.charAt(offset - 1);
+            return Character.isWhitespace(prev) || prev == '[' || prev == '(' || prev == '\'' || prev == '"' || prev == ':';
+        }
+
+        public void skip(int count) {
+            this.offset += count;
+        }
+
+        public int skipDigits() {
+            int start = offset;
+            while (offset < input.length() && Character.isDigit(input.charAt(offset))) {
+                offset++;
+            }
+            return offset - start;
+        }
+
+        public int skipHexDigits() {
+            int start = offset;
+            while (offset < input.length() && isHexDigit(input.charAt(offset))) {
+                offset++;
+            }
+            return offset - start;
+        }
+
+        public void skipDecimalNumber() {
+            skipDigits();
+            if (offset + 1 < input.length() && input.charAt(offset) == '.' && Character.isDigit(input.charAt(offset + 1))) {
+                offset += 2;
+                skipDigits();
+            }
+        }
+
+        public int skipWhitespace() {
+            int start = offset;
+            while (offset < input.length() && Character.isWhitespace(input.charAt(offset))) {
+                offset++;
+            }
+            return offset - start;
+        }
+
+        public void skipInlineWhitespace() {
+            while (offset < input.length() && (input.charAt(offset) == ' ' || input.charAt(offset) == '\t')) {
+                offset++;
+            }
+        }
+
+        public void skipWhileDigitsOrColon() {
+            while (offset < input.length() && (Character.isDigit(input.charAt(offset)) || input.charAt(offset) == ':')) {
+                offset++;
+            }
+        }
+
+        public boolean consumeIf(char expected) {
+            if (offset < input.length() && input.charAt(offset) == expected) {
+                offset++;
+                return true;
+            }
+            return false;
+        }
+
+        public boolean consumeIf(String expected) {
+            if (input.startsWith(expected, offset)) {
+                offset += expected.length();
+                return true;
+            }
+            return false;
+        }
+
+        public boolean consumeIfIgnoreCase(String expected) {
+            if (startsWithIgnoreCase(expected)) {
+                offset += expected.length();
+                return true;
+            }
+            return false;
+        }
+
+        public boolean consumeAnyIgnoreCase(String... candidates) {
+            for (String candidate : candidates) {
+                if (consumeIfIgnoreCase(candidate)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public boolean consumePattern(String pattern) {
+            if (offset + pattern.length() > input.length()) {
                 return false;
             }
             for (int k = 0; k < pattern.length(); k++) {
                 char p = pattern.charAt(k);
-                char c = input.charAt(from + k);
+                char c = input.charAt(offset + k);
                 if (p == '#') {
                     if (!Character.isDigit(c)) {
                         return false;
@@ -244,7 +470,43 @@ public class ErrorSignatureExtractor {
                     return false;
                 }
             }
+            offset += pattern.length();
             return true;
+        }
+
+        public boolean consumeWindowsDrive() {
+            if (offset + 3 <= input.length()
+                && Character.isLetter(input.charAt(offset))
+                && input.charAt(offset + 1) == ':'
+                && input.charAt(offset + 2) == '\\') {
+                offset += 3;
+                return true;
+            }
+            return false;
+        }
+
+        public boolean consumePathWithExtension(char separator) {
+            int lastSlash = (offset > 0 && input.charAt(offset - 1) == separator) ? offset - 1 : -1;
+            int lastDot = -1;
+            int slashCount = (lastSlash >= 0) ? 1 : 0;
+
+            while (offset < input.length()) {
+                if (isPathTerminator()) {
+                    break;
+                }
+                char c = input.charAt(offset);
+                if (c == separator) {
+                    lastSlash = offset;
+                    slashCount++;
+                } else if (c == '.') {
+                    lastDot = offset;
+                } else if (!isPathChar(c)) {
+                    break;
+                }
+                offset++;
+            }
+
+            return slashCount >= 1 && lastDot > lastSlash && lastDot + 1 < offset;
         }
 
         public boolean outputEndsWith(String suffix) {
@@ -260,8 +522,8 @@ public class ErrorSignatureExtractor {
             return true;
         }
 
-        public boolean hasSourceExtensionBefore(int index) {
-            int k = index - 1;
+        public boolean hasPrecedingSourceExtension() {
+            int k = offset - 1;
             int extLen = 0;
             while (k >= 0 && extLen <= 8) {
                 char c = input.charAt(k);
@@ -277,332 +539,49 @@ public class ErrorSignatureExtractor {
             return false;
         }
 
-        public boolean isEmailDomainAfter(int j) {
-            if (!hasChar(j, '.')) {
+        public boolean isEmailDomain() {
+            if (offset >= input.length() || input.charAt(offset) != '.') {
                 return false;
             }
-            int k = j + 1;
+            int k = offset + 1;
             while (k < input.length() && Character.isLetter(input.charAt(k))) {
                 k++;
             }
-            int tldLen = k - (j + 1);
-            return tldLen >= 2 && tldLen <= 10 && isTokenBoundary(k);
+            int tldLen = k - (offset + 1);
+            return tldLen >= 2 && tldLen <= 10 && (k >= input.length() || !Character.isLetterOrDigit(input.charAt(k)));
         }
 
-        public boolean isPathTerminator(int idx) {
-            if (idx >= input.length()) {
+        private boolean isPathTerminator() {
+            if (offset >= input.length()) {
                 return true;
             }
-            char c = input.charAt(idx);
+            char c = input.charAt(offset);
             if (Character.isWhitespace(c) || c == '[') {
                 return true;
             }
-            if (c == ':' && idx + 1 < input.length()) {
-                char next = input.charAt(idx + 1);
+            if (c == ':' && offset + 1 < input.length()) {
+                char next = input.charAt(offset + 1);
                 return next == '[' || Character.isDigit(next);
             }
             return false;
         }
 
+        private boolean startsWithIgnoreCase(String prefix) {
+            if (offset + prefix.length() > input.length()) {
+                return false;
+            }
+            for (int k = 0; k < prefix.length(); k++) {
+                char c1 = Character.toLowerCase(input.charAt(offset + k));
+                char c2 = Character.toLowerCase(prefix.charAt(k));
+                if (c1 != c2) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         private static boolean isHexDigit(char c) {
             return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-        }
-    }
-
-    private static final class MemoryAddressRule implements NormalizationRule {
-        @Override
-        public Match tryMatch(ScanCursor cursor) {
-            if (cursor.current() != '@') {
-                return null;
-            }
-            int start = cursor.offset();
-            int endHex = cursor.readHexDigits(start + 1);
-            int hexCount = endHex - (start + 1);
-            if (hexCount < 6 || hexCount > 16) {
-                return null;
-            }
-            if (!cursor.isTokenBoundary(endHex)) {
-                return null;
-            }
-            if (cursor.isEmailDomainAfter(endHex)) {
-                return null;
-            }
-            return new Match(endHex, ADDR_REPLACEMENT);
-        }
-    }
-
-    private static final class TimestampRule implements NormalizationRule {
-        @Override
-        public Match tryMatch(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (!cursor.matchPattern("####-##-## ##:##:##", start)) {
-                return null;
-            }
-
-            int idx = start + 19;
-            if (cursor.hasChar(idx, '.')) {
-                idx = cursor.readDigits(idx + 1);
-            }
-            if (idx < cursor.length()) {
-                char tz = cursor.charAt(idx);
-                if (tz == 'Z') {
-                    idx++;
-                } else if (tz == '+' || tz == '-') {
-                    idx++;
-                    while (idx < cursor.length() && (cursor.isDigit(idx) || cursor.hasChar(idx, ':'))) {
-                        idx++;
-                    }
-                }
-            }
-            if (!cursor.isTokenBoundary(idx)) {
-                return null;
-            }
-            return new Match(idx, TIME_REPLACEMENT);
-        }
-    }
-
-    private static final class ClockTimeRule implements NormalizationRule {
-        @Override
-        public Match tryMatch(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (start > 0 && !cursor.isTokenBoundary(start - 1)) {
-                return null;
-            }
-            if (!cursor.matchPattern("##:##:##", start)) {
-                return null;
-            }
-
-            int idx = start + 8;
-            if (cursor.hasChar(idx, '.')) {
-                idx = cursor.readDigits(idx + 1);
-            }
-            if (!cursor.isTokenBoundary(idx)) {
-                return null;
-            }
-            return new Match(idx, TIME_REPLACEMENT);
-        }
-    }
-
-    private static final class DurationRule implements NormalizationRule {
-        @Override
-        public Match tryMatch(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (start > 0) {
-                char prev = cursor.charAt(start - 1);
-                if (Character.isLetterOrDigit(prev) || prev == '.') {
-                    return null;
-                }
-            }
-            if (!cursor.isDigit(start)) {
-                return null;
-            }
-            int numberEnd = cursor.readDecimalNumber(start);
-            int unitStart = cursor.skipInlineWhitespace(numberEnd);
-            int unitLen = matchDurationUnit(cursor, unitStart);
-            if (unitLen == 0) {
-                return null;
-            }
-            int end = unitStart + unitLen;
-            if (!cursor.isTokenBoundary(end)) {
-                return null;
-            }
-            return new Match(end, DURATION_REPLACEMENT);
-        }
-
-        private static int matchDurationUnit(ScanCursor cursor, int offset) {
-            if (cursor.startsWithIgnoreCase("milliseconds", offset)) {
-                return 12;
-            }
-            if (cursor.startsWithIgnoreCase("seconds", offset)) {
-                return 7;
-            }
-            if (cursor.startsWithIgnoreCase("ms", offset)) {
-                return 2;
-            }
-            if (cursor.startsWithIgnoreCase("s", offset)) {
-                return 1;
-            }
-            return 0;
-        }
-    }
-
-    private static final class LineColumnRule implements NormalizationRule {
-        @Override
-        public Match tryMatch(ScanCursor cursor) {
-            Match bracketMatch = tryMatchBracket(cursor);
-            if (bracketMatch != null) {
-                return bracketMatch;
-            }
-            Match wordMatch = tryMatchWord(cursor);
-            if (wordMatch != null) {
-                return wordMatch;
-            }
-            return tryMatchColon(cursor);
-        }
-
-        private Match tryMatchBracket(ScanCursor cursor) {
-            int start = cursor.offset();
-            int idx = start;
-            if (cursor.startsWith(":[", idx)) {
-                idx += 2;
-            } else if (cursor.hasChar(idx, '[')) {
-                idx += 1;
-            } else {
-                return null;
-            }
-            int lineEnd = cursor.readDigits(idx);
-            if (lineEnd == idx || !cursor.hasChar(lineEnd, ',')) {
-                return null;
-            }
-            idx = cursor.skipWhitespace(lineEnd + 1);
-            int colEnd = cursor.readDigits(idx);
-            if (colEnd == idx || !cursor.hasChar(colEnd, ']')) {
-                return null;
-            }
-            return new Match(colEnd + 1, LINE_COL_REPLACEMENT);
-        }
-
-        private Match tryMatchWord(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (start > 0 && !cursor.isTokenBoundary(start - 1)) {
-                return null;
-            }
-            if (!cursor.startsWithIgnoreCase("line", start)) {
-                return null;
-            }
-            int idx = start + 4;
-            if (!cursor.isWhitespace(idx)) {
-                return null;
-            }
-            idx = cursor.skipWhitespace(idx);
-            int lineEnd = cursor.readDigits(idx);
-            if (lineEnd == idx) {
-                return null;
-            }
-            int end = lineEnd;
-            int check = lineEnd;
-            if (cursor.hasChar(check, ',')) {
-                check++;
-            }
-            check = cursor.skipWhitespace(check);
-            int colWordLen = 0;
-            if (cursor.startsWithIgnoreCase("column", check)) {
-                colWordLen = 6;
-            } else if (cursor.startsWithIgnoreCase("col", check)) {
-                colWordLen = 3;
-            }
-            if (colWordLen > 0) {
-                check = cursor.skipWhitespace(check + colWordLen);
-                int colEnd = cursor.readDigits(check);
-                if (colEnd > check) {
-                    end = colEnd;
-                }
-            }
-            if (!cursor.isTokenBoundary(end)) {
-                return null;
-            }
-            return new Match(end, LINE_COL_REPLACEMENT);
-        }
-
-        private Match tryMatchColon(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (cursor.current() != ':') {
-                return null;
-            }
-            boolean afterContext = cursor.outputEndsWith(PATH_REPLACEMENT) || cursor.hasSourceExtensionBefore(start);
-            if (!afterContext) {
-                return null;
-            }
-            int idx = cursor.readDigits(start + 1);
-            if (idx == start + 1) {
-                return null;
-            }
-            if (cursor.hasChar(idx, ':') && cursor.isDigit(idx + 1)) {
-                idx = cursor.readDigits(idx + 2);
-            }
-            if (!cursor.isTokenBoundary(idx)) {
-                return null;
-            }
-            return new Match(idx, LINE_COL_REPLACEMENT);
-        }
-    }
-
-    private static final class PathRule implements NormalizationRule {
-        @Override
-        public Match tryMatch(ScanCursor cursor) {
-            Match winPath = tryMatchWindowsPath(cursor);
-            if (winPath != null) {
-                return winPath;
-            }
-            return tryMatchLinuxPath(cursor);
-        }
-
-        private Match tryMatchWindowsPath(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (!cursor.hasRemaining(4)) {
-                return null;
-            }
-            char drive = cursor.charAt(start);
-            if (!Character.isLetter(drive) || cursor.charAt(start + 1) != ':' || cursor.charAt(start + 2) != '\\') {
-                return null;
-            }
-            int idx = start + 3;
-            int lastSlash = start + 2;
-            int lastDot = -1;
-            while (idx < cursor.length()) {
-                if (cursor.isPathTerminator(idx)) {
-                    break;
-                }
-                char c = cursor.charAt(idx);
-                if (c == '\\') {
-                    lastSlash = idx;
-                } else if (c == '.') {
-                    lastDot = idx;
-                }
-                idx++;
-            }
-            if (lastDot <= lastSlash || lastDot + 1 >= idx) {
-                return null;
-            }
-            return new Match(idx, PATH_REPLACEMENT);
-        }
-
-        private Match tryMatchLinuxPath(ScanCursor cursor) {
-            int start = cursor.offset();
-            if (cursor.current() != '/') {
-                return null;
-            }
-            if (start > 0) {
-                char prev = cursor.charAt(start - 1);
-                if (!Character.isWhitespace(prev) && prev != '[' && prev != '(' && prev != '\'' && prev != '"' && prev != ':') {
-                    return null;
-                }
-            }
-            int idx = start;
-            int lastSlash = start;
-            int lastDot = -1;
-            int slashCount = 0;
-
-            while (idx < cursor.length()) {
-                if (cursor.isPathTerminator(idx)) {
-                    break;
-                }
-                char c = cursor.charAt(idx);
-                if (c == '/') {
-                    lastSlash = idx;
-                    slashCount++;
-                } else if (c == '.') {
-                    lastDot = idx;
-                } else if (!isPathChar(c)) {
-                    break;
-                }
-                idx++;
-            }
-
-            if (slashCount < 1 || lastDot <= lastSlash || lastDot + 1 >= idx) {
-                return null;
-            }
-            return new Match(idx, PATH_REPLACEMENT);
         }
 
         private static boolean isPathChar(char c) {
