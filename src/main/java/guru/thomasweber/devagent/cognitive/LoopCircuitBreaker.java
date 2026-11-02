@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -28,8 +29,8 @@ public class LoopCircuitBreaker {
     public static final int MAX_HISTORY_SIZE = 50;
     public static final Duration ROLLBACK_TIMEOUT = Duration.ofSeconds(10);
     private static final String DEFAULT_TASK_ID = "default";
-    private static final String WORKTREE_DIR_NAME = ".git/dev-agent-worktrees";
-    private static final String WORKTREE_PATH_SEGMENT = "/" + WORKTREE_DIR_NAME + "/";
+    private static final String GIT_DIR_NAME = ".git";
+    private static final String WORKTREE_DIR_NAME = "dev-agent-worktrees";
 
     private final ErrorSignatureExtractor signatureExtractor;
     private final SubprocessExecutor subprocessExecutor;
@@ -183,8 +184,7 @@ public class LoopCircuitBreaker {
         if (workingDir == null) {
             return false;
         }
-        String normalized = workingDir.toAbsolutePath().normalize().toString().replace('\\', '/');
-        if (!normalized.contains(WORKTREE_PATH_SEGMENT)) {
+        if (findWorktreeTaskId(workingDir).isEmpty()) {
             throw new SecurityException("Refusing to rollback outside dedicated git worktree: " + workingDir);
         }
         ProcessResult resetResult = subprocessExecutor.execute(List.of("git", "reset", "--hard"), workingDir, ROLLBACK_TIMEOUT);
@@ -196,16 +196,20 @@ public class LoopCircuitBreaker {
     }
 
     private String resolveTaskId(Path workingDir) {
+        return findWorktreeTaskId(workingDir).orElse(DEFAULT_TASK_ID);
+    }
+
+    private Optional<String> findWorktreeTaskId(Path workingDir) {
         if (workingDir == null) {
-            return DEFAULT_TASK_ID;
+            return Optional.empty();
         }
-        String normalized = workingDir.toAbsolutePath().normalize().toString().replace('\\', '/');
-        int idx = normalized.indexOf(WORKTREE_PATH_SEGMENT);
-        if (idx >= 0) {
-            String remainder = normalized.substring(idx + WORKTREE_PATH_SEGMENT.length());
-            int slashIdx = remainder.indexOf('/');
-            return slashIdx >= 0 ? remainder.substring(0, slashIdx) : remainder;
+        Path normalized = workingDir.toAbsolutePath().normalize();
+        for (int i = 0; i < normalized.getNameCount() - 2; i++) {
+            if (GIT_DIR_NAME.equals(normalized.getName(i).toString())
+                    && WORKTREE_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
+                return Optional.of(normalized.getName(i + 2).toString());
+            }
         }
-        return DEFAULT_TASK_ID;
+        return Optional.empty();
     }
 }

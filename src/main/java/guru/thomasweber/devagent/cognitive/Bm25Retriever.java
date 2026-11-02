@@ -316,7 +316,11 @@ public class Bm25Retriever {
         if (!stemmed.equals(w)) {
             return stemmed;
         }
-        return stemVerbAdjectiveSuffixes(w);
+        stemmed = stemAdjectiveSuffixes(w);
+        if (!stemmed.equals(w)) {
+            return stemmed;
+        }
+        return stemVerbSuffixes(w);
     }
 
     private static String stemNounSuffixes(String w) {
@@ -341,13 +345,20 @@ public class Bm25Retriever {
         return w;
     }
 
-    private static String stemVerbAdjectiveSuffixes(String w) {
+    private static String stemAdjectiveSuffixes(String w) {
         if (w.endsWith("al") && w.length() > 4) {
             return w.substring(0, w.length() - 2);
         }
         if ((w.endsWith("able") || w.endsWith("ible")) && w.length() > 5) {
             return w.substring(0, w.length() - 4);
         }
+        if (w.endsWith("ive") && w.length() > 4) {
+            return w.substring(0, w.length() - 3);
+        }
+        return w;
+    }
+
+    private static String stemVerbSuffixes(String w) {
         if (w.endsWith("ing") && w.length() > 5) {
             return w.substring(0, w.length() - 3);
         }
@@ -356,9 +367,6 @@ public class Bm25Retriever {
         }
         if ((w.endsWith("er") || w.endsWith("or")) && w.length() > 4) {
             return w.substring(0, w.length() - 2);
-        }
-        if (w.endsWith("ive") && w.length() > 4) {
-            return w.substring(0, w.length() - 3);
         }
         if ((w.endsWith("ize") || w.endsWith("ise")) && w.length() > 4) {
             return w.substring(0, w.length() - 3);
