@@ -101,14 +101,14 @@ public class AdrDiscoveryService {
     private List<String> readConfiguredRulesPaths(Path root) {
         Path agentsDir = root.resolve(".agents");
         Path configFile = agentsDir.resolve("dev-agent.yaml");
-        if (Files.exists(agentsDir, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(agentsDir)) {
+        if (Files.isSymbolicLink(agentsDir)) {
             throw new SecurityException("Forbidden symbolic link at .agents directory: " + agentsDir);
-        }
-        if (!Files.exists(configFile)) {
-            return Collections.emptyList();
         }
         if (Files.isSymbolicLink(configFile)) {
             throw new SecurityException("Forbidden symbolic link at configuration file: " + configFile);
+        }
+        if (!Files.exists(configFile, LinkOption.NOFOLLOW_LINKS)) {
+            return Collections.emptyList();
         }
         if (!Files.isRegularFile(configFile, LinkOption.NOFOLLOW_LINKS)) {
             return Collections.emptyList();

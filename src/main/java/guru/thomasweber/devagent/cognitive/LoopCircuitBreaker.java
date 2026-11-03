@@ -7,6 +7,7 @@ import guru.thomasweber.devagent.workspace.SubprocessExecutor;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedList;
@@ -213,9 +214,21 @@ public class LoopCircuitBreaker {
                     && WORKTREE_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
                 Path root = normalized.getRoot();
                 Path subpath = normalized.subpath(0, i + 3);
-                return Optional.of(root != null ? root.resolve(subpath) : subpath);
+                Path worktreeRoot = root != null ? root.resolve(subpath) : subpath;
+                validateNoSymbolicLinks(worktreeRoot);
+                return Optional.of(worktreeRoot);
             }
         }
         return Optional.empty();
+    }
+
+    private void validateNoSymbolicLinks(Path path) {
+        Path curr = path;
+        while (curr != null) {
+            if (Files.isSymbolicLink(curr)) {
+                throw new SecurityException("Forbidden symbolic link in worktree path: " + path);
+            }
+            curr = curr.getParent();
+        }
     }
 }

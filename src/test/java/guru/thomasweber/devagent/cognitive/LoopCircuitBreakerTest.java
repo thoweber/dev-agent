@@ -23,6 +23,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class LoopCircuitBreakerTest {
@@ -303,5 +304,47 @@ class LoopCircuitBreakerTest {
         Path subDir = worktreeDir.resolve("src/main/java");
         circuitBreaker.recordFailure("error sub", subDir);
         assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.NORMAL);
+    }
+
+    @Test
+    @DisplayName("Given symlink worktree root - when oscillating - then throws SecurityException before rollback")
+    void givenSymlinkWorktreeRoot_whenOscillating_thenThrowsSecurityException() throws IOException {
+        Path realWorktree = tempDir.resolve("real-worktree");
+        Files.createDirectories(realWorktree);
+        Path symlinkWorktree = tempDir.resolve(".git/dev-agent-worktrees/task-symlink");
+        Files.createDirectories(symlinkWorktree.getParent());
+        try {
+            Files.createSymbolicLink(symlinkWorktree, realWorktree);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        circuitBreaker.recordFailure("task-symlink", "error A", null);
+        circuitBreaker.recordFailure("task-symlink", "error B", null);
+        circuitBreaker.recordFailure("task-symlink", "error A", null);
+
+        assertThatThrownBy(() -> circuitBreaker.recordFailure("task-symlink", "error B", symlinkWorktree))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("Forbidden symbolic link in worktree path");
+
+        verifyNoInteractions(subprocessExecutor);
+    }
+
+    @Test
+    @DisplayName("Given symlink worktree root - when recording failure with workingDir - then throws SecurityException")
+    void givenSymlinkWorktreeRoot_whenRecordingFailure_thenThrowsSecurityException() throws IOException {
+        Path realWorktree = tempDir.resolve("real-worktree-2");
+        Files.createDirectories(realWorktree);
+        Path symlinkWorktree = tempDir.resolve(".git/dev-agent-worktrees/task-symlink-2");
+        Files.createDirectories(symlinkWorktree.getParent());
+        try {
+            Files.createSymbolicLink(symlinkWorktree, realWorktree);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        assertThatThrownBy(() -> circuitBreaker.recordFailure("error A", symlinkWorktree))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("Forbidden symbolic link in worktree path");
     }
 }
