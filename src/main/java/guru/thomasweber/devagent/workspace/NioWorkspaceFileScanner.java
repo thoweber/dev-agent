@@ -190,12 +190,6 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         }
     }
 
-    private static void validateNotSymbolicLink(Path path, BasicFileAttributes attrs) {
-        if (attrs.isSymbolicLink() || Files.isSymbolicLink(path)) {
-            throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + path);
-        }
-    }
-
     private static final class ScanningFileVisitor extends SimpleFileVisitor<Path> {
         private final Path rootPath;
         private final List<PathMatcher> matchers;
@@ -215,6 +209,12 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
             this.ignorePrefixes = ignorePrefixes;
             this.fileFilter = fileFilter;
             this.uniqueFiles = uniqueFiles;
+        }
+
+        private static void validateNotSymbolicLink(Path path, BasicFileAttributes attrs) {
+            if (attrs.isSymbolicLink() || Files.isSymbolicLink(path)) {
+                throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + path);
+            }
         }
 
         @Override
