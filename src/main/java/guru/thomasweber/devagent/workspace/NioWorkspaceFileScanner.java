@@ -124,9 +124,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (!Files.exists(searchRoot, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
-        if (Files.isSymbolicLink(searchRoot)) {
-            throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + searchRoot);
-        }
+        validateNotSymbolicLink(searchRoot);
         RepoPath.of(searchRoot, rootPath);
         List<String> patterns = expandZeroLevelDoubleStarPatterns(normalized);
         List<PathMatcher> matchers = patterns.stream()
@@ -157,9 +155,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS) || isIgnored(rootPath, path, ignorePrefixes)) {
             return;
         }
-        if (Files.isSymbolicLink(path)) {
-            throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + path);
-        }
+        validateNotSymbolicLink(path);
         RepoPath repoPath = RepoPath.of(path, rootPath);
         if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             walkAndCollect(rootPath, path, null, ignorePrefixes, fileFilter, uniqueFiles);
@@ -177,41 +173,83 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         Map<Path, RepoPath> uniqueFiles
     ) {
         try {
-            Files.walkFileTree(searchRoot, EnumSet.noneOf(FileVisitOption.class), Integer.MAX_VALUE, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                    if (isIgnored(rootPath, dir, ignorePrefixes)) {
-                        return FileVisitResult.SKIP_SUBTREE;
-                    }
-                    if (attrs.isSymbolicLink() || Files.isSymbolicLink(dir)) {
-                        throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + dir);
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (isIgnored(rootPath, file, ignorePrefixes)) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                    if (attrs.isSymbolicLink() || Files.isSymbolicLink(file)) {
-                        throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + file);
-                    }
-                    if (attrs.isRegularFile()) {
-                        Path rel = rootPath.relativize(file);
-                        String relStr = rel.toString().replace('\\', '/');
-                        boolean matchesPattern = (matchers == null || matchers.isEmpty())
-                            || matchers.stream().anyMatch(m -> m.matches(Path.of(relStr)));
-                        if (matchesPattern && (fileFilter == null || fileFilter.test(file))) {
-                            RepoPath repoPath = RepoPath.of(file, rootPath);
-                            uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
-                        }
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            Files.walkFileTree(
+                searchRoot,
+                EnumSet.noneOf(FileVisitOption.class),
+                Integer.MAX_VALUE,
+                new ScanningFileVisitor(rootPath, matchers, ignorePrefixes, fileFilter, uniqueFiles)
+            );
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to walk search root: " + searchRoot, e);
+        }
+    }
+
+    private static void validateNotSymbolicLink(Path path) {
+        if (Files.isSymbolicLink(path)) {
+            throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + path);
+        }
+    }
+
+    private static void validateNotSymbolicLink(Path path, BasicFileAttributes attrs) {
+        if (attrs.isSymbolicLink() || Files.isSymbolicLink(path)) {
+            throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + path);
+        }
+    }
+
+    private static final class ScanningFileVisitor extends SimpleFileVisitor<Path> {
+        private final Path rootPath;
+        private final List<PathMatcher> matchers;
+        private final Set<String> ignorePrefixes;
+        private final Predicate<Path> fileFilter;
+        private final Map<Path, RepoPath> uniqueFiles;
+
+        private ScanningFileVisitor(
+            Path rootPath,
+            List<PathMatcher> matchers,
+            Set<String> ignorePrefixes,
+            Predicate<Path> fileFilter,
+            Map<Path, RepoPath> uniqueFiles
+        ) {
+            this.rootPath = rootPath;
+            this.matchers = matchers;
+            this.ignorePrefixes = ignorePrefixes;
+            this.fileFilter = fileFilter;
+            this.uniqueFiles = uniqueFiles;
+        }
+
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            if (isIgnored(rootPath, dir, ignorePrefixes)) {
+                return FileVisitResult.SKIP_SUBTREE;
+            }
+            validateNotSymbolicLink(dir, attrs);
+            return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            if (isIgnored(rootPath, file, ignorePrefixes)) {
+                return FileVisitResult.CONTINUE;
+            }
+            validateNotSymbolicLink(file, attrs);
+            if (attrs.isRegularFile() && matchesPattern(file) && isIncluded(file)) {
+                RepoPath repoPath = RepoPath.of(file, rootPath);
+                uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
+            }
+            return FileVisitResult.CONTINUE;
+        }
+
+        private boolean matchesPattern(Path file) {
+            if (matchers == null || matchers.isEmpty()) {
+                return true;
+            }
+            Path rel = rootPath.relativize(file);
+            Path normalizedRel = Path.of(rel.toString().replace('\\', '/'));
+            return matchers.stream().anyMatch(m -> m.matches(normalizedRel));
+        }
+
+        private boolean isIncluded(Path file) {
+            return fileFilter == null || fileFilter.test(file);
         }
     }
 
