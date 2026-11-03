@@ -39,7 +39,7 @@ public record RepoPath(Path path, Path root) {
             }
 
             validateNoAncestorSymlinks(absoluteCandidate, realRoot, path);
-            Path canonicalCandidate = resolveCanonicalCandidate(absoluteCandidate, path);
+            Path canonicalCandidate = resolveCanonicalCandidate(absoluteCandidate);
 
             if (!canonicalCandidate.startsWith(realRoot)) {
                 throw new SecurityException("Jailbreak attempt: Path resolves outside root: " + path);
@@ -65,32 +65,26 @@ public record RepoPath(Path path, Path root) {
     private static void validateNoAncestorSymlinks(Path candidate, Path realRoot, Path originalPath) {
         Path curr = candidate;
         while (curr != null && !curr.equals(realRoot)) {
-            if (Files.exists(curr, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(curr)) {
+            if (Files.isSymbolicLink(curr)) {
                 throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + originalPath);
             }
             curr = curr.getParent();
         }
     }
 
-    private static Path resolveCanonicalCandidate(Path candidate, Path originalPath) throws IOException {
+    private static Path resolveCanonicalCandidate(Path candidate) throws IOException {
         if (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(candidate)) {
-                throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + originalPath);
-            }
-            return candidate.toRealPath();
+            return candidate.toRealPath(LinkOption.NOFOLLOW_LINKS);
         }
-        return resolveMissingCandidate(candidate, originalPath);
+        return resolveMissingCandidate(candidate);
     }
 
-    private static Path resolveMissingCandidate(Path candidate, Path originalPath) throws IOException {
+    private static Path resolveMissingCandidate(Path candidate) throws IOException {
         Path existingParent = findExistingAncestor(candidate);
         if (existingParent == null) {
             return candidate;
         }
-        if (Files.isSymbolicLink(existingParent)) {
-            throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + originalPath);
-        }
-        Path realParent = existingParent.toRealPath();
+        Path realParent = existingParent.toRealPath(LinkOption.NOFOLLOW_LINKS);
         Path relativeRemainder = existingParent.relativize(candidate);
         return realParent.resolve(relativeRemainder).normalize();
     }
