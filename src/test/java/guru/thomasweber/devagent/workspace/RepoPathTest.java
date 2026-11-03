@@ -171,4 +171,37 @@ class RepoPathTest {
         assertThat(repoPath.toPath()).isEqualTo(validFile.toRealPath());
         assertThat(repoPath.relativize()).isEqualTo(Path.of("src/main/Relative.java"));
     }
+
+    @Test
+    @DisplayName("Given candidate path is a dangling symbolic link - when RepoPath.of called - throws SecurityException")
+    void testRejectsDanglingSymbolicLink() throws IOException {
+        Path nonExistent = tempDir.resolve("non_existent_target.txt");
+        Path danglingSymlink = tempDir.resolve("dangling_link.txt");
+        try {
+            Files.createSymbolicLink(danglingSymlink, nonExistent);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        assertThatThrownBy(() -> RepoPath.of(danglingSymlink, tempDir))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden");
+    }
+
+    @Test
+    @DisplayName("Given candidate path has dangling symlink ancestor directory - when RepoPath.of called - throws SecurityException")
+    void testRejectsDanglingSymlinkAncestor() throws IOException {
+        Path nonExistentDir = tempDir.resolve("non_existent_dir");
+        Path danglingSymlinkDir = tempDir.resolve("dangling_dir_link");
+        try {
+            Files.createSymbolicLink(danglingSymlinkDir, nonExistentDir);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        Path childUnderDangling = danglingSymlinkDir.resolve("child.txt");
+        assertThatThrownBy(() -> RepoPath.of(childUnderDangling, tempDir))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden");
+    }
 }

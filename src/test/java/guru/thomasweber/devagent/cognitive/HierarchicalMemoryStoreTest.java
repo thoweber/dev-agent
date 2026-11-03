@@ -575,4 +575,32 @@ class HierarchicalMemoryStoreTest {
 
         assertThat(memory.messages()).hasSize(4);
     }
+
+    @Test
+    @DisplayName("Given duplicate SystemMessage and null task spec - when updating - then deduplicates and handles nulls")
+    void testDuplicateSystemMessageAndNullTaskSpec() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new SystemMessage("Invariant A"));
+        memory.add(new SystemMessage("Invariant A")); // Duplicate
+        assertThat(memory.messages()).hasSize(1);
+
+        memory.pinTaskSpecification(null, null);
+        assertThat(memory.messages()).hasSize(2);
+
+        memory.add(new UserMessage("Scratch"));
+        assertThat(memory.messages()).hasSize(3);
+
+        memory.clearScratchpad();
+        assertThat(memory.messages()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Given AiMessage without tool requests - when tool result added - then dropped as unmatched")
+    void testAiMessageWithoutToolRequestsDropsToolResult() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        memory.add(new AiMessage("Plain AI answer"));
+        ToolExecutionRequest req = ToolExecutionRequest.builder().id("call-x").name("tool").arguments("{}").build();
+        memory.add(ToolExecutionResultMessage.from(req, "res"));
+        assertThat(memory.messages()).hasSize(1);
+    }
 }

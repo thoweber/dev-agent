@@ -33,4 +33,12 @@ class GateVerdictTest {
         assertThat(updated.summary()).isEqualTo("Architecture check passed");
         assertThat(updated.violations()).containsExactly("Missing validation");
     }
+
+    @Test
+    @DisplayName("Given null violations or recommendations - when instantiated - then initializes to empty immutable lists")
+    void givenNullLists_whenInstantiated_thenInitializesToEmptyLists() {
+        GateVerdict verdict = new GateVerdict(true, "Check", null, null);
+        assertThat(verdict.violations()).isEmpty();
+        assertThat(verdict.recommendations()).isEmpty();
+    }
 }

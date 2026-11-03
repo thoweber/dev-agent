@@ -48,7 +48,8 @@ class BaseAgentCommandTest {
         // Parent command and context resolver
         DevAgentCommand parent = new DevAgentCommand();
         cmd.parentCommand = parent;
-        assertThat(cmd.getWorkspaceRoot()).isNotNull();
+        cmd.dir = null;
+        assertThat(cmd.getWorkspaceRoot()).isEqualTo(Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize());
         assertThat(cmd.getWorkspaceContextResolver()).isNotNull();
 
         // Execution through CommandLine sets spec

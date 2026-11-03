@@ -1,0 +1,222 @@
+package guru.thomasweber.devagent.cognitive;
+
+import dev.langchain4j.data.document.Metadata;
+import dev.langchain4j.data.segment.TextSegment;
+import guru.thomasweber.devagent.cognitive.MarkdownParserService.DocumentSection;
+import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
+import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.workspace.RepoPath;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Dedicated parser for Architectural Decision Records (ADRs) and declarative rules.
+ * Extracts YAML frontmatter metadata, structured AST sections, and generates LangChain4j {@link TextSegment}s.
+ */
+@ApplicationScoped
+public class AdrParser {
+
+    private static final String METADATA_ID = "id";
+    private static final String METADATA_TITLE = "title";
+    private static final String METADATA_STATUS = "status";
+    private static final String METADATA_SUMMARY = "summary";
+    private static final String METADATA_TAGS = "tags";
+
+    private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([a-z0-9_-]+)");
+    private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b([A-Z0-9]+-\\d+)\\b");
+    private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^([A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
+    private static final Pattern ADR_TAG_PATTERN = Pattern.compile("(?i)(?:^|/)adrs?(?:/|[-_.]|$)");
+    private static final Pattern RULE_TAG_PATTERN = Pattern.compile("(?i)(?:^|/)rules?(?:/|[-_.]|$)");
+
+    private final MarkdownParserService markdownParserService;
+
+    @Inject
+    public AdrParser(MarkdownParserService markdownParserService) {
+        this.markdownParserService = markdownParserService;
+    }
+
+    public AdrParser() {
+        this(new MarkdownParserService());
+    }
+
+    /**
+     * Parses an architectural record directly from disk using a verified {@link RepoPath}.
+     *
+     * @param repoPath verified repository path
+     * @return structured ArchitecturalRecord
+     */
+    public ArchitecturalRecord parseRecord(RepoPath repoPath) {
+        try {
+            if (Files.isSymbolicLink(repoPath.toPath())) {
+                throw new SecurityException("Refusing to read through symbolic link: " + repoPath.toPath());
+            }
+            String content = Files.readString(repoPath.toPath());
+            return parseRecord(repoPath, content);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read record at " + repoPath.toPath(), e);
+        }
+    }
+
+    /**
+     * Parses an architectural record from raw markdown content and its associated {@link RepoPath}.
+     *
+     * @param repoPath verified repository path
+     * @param content raw markdown document content
+     * @return structured ArchitecturalRecord
+     */
+    public ArchitecturalRecord parseRecord(RepoPath repoPath, String content) {
+        String fileName = repoPath.toPath().getFileName().toString();
+        String nameWithoutExt = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
+
+        ParsedMarkdown parsed = markdownParserService.parse(content);
+
+        String title = deriveTitle(parsed, nameWithoutExt);
+        String id = deriveId(parsed, fileName, title, nameWithoutExt);
+        String status = deriveStatus(parsed, content);
+        String summary = deriveSummary(parsed, title);
+        List<String> tags = deriveTags(repoPath, parsed);
+
+        return ArchitecturalRecord.builder()
+            .id(id)
+            .title(title)
+            .status(status)
+            .tags(tags)
+            .path(repoPath)
+            .summary(summary)
+            .content(content)
+            .build();
+    }
+
+    private String deriveStatus(ParsedMarkdown parsed, String content) {
+        String status = getFirstMetadata(parsed.metadata(), METADATA_STATUS);
+        if (status == null) {
+            Matcher statusMatcher = STATUS_PATTERN.matcher(content);
+            status = statusMatcher.find() ? statusMatcher.group(1).trim() : "Active";
+        }
+        return status;
+    }
+
+    private String deriveSummary(ParsedMarkdown parsed, String title) {
+        String summary = getFirstMetadata(parsed.metadata(), METADATA_SUMMARY);
+        if (summary == null) {
+            summary = parsed.sections().stream()
+                .filter(s -> "Summary".equalsIgnoreCase(s.heading()) || "Context".equalsIgnoreCase(s.heading()))
+                .map(DocumentSection::content)
+                .findFirst()
+                .orElse(null);
+        }
+        if (summary == null || summary.isBlank()) {
+            summary = parsed.sections().stream()
+                .map(DocumentSection::content)
+                .flatMap(String::lines)
+                .map(String::trim)
+                .filter(line -> !line.isBlank() && !line.toLowerCase(Locale.ROOT).startsWith("status:"))
+                .findFirst()
+                .orElse(title);
+        }
+        return summary;
+    }
+
+    private List<String> deriveTags(RepoPath repoPath, ParsedMarkdown parsed) {
+        List<String> tags = new ArrayList<>();
+        if (parsed.metadata().containsKey(METADATA_TAGS)) {
+            tags.addAll(parsed.metadata().get(METADATA_TAGS));
+        }
+        String rel = repoPath.relativize().toString().replace('\\', '/');
+        if (ADR_TAG_PATTERN.matcher(rel).find()) {
+            tags.add("adr");
+        }
+        if (RULE_TAG_PATTERN.matcher(rel).find()) {
+            tags.add("rule");
+        }
+        return tags.stream().distinct().toList();
+    }
+
+    /**
+     * Splits an ADR or rule document into searchable LangChain4j {@link TextSegment} chunks.
+     *
+     * @param filePath path to the file (optional)
+     * @param rawContent raw markdown content
+     * @return list of segmented text chunks with metadata
+     */
+    public List<TextSegment> parseSegments(Path filePath, String rawContent) {
+        if (rawContent == null || rawContent.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        ParsedMarkdown parsed = markdownParserService.parse(rawContent);
+
+        String fileName = (filePath != null && filePath.getFileName() != null) ? filePath.getFileName().toString() : "unknown.md";
+        String nameWithoutExt = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
+
+        String title = deriveTitle(parsed, nameWithoutExt);
+        String docId = deriveId(parsed, fileName, title, nameWithoutExt);
+
+        List<TextSegment> segments = new ArrayList<>();
+        for (DocumentSection section : parsed.sections()) {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("path", filePath != null ? filePath.toString() : "");
+            metadata.put(METADATA_ID, docId);
+            metadata.put(METADATA_TITLE, title);
+            metadata.put("section", section.heading());
+
+            String segmentBody = String.format("[%s - %s] %s%n%s", docId, title, section.heading(), section.content());
+            segments.add(TextSegment.from(segmentBody, new Metadata(metadata)));
+        }
+        return segments;
+    }
+
+    private String deriveTitle(ParsedMarkdown parsed, String fallback) {
+        String title = getFirstMetadata(parsed.metadata(), METADATA_TITLE);
+        if (title == null) {
+            title = parsed.sections().stream()
+                .map(DocumentSection::heading)
+                .filter(h -> !"Preamble".equalsIgnoreCase(h))
+                .findFirst()
+                .orElse(fallback);
+        }
+        return title;
+    }
+
+    private String deriveId(ParsedMarkdown parsed, String fileName, String title, String nameWithoutExt) {
+        String id = getFirstMetadata(parsed.metadata(), METADATA_ID);
+        if (id == null) {
+            Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
+            if (fileIdMatcher.find()) {
+                id = fileIdMatcher.group(1);
+            } else {
+                Matcher headerIdMatcher = ADR_ID_HEADER_PATTERN.matcher(title);
+                if (headerIdMatcher.find()) {
+                    id = headerIdMatcher.group(1);
+                } else {
+                    id = nameWithoutExt;
+                }
+            }
+        }
+        return id;
+    }
+
+    private static String getFirstMetadata(Map<String, List<String>> metadata, String key) {
+        List<String> values = metadata.get(key);
+        if (values != null && !values.isEmpty()) {
+            String first = values.getFirst();
+            if (first != null && !first.isBlank()) {
+                return first.trim();
+            }
+        }
+        return null;
+    }
+}
