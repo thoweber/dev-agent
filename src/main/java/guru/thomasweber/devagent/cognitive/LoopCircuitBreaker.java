@@ -184,14 +184,13 @@ public class LoopCircuitBreaker {
         if (workingDir == null) {
             return false;
         }
-        if (findWorktreeTaskId(workingDir).isEmpty()) {
-            throw new SecurityException("Refusing to rollback outside dedicated git worktree: " + workingDir);
-        }
-        ProcessResult resetResult = subprocessExecutor.execute(List.of("git", "reset", "--hard"), workingDir, ROLLBACK_TIMEOUT);
+        Path worktreeRoot = findWorktreeRoot(workingDir)
+                .orElseThrow(() -> new SecurityException("Refusing to rollback outside dedicated git worktree: " + workingDir));
+        ProcessResult resetResult = subprocessExecutor.execute(List.of("git", "reset", "--hard"), worktreeRoot, ROLLBACK_TIMEOUT);
         if (!resetResult.isSuccess()) {
             return false;
         }
-        ProcessResult cleanResult = subprocessExecutor.execute(List.of("git", "clean", "-fd"), workingDir, ROLLBACK_TIMEOUT);
+        ProcessResult cleanResult = subprocessExecutor.execute(List.of("git", "clean", "-fd"), worktreeRoot, ROLLBACK_TIMEOUT);
         return cleanResult.isSuccess();
     }
 
@@ -200,6 +199,11 @@ public class LoopCircuitBreaker {
     }
 
     private Optional<String> findWorktreeTaskId(Path workingDir) {
+        return findWorktreeRoot(workingDir)
+                .map(root -> root.getFileName().toString());
+    }
+
+    private Optional<Path> findWorktreeRoot(Path workingDir) {
         if (workingDir == null) {
             return Optional.empty();
         }
@@ -207,7 +211,9 @@ public class LoopCircuitBreaker {
         for (int i = 0; i < normalized.getNameCount() - 2; i++) {
             if (GIT_DIR_NAME.equals(normalized.getName(i).toString())
                     && WORKTREE_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
-                return Optional.of(normalized.getName(i + 2).toString());
+                Path root = normalized.getRoot();
+                Path subpath = normalized.subpath(0, i + 3);
+                return Optional.of(root != null ? root.resolve(subpath) : subpath);
             }
         }
         return Optional.empty();

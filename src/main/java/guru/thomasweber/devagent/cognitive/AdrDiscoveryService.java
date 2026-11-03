@@ -12,6 +12,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
@@ -98,11 +99,22 @@ public class AdrDiscoveryService {
     }
 
     private List<String> readConfiguredRulesPaths(Path root) {
-        Path configFile = root.resolve(".agents").resolve("dev-agent.yaml");
-        if (!Files.isRegularFile(configFile)) {
+        Path agentsDir = root.resolve(".agents");
+        Path configFile = agentsDir.resolve("dev-agent.yaml");
+        if (Files.exists(agentsDir, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(agentsDir)) {
+            throw new SecurityException("Forbidden symbolic link at .agents directory: " + agentsDir);
+        }
+        if (!Files.exists(configFile)) {
             return Collections.emptyList();
         }
-        DevAgentConfig config = configLoader.load(configFile);
+        if (Files.isSymbolicLink(configFile)) {
+            throw new SecurityException("Forbidden symbolic link at configuration file: " + configFile);
+        }
+        if (!Files.isRegularFile(configFile, LinkOption.NOFOLLOW_LINKS)) {
+            return Collections.emptyList();
+        }
+        RepoPath repoConfig = RepoPath.of(configFile, root);
+        DevAgentConfig config = configLoader.load(repoConfig.toPath());
         return config.knowledge().rulesPaths().orElse(Collections.emptyList());
     }
 }

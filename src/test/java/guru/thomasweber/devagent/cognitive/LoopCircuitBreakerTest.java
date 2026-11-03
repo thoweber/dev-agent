@@ -127,6 +127,28 @@ class LoopCircuitBreakerTest {
     }
 
     @Test
+    @DisplayName("Given nested directory inside worktree - when oscillating - then executes rollback at worktree root")
+    void givenNestedDirInsideWorktree_whenOscillating_thenExecutesRollbackAtWorktreeRoot() {
+        Path nestedDir = worktreeDir.resolve("src/main/nested");
+        circuitBreaker.recordFailure("error A", nestedDir);
+        circuitBreaker.recordFailure("error B", nestedDir);
+        circuitBreaker.recordFailure("error A", nestedDir);
+        LoopAction action = circuitBreaker.recordFailure("error B", nestedDir);
+
+        assertThat(action).isEqualTo(LoopAction.ROLLBACK_AND_PIVOT);
+        verify(subprocessExecutor).execute(
+            eq(List.of("git", "reset", "--hard")),
+            eq(worktreeDir),
+            any(Duration.class)
+        );
+        verify(subprocessExecutor).execute(
+            eq(List.of("git", "clean", "-fd")),
+            eq(worktreeDir),
+            any(Duration.class)
+        );
+    }
+
+    @Test
     @DisplayName("Given PIVOT_ACTIVE state - when 3 consecutive failures occur - then trips breaker and preserves disk state without rollback")
     void givenPivotActive_whenThreeConsecutiveFailures_thenTripsBreaker() {
         // Trigger oscillation into PIVOT_ACTIVE

@@ -554,4 +554,57 @@ class AdrDiscoveryServiceTest {
         List<ArchitecturalRecord> records = discoveryService.discoverRecords(null);
         assertThat(records).isEmpty();
     }
+
+    @Test
+    @DisplayName("Given symlink .agents directory - when discovering - then throws SecurityException")
+    void givenSymlinkAgentsDir_whenDiscovering_thenThrowsSecurityException() throws IOException {
+        Path outsideDir = tempDir.resolve("outside-agents");
+        Files.createDirectories(outsideDir);
+        Path symlinkAgents = tempDir.resolve(".agents");
+        try {
+            Files.createSymbolicLink(symlinkAgents, outsideDir);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        assertThatThrownBy(() -> discoveryService.discoverRecords())
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Forbidden symbolic link at .agents directory");
+    }
+
+    @Test
+    @DisplayName("Given symlink dev-agent.yaml file - when discovering - then throws SecurityException")
+    void givenSymlinkConfigFile_whenDiscovering_thenThrowsSecurityException() throws IOException {
+        Path agentsDir = tempDir.resolve(".agents");
+        Files.createDirectories(agentsDir);
+        Path outsideConfig = tempDir.resolve("outside-config.yaml");
+        Files.writeString(outsideConfig, "agent:\n  knowledge:\n    rules-paths: []\n");
+        Path symlinkConfig = agentsDir.resolve("dev-agent.yaml");
+        try {
+            Files.createSymbolicLink(symlinkConfig, outsideConfig);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        assertThatThrownBy(() -> discoveryService.discoverRecords())
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Forbidden symbolic link at configuration file");
+    }
+
+    @Test
+    @DisplayName("Given dangling symlink dev-agent.yaml file - when discovering - then returns empty list")
+    void givenDanglingSymlinkConfigFile_whenDiscovering_thenReturnsEmptyList() throws IOException {
+        Path agentsDir = tempDir.resolve(".agents");
+        Files.createDirectories(agentsDir);
+        Path nonExistent = tempDir.resolve("does-not-exist.yaml");
+        Path symlinkConfig = agentsDir.resolve("dev-agent.yaml");
+        try {
+            Files.createSymbolicLink(symlinkConfig, nonExistent);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        List<ArchitecturalRecord> records = discoveryService.discoverRecords();
+        assertThat(records).isNotNull();
+    }
 }

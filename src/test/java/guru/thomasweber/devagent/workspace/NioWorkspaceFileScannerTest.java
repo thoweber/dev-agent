@@ -246,8 +246,8 @@ class NioWorkspaceFileScannerTest {
     }
 
     @Test
-    @DisplayName("Given symlink directory or file - when findFiles - then skips symlinks strictly")
-    void givenSymlinks_whenFindFiles_thenSkipsSymlinks() throws IOException {
+    @DisplayName("Given symlink directory or file encountered in wildcard scan - when findFiles - then throws SecurityException")
+    void givenSymlinks_whenFindFiles_thenThrowsSecurityException() throws IOException {
         Path docsDir = tempDir.resolve("docs");
         Files.createDirectories(docsDir);
         Path targetFile = docsDir.resolve("real.md");
@@ -257,18 +257,34 @@ class NioWorkspaceFileScannerTest {
         try {
             Path symlinkFile = docsDir.resolve("sym-file.md");
             Files.createSymbolicLink(symlinkFile, targetFile);
-
-            Path symlinkDir = tempDir.resolve("sym-dir");
-            Files.createSymbolicLink(symlinkDir, docsDir);
         } catch (UnsupportedOperationException | SecurityException | IOException _) {
             // Symlink creation not permitted in environment; assumption passes
             return;
         }
 
-        List<RepoPath> results = scanner.findFiles(repoRoot, "**/*.md");
-        assertThat(results)
-            .extracting(r -> r.relativize().toString().replace('\\', '/'))
-            .containsExactly("docs/real.md");
+        assertThatThrownBy(() -> scanner.findFiles(repoRoot, "**/*.md"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden for repository paths");
+    }
+
+    @Test
+    @DisplayName("Given symlink file encountered in exact scan - when findFiles - then throws SecurityException")
+    void givenSymlinkFileInExactScan_whenFindFiles_thenThrowsSecurityException() throws IOException {
+        Path docsDir = tempDir.resolve("docs");
+        Files.createDirectories(docsDir);
+        Path targetFile = docsDir.resolve("target.md");
+        Files.writeString(targetFile, "# Target");
+
+        Path symlinkFile = docsDir.resolve("sym-exact.md");
+        try {
+            Files.createSymbolicLink(symlinkFile, targetFile);
+        } catch (UnsupportedOperationException | SecurityException | IOException _) {
+            return;
+        }
+
+        assertThatThrownBy(() -> scanner.findFiles(repoRoot, "docs/sym-exact.md"))
+            .isInstanceOf(SecurityException.class)
+            .hasMessageContaining("Symbolic links are forbidden for repository paths");
     }
 
     @Test
