@@ -24,12 +24,24 @@ Implement a 3-Tier Hierarchical Memory architecture in `HierarchicalMemoryStore`
    - Never leaves a severed `AiMessage` or orphaned `ToolExecutionResultMessage` at the head of the scratchpad.
 4. **Structural Invariant Verification:**
    - Provides `assertTurnStructureInvariants()` to verify structural integrity before and during cognitive orchestration.
+5. **Multi-Tenant Registry & Session Lifecycle Decoupling:**
+   - `HierarchicalMemoryStore` is unmanaged and instantiated per conversation / task session, carrying an explicit `memoryId`. It is not `@ApplicationScoped`.
+   - An `@ApplicationScoped` `HierarchicalChatMemoryProvider` implements LangChain4j `ChatMemoryProvider`, maintaining a concurrent map of active `HierarchicalMemoryStore` buffers indexed by `memoryId` (e.g. `taskId`).
+   - Quarkus-LangChain4j automatically discovers `HierarchicalChatMemoryProvider` via `BeanChatMemoryProviderSupplier` and injects conversation-specific stores into `@RegisterAiService` beans.
+6. **Lock-Free Concurrency & Thread Safety:**
+   - `HierarchicalMemoryStore` uses unsynchronized methods backed by thread-safe `java.util.concurrent` primitives:
+     - `ConcurrentLinkedDeque<ChatMessage>` for the sliding scratchpad (weakly consistent iteration, lock-free insertions and poll operations).
+     - `CopyOnWriteArrayList<SystemMessage>` for pinned system invariants.
+     - `volatile UserMessage` for the pinned task specification.
+   - Read operations (such as `messages()` and `assertTurnStructureInvariants()`) operate on point-in-time snapshots, preventing monitor contention while guaranteeing thread safety under concurrent observer access.
 
 ## Consequences
 ### Positive
 * Prevents API 400 Bad Request rejections across Claude, OpenAI, and Gemini providers.
 * Eliminates hallucinations caused by assistant responses lacking user context.
 * Protects prompt invariants from being pushed out by verbose compiler traces.
+* Eliminates cross-task memory pollution and race conditions in concurrent multi-agent or telemetry executions.
+* Fully compliant with Quarkus-LangChain4j SPI conventions without manual factory wiring.
 
 ### Negative
 * Turn-based eviction may discard multiple messages in a single trim cycle when a turn contains multiple tool calls.

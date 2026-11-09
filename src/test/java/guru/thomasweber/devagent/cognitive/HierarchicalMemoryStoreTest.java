@@ -9,9 +9,16 @@ import dev.langchain4j.data.message.UserMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HierarchicalMemoryStoreTest {
 
@@ -602,5 +609,61 @@ class HierarchicalMemoryStoreTest {
         ToolExecutionRequest req = ToolExecutionRequest.builder().id("call-x").name("tool").arguments("{}").build();
         memory.add(ToolExecutionResultMessage.from(req, "res"));
         assertThat(memory.messages()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Given custom memoryId - when instantiated - then id returns assigned memoryId")
+    void testStoreCustomMemoryId() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore("task-42-custom");
+        assertThat(memory.id()).isEqualTo("task-42-custom");
+
+        assertThatThrownBy(() -> new HierarchicalMemoryStore(null))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("memoryId cannot be null");
+    }
+
+    @Test
+    @DisplayName("Given concurrent threads - when adding and reading messages - then no race conditions or exceptions occur")
+    void testConcurrentAccessUnderHighContention() throws Exception {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore("task-concurrency-test");
+        memory.pinInvariants("Rules: Invariants");
+        memory.pinTaskSpecification("Story 1", "{}");
+
+        int threadCount = 20;
+        int operationsPerThread = 50;
+        CountDownLatch latch = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            List<Future<?>> futures = new ArrayList<>();
+
+            for (int t = 0; t < threadCount; t++) {
+                final int threadId = t;
+                futures.add(executor.submit(() -> {
+                    try {
+                        latch.await();
+                        for (int i = 0; i < operationsPerThread; i++) {
+                            memory.add(new UserMessage("Prompt from thread " + threadId + " op " + i));
+                            memory.add(new AiMessage("Response from thread " + threadId + " op " + i));
+                            List<ChatMessage> snapshot = memory.messages();
+                            assertThat(snapshot).isNotEmpty();
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException(e);
+                    }
+                }));
+            }
+
+            latch.countDown();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+
+            for (Future<?> future : futures) {
+                future.get();
+            }
+        }
+
+        assertThat(memory.messages()).isNotEmpty();
+        assertThat(memory.assertTurnStructureInvariants()).isTrue();
     }
 }
