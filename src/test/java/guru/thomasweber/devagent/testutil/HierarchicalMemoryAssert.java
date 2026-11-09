@@ -53,12 +53,11 @@ public class HierarchicalMemoryAssert extends AbstractAssert<HierarchicalMemoryA
 
         // 4. Every ToolExecutionResultMessage must have a preceding AiMessage with matching request id
         for (int i = 0; i < remainder.size(); i++) {
-            if (remainder.get(i) instanceof ToolExecutionResultMessage toolResult) {
-                if (!hasPrecedingRequest(remainder, toolResult.id(), i)) {
-                    failWithMessage(
-                        "ToolExecutionResultMessage with ID <%s> at index <%s> has no matching preceding AiMessage request.",
-                        toolResult.id(), index + i);
-                }
+            if (remainder.get(i) instanceof ToolExecutionResultMessage toolResult
+                && !hasPrecedingRequest(remainder, toolResult.id(), i)) {
+                failWithMessage(
+                    "ToolExecutionResultMessage with ID <%s> at index <%s> has no matching preceding AiMessage request.",
+                    toolResult.id(), index + i);
             }
         }
 

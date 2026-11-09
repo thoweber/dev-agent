@@ -131,5 +131,8 @@ All engineering modifications must follow the 3-phase Test-Driven Development (T
 3. **REFACTOR Phase:** Run `./mvnw spotless:apply`, execute all test suites, and enforce quality gates:
    * **Line Coverage Gate:** $\ge 95.0\%$
    * **Branch/Condition Coverage Gate:** $\ge 90.0\%$
-   * **Audit Command:** `./scripts/parse_jacoco.py --fail-under-gates`
+   * **Audit Commands:**
+     - Enforce quality gates: `./scripts/parse_jacoco.py --fail-under-gates`
+     - Inspect target class: `./scripts/parse_jacoco.py --class <ClassName>`
+     - Deficit classes breakdown: `./scripts/parse_jacoco.py --threshold 95.0`
    * **Architecture Check:** `./mvnw test -Dtest=AgentArchitectureTest`

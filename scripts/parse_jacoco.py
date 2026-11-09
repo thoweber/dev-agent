@@ -4,9 +4,10 @@ parse_jacoco.py - Parse JaCoCo CSV coverage reports and enforce quality threshol
 
 Usage:
     ./scripts/parse_jacoco.py
+    ./scripts/parse_jacoco.py --fail-under-gates
+    ./scripts/parse_jacoco.py --class HierarchicalMemoryStore
     ./scripts/parse_jacoco.py --threshold 95.0
     ./scripts/parse_jacoco.py --fail-under-line 95.0 --fail-under-branch 90.0
-    ./scripts/parse_jacoco.py --fail-under-gates
 """
 
 import argparse
@@ -52,6 +53,27 @@ def format_pct(covered: int, total: int) -> str:
     return f"{(covered / total) * 100:.2f}%"
 
 
+def print_class_summary(matching_rows: List[Dict[str, str]]) -> None:
+    for r in matching_rows:
+        pkg = r.get("PACKAGE", "")
+        cls = r.get("CLASS", "")
+        full_name = f"{pkg}.{cls}" if pkg else cls
+        print("\n" + "=" * 80)
+        print(f"                    JACOCO CLASS COVERAGE: {cls}")
+        print("=" * 80)
+        print(f"CLASS: {full_name}")
+        print("-" * 80)
+        print(f"{'METRIC':<16} {'COVERED':<12} {'TOTAL':<12} {'MISSED':<12} {'COVERAGE':<12}")
+        print("-" * 80)
+        for m in ["LINE", "BRANCH", "INSTRUCTION", "COMPLEXITY", "METHOD"]:
+            cov = int(r.get(f"{m}_COVERED", 0))
+            missed = int(r.get(f"{m}_MISSED", 0))
+            tot = cov + missed
+            pct = format_pct(cov, tot)
+            print(f"{m:<16} {cov:<12} {tot:<12} {missed:<12} {pct:<12}")
+        print("=" * 80)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Parse and audit JaCoCo CSV coverage metrics against quality gates."
@@ -64,11 +86,20 @@ def main() -> None:
         help="Path to jacoco.csv report (default: target/site/jacoco/jacoco.csv)",
     )
     parser.add_argument(
+        "-c",
+        "--class-name",
+        "--class",
+        dest="class_name",
+        type=str,
+        default=None,
+        help="Filter and display detailed coverage for a specific class (case-insensitive name or substring)",
+    )
+    parser.add_argument(
         "-t",
         "--threshold",
         type=float,
-        default=80.0,
-        help="Flag individual classes with instruction coverage below this percentage (default: 80.0)",
+        default=95.0,
+        help="Flag individual classes with coverage below this percentage (default: 95.0)",
     )
     parser.add_argument(
         "--fail-under",
@@ -126,6 +157,21 @@ def main() -> None:
             sys.exit(1)
         sys.exit(0)
 
+    # Class-specific inspection mode
+    if args.class_name:
+        target = args.class_name.strip().lower()
+        matching = [
+            r for r in rows
+            if target in r.get("CLASS", "").lower()
+            or target in f"{r.get('PACKAGE', '')}.{r.get('CLASS', '')}".lower()
+        ]
+        if matching:
+            print_class_summary(matching)
+        else:
+            print(f"\nNo classes found matching pattern: {args.class_name}", file=sys.stderr)
+            if not args.fail_under_gates and args.fail_under is None and args.fail_under_line is None and args.fail_under_branch is None:
+                sys.exit(1)
+
     metrics = calculate_metrics(rows)
     cov_inst, tot_inst = metrics["INSTRUCTION"]
     cov_line, tot_line = metrics["LINE"]
@@ -163,56 +209,58 @@ def main() -> None:
     overall_line_pct = (cov_line / tot_line * 100) if tot_line > 0 else 0.0
     overall_branch_pct = (cov_branch / tot_branch * 100) if tot_branch > 0 else 0.0
 
-    flagged_classes = []
-    for r in rows:
-        pkg = r.get("PACKAGE", "")
-        cls = r.get("CLASS", "")
-        full_name = f"{pkg}.{cls}" if pkg else cls
+    # Only show overall deficit tables when not in single class inspection mode
+    if not args.class_name:
+        flagged_classes = []
+        for r in rows:
+            pkg = r.get("PACKAGE", "")
+            cls = r.get("CLASS", "")
+            full_name = f"{pkg}.{cls}" if pkg else cls
 
-        c = int(r.get("INSTRUCTION_COVERED", 0))
-        m = int(r.get("INSTRUCTION_MISSED", 0))
-        tot = c + m
-        pct = (c / tot * 100) if tot > 0 else 100.0
+            c = int(r.get("INSTRUCTION_COVERED", 0))
+            m = int(r.get("INSTRUCTION_MISSED", 0))
+            tot = c + m
+            pct = (c / tot * 100) if tot > 0 else 100.0
 
-        if args.verbose or pct < args.threshold:
-            flagged_classes.append((full_name, pct, c, tot, m))
+            if args.verbose or pct < args.threshold:
+                flagged_classes.append((full_name, pct, c, tot, m))
 
-    if flagged_classes:
-        header_title = "ALL CLASSES" if args.verbose else f"CLASSES BELOW {args.threshold:.1f}% INSTRUCTION THRESHOLD"
-        print(f"\n{header_title}:")
-        print("-" * 85)
-        print(f"{'CLASS':<52} {'COVERAGE':<10} {'COVERED/TOTAL':<14} {'MISSED':<8}")
-        print("-" * 85)
-        for name, pct, c, tot, m in sorted(flagged_classes, key=lambda x: x[1]):
-            print(f"{name:<52} {pct:>6.1f}%    {f'{c}/{tot}':<14} {m:<8}")
-        print("-" * 85)
-    else:
-        print(f"\nAll classes satisfy the {args.threshold:.1f}% instruction coverage threshold!")
+        if flagged_classes:
+            header_title = "ALL CLASSES" if args.verbose else f"CLASSES BELOW {args.threshold:.1f}% INSTRUCTION THRESHOLD"
+            print(f"\n{header_title}:")
+            print("-" * 85)
+            print(f"{'CLASS':<52} {'COVERAGE':<10} {'COVERED/TOTAL':<14} {'MISSED':<8}")
+            print("-" * 85)
+            for name, pct, c, tot, m in sorted(flagged_classes, key=lambda x: x[1]):
+                print(f"{name:<52} {pct:>6.1f}%    {f'{c}/{tot}':<14} {m:<8}")
+            print("-" * 85)
+        else:
+            print(f"\nAll classes satisfy the {args.threshold:.1f}% instruction coverage threshold!")
 
-    branch_deficit_classes = []
-    for r in rows:
-        pkg = r.get("PACKAGE", "")
-        cls = r.get("CLASS", "")
-        full_name = f"{pkg}.{cls}" if pkg else cls
+        branch_deficit_classes = []
+        for r in rows:
+            pkg = r.get("PACKAGE", "")
+            cls = r.get("CLASS", "")
+            full_name = f"{pkg}.{cls}" if pkg else cls
 
-        bc = int(r.get("BRANCH_COVERED", 0))
-        bm = int(r.get("BRANCH_MISSED", 0))
-        btot = bc + bm
-        bpct = (bc / btot * 100) if btot > 0 else 100.0
+            bc = int(r.get("BRANCH_COVERED", 0))
+            bm = int(r.get("BRANCH_MISSED", 0))
+            btot = bc + bm
+            bpct = (bc / btot * 100) if btot > 0 else 100.0
 
-        target_branch = args.fail_under_branch if args.fail_under_branch is not None else 90.0
-        if btot > 0 and (args.verbose or bpct < target_branch):
-            branch_deficit_classes.append((full_name, bpct, bc, btot, bm))
+            target_branch = args.fail_under_branch if args.fail_under_branch is not None else 90.0
+            if btot > 0 and (args.verbose or bpct < target_branch):
+                branch_deficit_classes.append((full_name, bpct, bc, btot, bm))
 
-    if branch_deficit_classes:
-        target_branch = args.fail_under_branch if args.fail_under_branch is not None else 90.0
-        print(f"\nCLASSES BELOW {target_branch:.1f}% CONDITION / BRANCH THRESHOLD:")
-        print("-" * 85)
-        print(f"{'CLASS':<52} {'COVERAGE':<10} {'COVERED/TOTAL':<14} {'MISSED':<8}")
-        print("-" * 85)
-        for name, pct, c, tot, m in sorted(branch_deficit_classes, key=lambda x: x[1]):
-            print(f"{name:<52} {pct:>6.1f}%    {f'{c}/{tot}':<14} {m:<8}")
-        print("-" * 85)
+        if branch_deficit_classes:
+            target_branch = args.fail_under_branch if args.fail_under_branch is not None else 90.0
+            print(f"\nCLASSES BELOW {target_branch:.1f}% CONDITION / BRANCH THRESHOLD:")
+            print("-" * 85)
+            print(f"{'CLASS':<52} {'COVERAGE':<10} {'COVERED/TOTAL':<14} {'MISSED':<8}")
+            print("-" * 85)
+            for name, pct, c, tot, m in sorted(branch_deficit_classes, key=lambda x: x[1]):
+                print(f"{name:<52} {pct:>6.1f}%    {f'{c}/{tot}':<14} {m:<8}")
+            print("-" * 85)
 
     gate_failures = []
     gate_passes = []

@@ -111,9 +111,6 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private int countTurns() {
-        if (slidingScratchpad.isEmpty()) {
-            return 0;
-        }
         int count = 0;
         ChatMessage first = slidingScratchpad.peekFirst();
         if (first instanceof AiMessage) {
@@ -128,14 +125,12 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private void evictOldestTurn() {
-        ChatMessage first = slidingScratchpad.pollFirst();
-        if (first instanceof UserMessage || first instanceof AiMessage) {
-            evictUntilNextUserMessage();
-        }
+        slidingScratchpad.pollFirst();
+        evictUntilNextUserMessage();
     }
 
     private void evictUntilNextUserMessage() {
-        while (!slidingScratchpad.isEmpty() && !(slidingScratchpad.peekFirst() instanceof UserMessage)) {
+        while (!(slidingScratchpad.peekFirst() instanceof UserMessage)) {
             ChatMessage next = slidingScratchpad.pollFirst();
             if (next instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
                 purgeLeadingToolResults();
@@ -144,7 +139,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private void purgeLeadingToolResults() {
-        while (!slidingScratchpad.isEmpty() && slidingScratchpad.peekFirst() instanceof ToolExecutionResultMessage) {
+        while (slidingScratchpad.peekFirst() instanceof ToolExecutionResultMessage) {
             slidingScratchpad.pollFirst();
         }
     }

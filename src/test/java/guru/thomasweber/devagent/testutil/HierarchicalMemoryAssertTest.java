@@ -22,10 +22,12 @@ class HierarchicalMemoryAssertTest {
     @Test
     @DisplayName("Given null store or message list - when satisfiesTurnStructureInvariants - then fails with AssertionError")
     void givenNullMessages_whenSatisfiesTurnStructureInvariants_thenFails() {
-        assertThatThrownBy(() -> assertThatMessages(null).satisfiesTurnStructureInvariants())
+        HierarchicalMemoryAssert nullMessagesAssertion = assertThatMessages(null);
+        assertThatThrownBy(nullMessagesAssertion::satisfiesTurnStructureInvariants)
             .isInstanceOf(AssertionError.class);
 
-        assertThatThrownBy(() -> assertThatMemory(null).satisfiesTurnStructureInvariants())
+        HierarchicalMemoryAssert nullMemoryAssertion = assertThatMemory(null);
+        assertThatThrownBy(nullMemoryAssertion::satisfiesTurnStructureInvariants)
             .isInstanceOf(AssertionError.class);
     }
 
@@ -63,8 +65,9 @@ class HierarchicalMemoryAssertTest {
         List<ChatMessage> messages = List.of(
             new UserMessage("Task story"),
             new SystemMessage("Misplaced system invariant inside scratchpad"));
+        HierarchicalMemoryAssert assertion = assertThatMessages(messages);
 
-        assertThatThrownBy(() -> assertThatMessages(messages).satisfiesTurnStructureInvariants())
+        assertThatThrownBy(assertion::satisfiesTurnStructureInvariants)
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("Expected no SystemMessage in scratchpad");
     }
@@ -74,8 +77,9 @@ class HierarchicalMemoryAssertTest {
     void givenScratchpadStartingWithToolExecutionResult_whenSatisfiesTurnStructureInvariants_thenFails() {
         List<ChatMessage> messages = List.of(
             new ToolExecutionResultMessage("call-orphan", "tool", "output"));
+        HierarchicalMemoryAssert assertion = assertThatMessages(messages);
 
-        assertThatThrownBy(() -> assertThatMessages(messages).satisfiesTurnStructureInvariants())
+        assertThatThrownBy(assertion::satisfiesTurnStructureInvariants)
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("Scratchpad must not begin with a ToolExecutionResultMessage");
     }
@@ -86,8 +90,9 @@ class HierarchicalMemoryAssertTest {
         List<ChatMessage> messages = List.of(
             new UserMessage("Generate code"),
             new ToolExecutionResultMessage("unmatched-call", "tool", "error"));
+        HierarchicalMemoryAssert assertion = assertThatMessages(messages);
 
-        assertThatThrownBy(() -> assertThatMessages(messages).satisfiesTurnStructureInvariants())
+        assertThatThrownBy(assertion::satisfiesTurnStructureInvariants)
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("has no matching preceding AiMessage request");
     }
@@ -105,8 +110,9 @@ class HierarchicalMemoryAssertTest {
             new UserMessage("Run test"),
             new AiMessage(List.of(req)),
             new ToolExecutionResultMessage("call-beta", "test", "result"));
+        HierarchicalMemoryAssert assertion = assertThatMessages(messages);
 
-        assertThatThrownBy(() -> assertThatMessages(messages).satisfiesTurnStructureInvariants())
+        assertThatThrownBy(assertion::satisfiesTurnStructureInvariants)
             .isInstanceOf(AssertionError.class)
             .hasMessageContaining("has no matching preceding AiMessage request");
     }

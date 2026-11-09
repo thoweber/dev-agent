@@ -12,7 +12,7 @@ This skill governs static analysis, security hotspot analysis, and Quality Gate 
 ## 1. Quality Gate Standards
 
 * **0 Critical / Blocker Issues:** Zero vulnerabilities or security hotspots.
-* **Coverage Quality Gates:** Maintain Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified locally via `./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates`.
+* **Coverage Quality Gates & Local JaCoCo Audit:** Maintain Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified locally via `./scripts/parse_jacoco.py --fail-under-gates`. Prior to pushing, analyze modified classes using `./scripts/parse_jacoco.py --class <ClassName>` to eliminate uncovered branches.
 * **Duplication:** Keep code duplication $<3\%$.
 * **Zero Reflection:** Remediation tests must adhere to black-box behavioral verification without `field.setAccessible(true)`.
 

@@ -183,6 +183,40 @@ class TestParseJacoco(unittest.TestCase):
         finally:
             temp_path.unlink(missing_ok=True)
 
+    def test_main_class_filter_found(self):
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as f:
+            f.write("GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED\n")
+            f.write("dev-agent,guru.thomasweber.devagent,MyService,5,95,2,18,1,29,1,9,0,5\n")
+            temp_path = Path(f.name)
+
+        try:
+            with patch("sys.argv", ["parse_jacoco.py", "-f", str(temp_path), "--class", "MyService"]):
+                with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+                    parse_jacoco.main()
+                    out = mock_out.getvalue()
+                    self.assertIn("JACOCO CLASS COVERAGE: MyService", out)
+                    self.assertIn("CLASS: guru.thomasweber.devagent.MyService", out)
+                    self.assertIn("LINE             29           30           1            96.67%", out)
+                    self.assertIn("BRANCH           18           20           2            90.00%", out)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    def test_main_class_filter_not_found(self):
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as f:
+            f.write("GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED\n")
+            f.write("dev-agent,guru.thomasweber.devagent,MyService,5,95,2,18,1,29,1,9,0,5\n")
+            temp_path = Path(f.name)
+
+        try:
+            with patch("sys.argv", ["parse_jacoco.py", "-f", str(temp_path), "--class", "UnknownClass"]):
+                with patch("sys.stderr", new_callable=io.StringIO) as mock_err:
+                    with self.assertRaises(SystemExit) as cm:
+                        parse_jacoco.main()
+                    self.assertEqual(cm.exception.code, 1)
+                    self.assertIn("No classes found matching pattern: UnknownClass", mock_err.getvalue())
+        finally:
+            temp_path.unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     unittest.main()

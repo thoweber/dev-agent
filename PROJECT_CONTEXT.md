@@ -113,9 +113,10 @@ Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority ar
 
 To ensure high-speed developer ergonomics and autonomous feedback loops, key utility scripts are maintained in `scripts/`:
 
-* `scripts/parse_jacoco.py`: Parses JaCoCo CSV reports (`target/site/jacoco/jacoco.csv`), displays metric tables (Instructions, Branches, Lines, Complexity, Methods), flags classes falling below the $\ge 80\%$ quality threshold, and supports `--fail-under <pct>` gating for automated local verification and pre-commit hooks.
-  * Audit coverage: `./scripts/parse_jacoco.py --threshold 80.0`
-  * Gate verification: `./scripts/parse_jacoco.py --threshold 80.0 --fail-under 80.0`
+* `scripts/parse_jacoco.py`: Parses JaCoCo CSV reports (`target/site/jacoco/jacoco.csv`), displays metric tables (Instructions, Branches, Lines, Complexity, Methods), provides per-class coverage inspection (`--class`), flags classes falling below the $\ge 95.0\%$ quality threshold, and enforces quality gates (`--fail-under-gates`: Line $\ge 95.0\%$, Branch $\ge 90.0\%$).
+  * Gate verification: `./scripts/parse_jacoco.py --fail-under-gates`
+  * Inspect specific class: `./scripts/parse_jacoco.py --class <ClassName>`
+  * Audit classes below threshold: `./scripts/parse_jacoco.py --threshold 95.0`
   * Verbose class breakdown: `./scripts/parse_jacoco.py --verbose`
 * `scripts/check_pr_reviews.py`: Ingests, audits, and remediates GitHub PR review threads (including CodeRabbit AI reviews and peer discussions). Detects active in-progress reviews, parses findings with severity and CWE categorization, and enables CLI-driven thread replies and resolutions.
   * Audit open threads: `./scripts/check_pr_reviews.py`

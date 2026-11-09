@@ -30,7 +30,11 @@ Remote CI/CD runs are too slow for autonomous iteration. Execute these fast loca
 * **ArchUnit Native Compliance & Path Jail Verification ($< 15\text{ s}$):**  
   `./mvnw test -Dtest=AgentArchitectureTest,WorkspaceJailValidatorTest`
 * **Audit JaCoCo Coverage & Enforce Quality Gates ($< 2\text{ s}$):**  
-  `./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates`
+  `./scripts/parse_jacoco.py --fail-under-gates`
+* **Inspect Coverage for a Specific Target Class ($< 1\text{ s}$):**  
+  `./scripts/parse_jacoco.py --class <ClassName>`
+* **Inspect Classes Below Quality Gate Threshold ($< 1\text{ s}$):**  
+  `./scripts/parse_jacoco.py --threshold 95.0`
 * **Audit & Ingest PR Review Threads & CodeRabbit ($< 2\text{ s}$):**  
   `./scripts/check_pr_reviews.py --check-status`
 * **Run Python Script Unit Tests ($< 2\text{ s}$):**  
@@ -60,7 +64,7 @@ All feature development, SPI additions, and engine enhancements MUST follow the 
 
 1. **RED Phase:** Write unit or component tests (`*Test.java`) using AssertJ assertions (`assertThat()`). Run `./mvnw spotless:apply` then `./mvnw test` to confirm the test fails with an expected assertion failure or compile error.
 2. **GREEN Phase:** Write minimal production code. Run `./mvnw spotless:apply` then `./mvnw test` until it passes cleanly.
-3. **REFACTOR Phase:** Run `./mvnw spotless:apply`, check coverage via `./scripts/parse_jacoco.py --fail-under-gates`, and perform static analysis / Sonar clean-up. Never declare success with unformatted code or open quality regressions.
+3. **REFACTOR Phase:** Run `./mvnw spotless:apply`, inspect modified class coverage via `./scripts/parse_jacoco.py --class <TargetClass>`, verify repository gates via `./scripts/parse_jacoco.py --fail-under-gates`, and perform static analysis / Sonar clean-up. Never declare success with unformatted code or open quality regressions.
 
 ---
 
@@ -82,7 +86,7 @@ All feature development, SPI additions, and engine enhancements MUST follow the 
 14. **Subprocess Lifetime & Timeout Governance:** All external process forks (`git`, `mvnw`, `npm`, etc.) MUST be executed via `SubprocessExecutor` with explicit timeouts. Subprocesses must use non-blocking stream draining with 2-tier bounded output buffering (`BoundedOverflowBuffer`: 1 MB RAM -> 10 MB Disk overflow) to prevent OS pipe deadlocks. On timeout or thread interruption, `destroyForcibly()` MUST be called immediately, and thread interrupt status MUST be preserved.
 15. **Programmatic Test Transaction Scope Protocol:** Test and setup methods (`@Test`, `@BeforeEach`, `@AfterEach`) must NEVER be annotated with `@Transactional`. Production services manage their own transaction boundaries. When integration tests require explicit transaction isolation or data seeding, they MUST use programmatic transactions via `QuarkusTransaction.requiringNew().run(...)` or `.call(...)`. This prevents uncommitted Hibernate session caching and post-commit synchronization deadlocks. Enforced via ArchUnit.
 16. **Spotless-First Execution Protocol:** Whenever writing, patching, or refactoring Java source or test files, execute `./mvnw spotless:apply` before running test suites or compiler checks to eliminate Spotless formatting failures in fast iteration loops.
-17. **Mandatory Quality Gates Enforcement:** Overall repository code coverage MUST strictly satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.
+17. **Mandatory Quality Gates Enforcement & Local JaCoCo Audit Protocol:** Overall repository code coverage MUST strictly satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`. Autonomous agents MUST use `./scripts/parse_jacoco.py` to analyze local JaCoCo reports (`target/site/jacoco/jacoco.csv`) and diagnose coverage deficits per class (`--class <ClassName>`) before pushing commits or creating pull requests.
 18. **Autonomous Merge Prohibition Invariant (Maintainer Authority):** Under NO circumstances may an autonomous agent execute `gh pr merge`, fast-forward `main`, or use administrative bypass flags (`--admin`) to merge a Pull Request. Merging is strictly reserved for the human maintainer (USER). The agent's workflow terminates with full CI green verification, Quality Gate compliance (Line >= 95%, Condition >= 90%), and resolved PR review threads. Once achieved, the agent must submit a hand-off summary report inviting the USER to review and merge the PR.
 19. **Test Architecture & Zero-Reflection Behavioral Standards (`05-testing-standards.md`):** All testing MUST adhere to `.agents/rules/05-testing-standards.md`. Tests must practice black-box behavioral verification; using reflection (`field.setAccessible(true)`), weakening private encapsulation to package-private for test convenience, or introducing synthetic production seams (artificial factory/start hooks) to game branch coverage is strictly prohibited. Complex records (4+ fields) must be instantiated in tests using centralized test factories (`TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) rather than repetitive inline builder plumbing. Python scripts in `scripts/` must have automated unit tests under `tests/scripts/`. L3 Native CLI tests must verify the Mandrel binary cold start SLA ($<50\text{ ms}$).
 20. **Import Hygiene & Prohibition of Inline Fully Qualified Class Names:** Always import types explicitly at the top of the file rather than using inline fully qualified references (e.g., `import java.util.concurrent.atomic.AtomicReference;` instead of `java.util.concurrent.atomic.AtomicReference<...>`). Fully qualified references in method bodies, fields, or type arguments are strictly prohibited across both production and test code, except when strictly necessary to resolve ambiguous simple class name collisions.

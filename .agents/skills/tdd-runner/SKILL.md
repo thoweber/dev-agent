@@ -20,7 +20,11 @@ This skill coordinates the fast local inner execution feedback loop during auton
 * **Surefire Memory Bounding:**  
   `-DargLine="-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1"`
 * **Coverage Verification & Quality Gates:**  
-  `./scripts/parse_jacoco.py --threshold 95.0 --fail-under-gates` (Line $\ge 95\%$, Branch $\ge 90\%$)
+  `./scripts/parse_jacoco.py --fail-under-gates` (Line $\ge 95\%$, Branch $\ge 90\%$)
+* **Target Class Coverage Inspection:**  
+  `./scripts/parse_jacoco.py --class <ClassName>`
+* **Classes Below Quality Gate Threshold:**  
+  `./scripts/parse_jacoco.py --threshold 95.0`
 * **Python Script Unit Tests:**  
   `python3 -m unittest discover -s tests/scripts`
 * **PR Review Thread Audit:**  

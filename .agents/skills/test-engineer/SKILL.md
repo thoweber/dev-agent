@@ -38,6 +38,10 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 ## 4. Coverage SLA & Quality Gates
 
 * Repository overall code coverage MUST satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`. Consult [03-quality-and-slas.md](../../rules/03-quality-and-slas.md).
+* Test engineers MUST analyze local JaCoCo reports (`target/site/jacoco/jacoco.csv`) using `scripts/parse_jacoco.py` to inspect modified classes:
+  - Inspect target class: `./scripts/parse_jacoco.py --class <ClassName>`
+  - Inspect classes below threshold: `./scripts/parse_jacoco.py --threshold 95.0`
+  - Enforce quality gates: `./scripts/parse_jacoco.py --fail-under-gates`
 
 ---
 
