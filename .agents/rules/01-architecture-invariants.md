@@ -8,7 +8,7 @@
 * Cognitive system prompts must use dynamic template variables (`{rulesContext}`, `{retrievedAdrs}`) rather than static hardcoded assumptions.
 
 ## 2. Two-Axis Extensibility (OCP) (ADR-002)
-* **Build Systems (Axis 1):** Maven and npm are implemented as isolated SPI providers (`BackendBuildSystem`, `FrontendBuildSystem`). New build tools (Gradle, pnpm, bun) are added by creating SPI beans without modifying the orchestrator or CLI commands.
+* **Build Systems (Axis 1):** Backend and frontend build tooling are decoupled via SPI providers (`BackendBuildSystem`, `FrontendBuildSystem`). For Cycles 1–5, execution centers on the `MavenBuildSystem` vertical slice, with `FrontendBuildSystem` / npm deferred to post-Cycle 5. New build tools (Gradle, pnpm, bun) are added as isolated SPI beans without modifying the orchestrator or CLI commands.
 * **Framework Conventions (Axis 2):** Quarkus and Angular are decoupled into isolated SPI providers (`BackendFrameworkConvention`, `FrontendFrameworkConvention`). New frameworks (Spring Boot, React, Vue) implement isolated SPI beans.
 
 ## 3. Workspace Sandboxing & Path Jail (ADR-003)

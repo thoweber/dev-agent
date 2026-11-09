@@ -29,7 +29,7 @@ The system operates as an **independent developer infrastructure tool** hosted i
 │                                                                                                         │
 │  Axis 1: BackendBuildSystem & FrontendBuildSystem SPIs   Axis 2: BackendFrameworkConvention SPI        │
 │  • MavenBuildSystem (Active) / Gradle (Extension)        • QuarkusConvention (Active) / Spring Boot     │
-│  • NpmBuildSystem (Active)   / Pnpm, Yarn (Extension)   • AngularConvention (Active) / React, Vue      │
+│  • NpmBuildSystem (Post-Cycle 5) / Pnpm, Yarn            • AngularConvention (Post-Cycle 5) / React     │
 └────────────────────────────────────────┬────────────────────────────────────────────────────────────────┘
                                          │ Tool Dispatches
                                          ▼
@@ -38,8 +38,8 @@ The system operates as an **independent developer infrastructure tool** hosted i
 │                                                                                                         │
 │  ┌────────────────────────┐      ┌─────────────────────────┐      ┌──────────────────────────────────┐  │
 │  │ Universal Planner      │      │ Universal Coder         │      │ Invariant Gatekeeper             │  │
-│  │ (lead-dev / Pro Model) │ ───► │ (coder / Claude/Ollama) │ ◄──► │ (architect / Flash or Ollama)    │  │
-│  │ High-Context Breakdown │      │ Java & TypeScript Loops │      │ Deterministic JSON Audit (Temp 0)│  │
+│  │ (lead-dev / Pro Model) │ ───► │ (coder / Claude 3.5)    │ ◄──► │ (architect / Flash / Gemini)     │  │
+│  │ High-Context Breakdown │      │ Java TDD Inner Loop     │      │ Deterministic JSON Audit (Temp 0)│  │
 │  └────────────────────────┘      └────────────┬────────────┘      └──────────────────────────────────┘  │
 │                                               │                                      ▲                  │
 │  Deterministic Caching (quarkus-cache)        │                  Pure-Java Lexical Retrieval (BM25)     │
@@ -58,12 +58,12 @@ The system operates as an **independent developer infrastructure tool** hosted i
                                          │
                                          ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ REMOTE AUTOMATION, CONTRACT SYNC & LOCAL GUI REVIEW                                                     │
+│ REMOTE AUTOMATION, QUALITY GATES & PR LIFECYCLE                                                         │
 │                                                                                                         │
-│  • OpenAPI Contract Sync (SmallRye compile flags ──► @openapitools/openapi-generator-cli TypeScript)    │
 │  • Declarative Reactive GitHub & SonarCloud API Clients (Draft PRs, CI Remediations, Promotion)        │
 │  • CodeRabbit 3-Way Triage (Fix, ADR Rebuttal, Dismissal) via GraphQL Node ID thread resolution        │
-│  • Embedded Reactive Web Review Engine (--gui on http://localhost:9999 + Storybook iframe on :6006)    │
+│  • Terminal CLI Native Experience (TerminalUi, ANSI Streaming, Markdown Projections)                   │
+│  • Optional Future Backlog: Embedded Vert.x Web Diff (:9999) & OpenAPI TypeScript Contract Sync        │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -106,7 +106,7 @@ To guarantee that the agent begins with **Quarkus/Maven** and **Angular/npm** wh
 │ System       │             │ System       │ │ Convention   │             │ Convention   │
 └──────────────┘             └──────────────┘ └──────────────┘             └──────────────┘
 ┌──────────────┐             ┌──────────────┐ ┌──────────────┐             ┌──────────────┐
-│ NpmBuild-    │ (Active)    │ PnpmBuild-   │ │ Angular-     │ (Active)    │ React-       │
+│ NpmBuild-    │ (Post-C5)   │ PnpmBuild-   │ │ Angular-     │ (Post-C5)   │ React-       │
 │ System       │             │ System       │ │ Convention   │             │ Convention   │
 └──────────────┘             └──────────────┘ └──────────────┘             └──────────────┘
 ```
@@ -134,16 +134,19 @@ public interface FrontendBuildSystem {
 }
 ```
 
-#### Active Implementations
+#### Active Implementations (Cycles 1–5 Vertical Slice)
 
-1. **`MavenBuildSystem`**:
+1. **`MavenBuildSystem`** (Active - Cycle 1):
    * Probes for `./mvnw` $\rightarrow$ `mvn`.
    * Enforces `-Dproject.build.directory=target-agent` to slice build targets.
    * Derives `-pl <relative-module-path> -am` for multi-module reactors; omits `-pl` for single-module repositories.
    * Injects Surefire memory limits: `-DargLine="-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1"`.
    * Sanitizes output by dropping download progress and task execution headers, isolating `[ERROR]` compilation lines and Surefire assertion failures.
 
-2. **`NpmBuildSystem`**:
+#### Post-Cycle 5 Extensions (Future Full-Stack Backlog)
+
+2. **`NpmBuildSystem`** (Post-Cycle 5 Extension):
+   * Postponed until after Cycle 5 to establish a verified, production-grade Maven vertical slice first.
    * Resolves executable via an embedded fallback chain: checks `frontend/node/npm` (downloaded by `frontend-maven-plugin`) before searching system `PATH`.
    * Enforces headless, non-interactive execution flags: `npm test -- --watch=false --browsers=ChromeHeadless` (or `--watch=false --runInBand --ci` for Jest/Vitest), avoiding terminal hangs.
    * Executes type checks via `npx tsc --noEmit`.
@@ -736,9 +739,12 @@ Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority ar
 
 | Cycle | Primary Milestone | Strategic Deliverables | Validation SLA |
 | :--- | :--- | :--- | :--- |
-| **Cycle 1** | **Standalone Full-Stack Walking Skeleton** | Standalone repo, Maven & npm build SPIs, workspace auto-detection, canonical path jail, dual log sanitizer, transactional Git rollback. | Days 1–5 |
-| **Cycle 2** | **Multi-Tenant State & Memory Hardening** | Central H2 database (`~/.config/dev-agent/`), project namespacing, Markdown projection sync, 3-tier memory store, context-aware secret scrubbing. | Week 2 |
-| **Cycle 3** | **Pure-Java Lexical RAG & Caching** | Dynamic ADR discovery, pure-Java BM25 search, Caffeine gatekeeper cache (`@CacheResult`), normalized error loop circuit breaker. | Week 3 |
-| **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, build target slicing (`target-agent/`), non-locking `state.json` heartbeats, worker concurrency gate (max 2), desktop alerts. | Week 4 |
-| **Cycle 5** | **Contract Sync & Remote Quality Gates** | OpenAPI $\rightarrow$ TypeScript generator, Draft PR lifecycle, remote CI self-healing, SonarCloud auto-patcher, CodeRabbit triage state machine. | Week 5 |
-| **Cycle 6** | **Native Hardening, GUI Review & Release** | Sub-50ms GraalVM binary, offline Ollama failover, financial budget stops ($2.00 limit), embedded Vert.x Web Diff & Storybook review UI (`:9999`). | Week 6 |
+| **Cycle 1** | **Standalone Maven Walking Skeleton** | Standalone repo, Maven build SPI (`MavenBuildSystem`, `MavenOutputParser`, `BackendBuildTool`), workspace auto-detection, canonical path jail, secret scrubber, transactional Git rollback. | **DONE** |
+| **Cycle 2** | **Multi-Tenant State & Memory Hardening** | Central H2 database (`~/.config/dev-agent/`), deterministic `ProjectId` isolation, Markdown projection sync, 3-tier memory store, context-aware secret scrubbing. | **DONE** |
+| **Cycle 3** | **Pure-Java Lexical RAG & Caching** | Dynamic ADR discovery, pure-Java BM25 search, Caffeine gatekeeper cache (`@CacheResult`), normalized error loop circuit breaker. | **DONE** |
+| **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, Maven build target slicing (`target-agent/`), non-locking `state.json` heartbeats, worker concurrency gate (max 2), desktop alerts. | Week 4 |
+| **Cycle 5** | **Remote Quality Gates & Automated Review** | Draft PR lifecycle, remote Maven CI self-healing, SonarCloud auto-patcher, CodeRabbit triage state machine. | Week 5 |
+| **Cycle 6** | **Native Hardening, CLI Packaging & v1.0 Release** | Sub-50ms GraalVM Mandrel Ahead-of-Time native binary, financial budget stops ($2.00 limit), global CLI installation (`~/.local/bin/dev-agent`). | Week 6 |
+| *Future* | *Frontend Subsystem (Optional)* | `NpmBuildSystem`, `FrontendBuildTool`, `AngularConvention`, OpenAPI $\rightarrow$ TypeScript generator, headless testing (`ChromeHeadless`), Storybook review. | Backlog |
+| *Future* | *Local Offline Models (Optional)* | Offline Ollama model execution & local failover (`--offline`). | Backlog |
+| *Future* | *Web Review UI (Optional)* | Embedded Vert.x Web Diff & Storybook review server on `:9999` (`--gui`). | Backlog |

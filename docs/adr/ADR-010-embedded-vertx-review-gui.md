@@ -1,10 +1,13 @@
 # ADR-010: Embedded Vert.x Local Web Diff Review Engine
 
-* **Status:** Accepted
+* **Status:** Deferred / Optional Future Feature
 * **Date:** 2026-10-25
 
 ## Context
 Reviewing complex multi-file full-stack diffs solely via terminal CLI outputs is challenging. Developers need visual syntax-highlighted side-by-side diffs and real-time UI preview capabilities before approving PR creation or code commits.
+
+> [!NOTE]
+> **Roadmap Realignment:** For the v1.0 milestone, `dev-agent` focuses strictly on the terminal CLI experience (`TerminalUi`, ANSI streaming, markdown runbooks) to maintain a lean Mandrel native binary footprint. The embedded Vert.x HTTP server on `:9999` is deferred as an optional post-v1.0 backlog extension.
 
 ## Decision
 Embed a lightweight Vert.x HTTP server that starts in $<20\text{ ms}$ on `http://localhost:9999` when invoked with `--gui`. Bundle zero-CDN native web assets (`diff2html.min.js`, dark theme CSS) directly in the native binary. Embed an `<iframe>` pointing to the local Storybook development server (`:6006`) for interactive component validation.
