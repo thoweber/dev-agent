@@ -22,8 +22,9 @@ Implement a 3-Tier Hierarchical Memory architecture in `HierarchicalMemoryStore`
    - Bounded by `MAX_SCRATCHPAD_TURNS`.
    - Eviction operates on **atomic conversational turns**: evicting a turn removes the `UserMessage` prompt AND its answering `AiMessage` and all associated `ToolExecutionResultMessage`s together as a single unit.
    - Never leaves a severed `AiMessage` or orphaned `ToolExecutionResultMessage` at the head of the scratchpad.
-4. **Structural Invariant Verification:**
-   - Provides `assertTurnStructureInvariants()` to verify structural integrity before and during cognitive orchestration.
+4. **Structural Invariants Guaranteed by Construction & Black-Box Test Verification:**
+   - Turn structure invariants (pinned system invariants at head, atomic eviction preserving full turns, rejection of orphaned tool results) are guaranteed by construction within `HierarchicalMemoryStore`.
+   - Structural integrity is verified black-box through the public `messages()` contract using test assertions (`HierarchicalMemoryAssert`), avoiding synthetic test hooks in production code.
 5. **Multi-Tenant Registry & Session Lifecycle Decoupling:**
    - `HierarchicalMemoryStore` is unmanaged and instantiated per conversation / task session, carrying an explicit `memoryId`. It is not `@ApplicationScoped`.
    - An `@ApplicationScoped` `HierarchicalChatMemoryProvider` implements LangChain4j `ChatMemoryProvider`, maintaining a concurrent map of active `HierarchicalMemoryStore` buffers indexed by `memoryId` (e.g. `taskId`).
@@ -33,7 +34,7 @@ Implement a 3-Tier Hierarchical Memory architecture in `HierarchicalMemoryStore`
      - `ConcurrentLinkedDeque<ChatMessage>` for the sliding scratchpad (weakly consistent iteration, lock-free insertions and poll operations).
      - `CopyOnWriteArrayList<SystemMessage>` for pinned system invariants.
      - `volatile UserMessage` for the pinned task specification.
-   - Read operations (such as `messages()` and `assertTurnStructureInvariants()`) operate on point-in-time snapshots, preventing monitor contention while guaranteeing thread safety under concurrent observer access.
+   - Read operations (`messages()`) operate on point-in-time snapshots, preventing monitor contention while guaranteeing thread safety under concurrent observer access.
 
 ## Consequences
 ### Positive

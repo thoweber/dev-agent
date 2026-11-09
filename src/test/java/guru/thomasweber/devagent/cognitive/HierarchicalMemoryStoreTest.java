@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static guru.thomasweber.devagent.testutil.HierarchicalMemoryAssert.assertThatMemory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -254,13 +255,13 @@ class HierarchicalMemoryStoreTest {
         assertThat(memory.messages()).hasSize(31);
         assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
 
         // When a subsequent turn arrives exceeding budget, older turn is evicted atomically
         memory.add(new UserMessage("Turn 2"));
         assertThat(memory.messages()).hasSize(1);
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Turn 2");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
 
         // Edge case: when initial message is AiMessage with tool requests (no UserMessage at index 0)
         HierarchicalMemoryStore aiFirstMemory = new HierarchicalMemoryStore();
@@ -274,13 +275,13 @@ class HierarchicalMemoryStoreTest {
             aiFirstMemory.add(ToolExecutionResultMessage.from(req, "Result " + i));
         }
         assertThat(aiFirstMemory.messages()).hasSize(30);
-        assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(aiFirstMemory).satisfiesTurnStructureInvariants();
 
         aiFirstMemory.add(new UserMessage("Subsequent turn"));
         assertThat(aiFirstMemory.messages()).hasSize(1);
         assertThat(aiFirstMemory.messages().getLast()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) aiFirstMemory.messages().getLast()).singleText()).isEqualTo("Subsequent turn");
-        assertThat(aiFirstMemory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(aiFirstMemory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -306,12 +307,12 @@ class HierarchicalMemoryStoreTest {
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Root prompt for single long turn");
         assertThat(memory.messages().get(1)).isInstanceOf(AiMessage.class);
         assertThat(((AiMessage) memory.messages().get(1)).text()).isEqualTo("Thinking about how to solve the problem...");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
 
         memory.add(new UserMessage("Next Turn"));
         assertThat(memory.messages()).hasSize(1);
         assertThat(((UserMessage) memory.messages().getFirst()).singleText()).isEqualTo("Next Turn");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -333,7 +334,7 @@ class HierarchicalMemoryStoreTest {
         // Total messages: 1 user + 1 AiMessage + 26 results = 28 messages (> 24).
         // Since no subsequent AiMessage has arrived, the tool interaction is active/in-flight and cannot be trimmed.
         assertThat(memory.messages()).hasSize(28);
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -348,7 +349,7 @@ class HierarchicalMemoryStoreTest {
         // All 27 messages preserved in single turn because there are no tool interactions to trim
         assertThat(memory.messages()).hasSize(27);
         assertThat(memory.messages().getFirst()).isInstanceOf(UserMessage.class);
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -390,7 +391,7 @@ class HierarchicalMemoryStoreTest {
         // And last AI completion message is preserved
         assertThat(memory.messages().getLast()).isInstanceOf(AiMessage.class);
         assertThat(((AiMessage) memory.messages().getLast()).text()).isEqualTo("All batch steps completed successfully.");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -429,7 +430,7 @@ class HierarchicalMemoryStoreTest {
             m instanceof ToolExecutionResultMessage tr &&
             (tr.id().equals("call-inter-1") || tr.id().equals("call-inter-2"))
         );
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -452,7 +453,7 @@ class HierarchicalMemoryStoreTest {
         assertThat(memory.messages()).hasSize(1);
         assertThat(memory.messages().getLast()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) memory.messages().getLast()).singleText()).isEqualTo("Next user turn");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -469,27 +470,27 @@ class HierarchicalMemoryStoreTest {
         memory.add(ToolExecutionResultMessage.from(req, "Done"));
         memory.add(new AiMessage("X is finished"));
 
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
 
         // Verify observable handling of invalid messages through public API
         // Case 1: SystemMessage is routed to pinned invariants, not scratchpad
         HierarchicalMemoryStore m1 = new HierarchicalMemoryStore();
         m1.add(new UserMessage("Do X"));
         m1.add(new SystemMessage("Invariant"));
-        assertThat(m1.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(m1).satisfiesTurnStructureInvariants();
         assertThat(m1.messages().getFirst()).isInstanceOf(SystemMessage.class);
 
         // Case 2: Orphaned ToolExecutionResultMessage is dropped by add()
         HierarchicalMemoryStore m2 = new HierarchicalMemoryStore();
         m2.add(ToolExecutionResultMessage.from(req, "Orphan"));
-        assertThat(m2.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(m2).satisfiesTurnStructureInvariants();
         assertThat(m2.messages()).isEmpty();
 
         // Case 3: ToolExecutionResultMessage without preceding matching request is dropped
         HierarchicalMemoryStore m3 = new HierarchicalMemoryStore();
         m3.add(new UserMessage("Start"));
         m3.add(ToolExecutionResultMessage.from(req, "Dangling"));
-        assertThat(m3.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(m3).satisfiesTurnStructureInvariants();
         assertThat(m3.messages()).hasSize(1);
     }
 
@@ -568,7 +569,7 @@ class HierarchicalMemoryStoreTest {
         List<ChatMessage> messages = memory.messages();
         assertThat(messages.getFirst()).isInstanceOf(UserMessage.class);
         assertThat(((UserMessage) messages.getFirst()).singleText()).isEqualTo("Turn 2");
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 
     @Test
@@ -664,6 +665,6 @@ class HierarchicalMemoryStoreTest {
         }
 
         assertThat(memory.messages()).isNotEmpty();
-        assertThat(memory.assertTurnStructureInvariants()).isTrue();
+        assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
 }

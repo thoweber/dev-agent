@@ -148,48 +148,6 @@ public class HierarchicalMemoryStore implements ChatMemory {
         }
     }
 
-    public boolean assertTurnStructureInvariants() {
-        if (containsSystemMessage() || startsWithToolExecutionResult()) {
-            return false;
-        }
-        return allToolResultsHaveMatchingRequests();
-    }
-
-    private boolean containsSystemMessage() {
-        for (ChatMessage msg : slidingScratchpad) {
-            if (msg instanceof SystemMessage) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean startsWithToolExecutionResult() {
-        return slidingScratchpad.peekFirst() instanceof ToolExecutionResultMessage;
-    }
-
-    private boolean allToolResultsHaveMatchingRequests() {
-        List<ChatMessage> snapshot = new ArrayList<>(slidingScratchpad);
-        for (int i = 0; i < snapshot.size(); i++) {
-            if (snapshot.get(i) instanceof ToolExecutionResultMessage toolResult
-                && !hasPrecedingRequest(snapshot, toolResult.id(), i)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean hasPrecedingRequest(List<ChatMessage> snapshot, String toolResultId, int currentIndex) {
-        for (int j = 0; j < currentIndex; j++) {
-            if (snapshot.get(j) instanceof AiMessage ai
-                && ai.hasToolExecutionRequests()
-                && hasMatchingId(ai, toolResultId)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     @Override
     public List<ChatMessage> messages() {
         List<ChatMessage> assembled = new ArrayList<>(pinnedInvariants);

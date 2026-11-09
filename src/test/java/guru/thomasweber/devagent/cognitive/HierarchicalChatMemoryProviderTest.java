@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static guru.thomasweber.devagent.testutil.HierarchicalMemoryAssert.assertThatMemory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -138,7 +139,7 @@ class HierarchicalChatMemoryProviderTest {
         assertThat(provider.activeSessionsCount()).isEqualTo(5);
         for (int i = 0; i < 5; i++) {
             HierarchicalMemoryStore store = provider.get("concurrent-task-" + i);
-            assertThat(store.assertTurnStructureInvariants()).isTrue();
+            assertThatMemory(store).satisfiesTurnStructureInvariants();
         }
     }
 }
