@@ -80,7 +80,7 @@ The system operates as an **independent developer infrastructure tool** hosted i
 
 ## 2. Two-Axis Extensibility Architecture (Build & Framework SPIs)
 
-To guarantee that the agent begins with **Quarkus/Maven** and **Angular/npm** while remaining open for **Gradle**, **pnpm**, **yarn**, **bun**, **Spring Boot**, or **React**, capabilities are split into two orthogonal CDI extension axes.
+To guarantee that the agent begins with a hardened **Quarkus/Maven** vertical slice while remaining open for **Gradle**, **pnpm**, **yarn**, **bun**, **Spring Boot**, **Angular**, or **React** (frontend extensions deferred to post-Cycle 5 backlog), capabilities are split into two orthogonal CDI extension axes.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -185,8 +185,8 @@ public interface FrontendFrameworkConvention {
    * **Dev Services Container Suppressor**: Injects `-Dquarkus.devservices.enabled=false -Dquarkus.datasource.jdbc.url=jdbc:h2:mem:tdd_test;DB_CLOSE_DELAY=-1 -Dquarkus.datasource.db-kind=h2` during inner micro-TDD loops to prevent unexpected Docker container pulls and startup crashes.
    * Exports OpenAPI schemas by passing `-Dquarkus.smallrye-openapi.store-schema-file=true -Dquarkus.smallrye-openapi.store-schema-directory=target-agent/openapi` during compilation.
 
-2. **`AngularConvention`**:
-   * Parses `angular.json` to resolve the true `sourceRoot` (e.g., `projects/<app>/src`) rather than assuming flat directories.
+2. **`AngularConvention` (Deferred / Optional Post-Cycle 5 Feature)**:
+   * *(Deferred)* Planned SPI provider parsing `angular.json` to resolve the true `sourceRoot` (e.g., `projects/<app>/src`) rather than assuming flat directories.
    * Enforces Standalone Components, Material Design 3 design tokens, and Angular Signals reactivity.
    * **Reactivity Bridge Invariant**: Enforces that generated OpenAPI client RxJS Observables are bridged using `toSignal(service.call(), { initialValue: null })` from `@angular/core/rxjs-interop`, forbidding raw `.subscribe()` calls in component controllers.
    * Mandates accompanying `*.stories.ts` files for reusable UI components.

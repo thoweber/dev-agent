@@ -7,6 +7,8 @@ import jakarta.inject.Inject;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -54,8 +56,7 @@ public class BackendBuildService {
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
         List<String> command = buildSystem.buildCompileCommand(effectiveRoot, modulePath, effectiveTarget);
 
-        ProcessResult result = subprocessExecutor.execute(command, effectiveRoot, DEFAULT_TIMEOUT);
-        return buildSystem.sanitizeOutput(result.exitCode(), result.stdOut(), result.stdErr());
+        return executeAndSanitize(buildSystem, command, effectiveRoot);
     }
 
     /**
@@ -85,8 +86,30 @@ public class BackendBuildService {
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
         List<String> command = buildSystem.buildTestCommand(effectiveRoot, modulePath, testPattern, effectiveTarget);
 
-        ProcessResult result = subprocessExecutor.execute(command, effectiveRoot, DEFAULT_TIMEOUT);
-        return buildSystem.sanitizeOutput(result.exitCode(), result.stdOut(), result.stdErr());
+        return executeAndSanitize(buildSystem, command, effectiveRoot);
+    }
+
+    private SanitizedLog executeAndSanitize(BackendBuildSystem buildSystem, List<String> command, Path workingDir) {
+        ProcessResult result = subprocessExecutor.execute(command, workingDir, DEFAULT_TIMEOUT);
+        SanitizedLog sanitized = buildSystem.sanitizeOutput(result.exitCode(), result.stdOut(), result.stdErr());
+
+        if (result.timedOut() || result.truncated()) {
+            List<String> errors = new ArrayList<>(sanitized.errorLines());
+            if (result.timedOut()) {
+                errors.add(0, "Build process timed out after " + DEFAULT_TIMEOUT.toMinutes() + " minutes");
+            }
+            if (result.truncated()) {
+                errors.add("Build process output was truncated due to buffer limits");
+            }
+            int effectiveExitCode = (result.timedOut() && sanitized.exitCode() == 0) ? 124 : sanitized.exitCode();
+            return sanitized.toBuilder()
+                .exitCode(effectiveExitCode)
+                .errorCount(errors.size())
+                .errorLines(Collections.unmodifiableList(errors))
+                .build();
+        }
+
+        return sanitized;
     }
 
     private BackendBuildSystem resolveBuildSystem(Path projectRoot) {

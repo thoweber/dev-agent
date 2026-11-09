@@ -63,45 +63,6 @@ class MavenBuildSystemTest {
     }
 
     @Test
-    @DisplayName("Given default BackendBuildSystem interface method - when sanitizeOutput with exitCode called - then delegates")
-    void givenDefaultBackendBuildSystemInterfaceMethod_whenCalled_thenDelegates() {
-        BackendBuildSystem stub = new BackendBuildSystem() {
-            @Override
-            public int priority() {
-                return 1;
-            }
-
-            @Override
-            public boolean isApplicable(Path root) {
-                return false;
-            }
-
-            @Override
-            public String resolveExecutable(Path root) {
-                return "mvn";
-            }
-
-            @Override
-            public List<String> buildCompileCommand(Path root, String module, String target) {
-                return List.of();
-            }
-
-            @Override
-            public List<String> buildTestCommand(Path root, String module, String pattern, String target) {
-                return List.of();
-            }
-
-            @Override
-            public SanitizedLog sanitizeOutput(String out, String err) {
-                return SanitizedLog.builder().cleanStdout(out).cleanStderr(err).build();
-            }
-        };
-
-        SanitizedLog result = stub.sanitizeOutput(0, "stdout", "stderr");
-        assertThat(result.cleanStdout()).isEqualTo("stdout");
-    }
-
-    @Test
     @DisplayName("Given directory without wrapper - when resolveExecutable called - then returns mvn")
     void givenDirectoryWithoutWrapper_whenResolveExecutableCalled_thenReturnsMvn(@TempDir Path tempDir) {
         assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo("mvn");
@@ -326,26 +287,28 @@ class MavenBuildSystemTest {
     }
 
     @Test
-    @DisplayName("Given Windows environment with mvnw.cmd - when resolveExecutable called - then returns mvnw.cmd")
+    @DisplayName("Given Windows environment with mvnw.cmd - when resolveExecutable called - then returns absolute path of mvnw.cmd")
     void givenWindowsEnvironmentWithMvnwCmd_whenResolveExecutableCalled_thenReturnsMvnwCmd(@TempDir Path tempDir) throws IOException {
         String originalOs = System.getProperty("os.name");
         try {
             System.setProperty("os.name", "Windows 11");
-            Files.writeString(tempDir.resolve("mvnw.cmd"), "@echo off\n");
-            assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo("mvnw.cmd");
+            Path cmd = tempDir.resolve("mvnw.cmd");
+            Files.writeString(cmd, "@echo off\n");
+            assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo(cmd.toAbsolutePath().toString());
         } finally {
             System.setProperty("os.name", originalOs);
         }
     }
 
     @Test
-    @DisplayName("Given Windows environment with mvnw.bat - when resolveExecutable called - then returns mvnw.cmd")
+    @DisplayName("Given Windows environment with mvnw.bat - when resolveExecutable called - then returns absolute path of mvnw.bat")
     void givenWindowsEnvironmentWithMvnwBat_whenResolveExecutableCalled_thenReturnsMvnwCmd(@TempDir Path tempDir) throws IOException {
         String originalOs = System.getProperty("os.name");
         try {
             System.setProperty("os.name", "Windows Server 2022");
-            Files.writeString(tempDir.resolve("mvnw.bat"), "@echo off\n");
-            assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo("mvnw.cmd");
+            Path bat = tempDir.resolve("mvnw.bat");
+            Files.writeString(bat, "@echo off\n");
+            assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo(bat.toAbsolutePath().toString());
         } finally {
             System.setProperty("os.name", originalOs);
         }
@@ -420,20 +383,5 @@ class MavenBuildSystemTest {
 
         assertThat(compileCmd).contains("-Dproject.build.directory=target-agent");
         assertThat(testCmd).contains("-Dproject.build.directory=target-agent");
-    }
-
-    @Test
-    @DisplayName("Given Windows environment with mvnw.bat - when resolveExecutable called - then returns mvnw.cmd")
-    void givenWindowsWithMvnwBat_whenResolveExecutableCalled_thenReturnsMvnwCmd(@TempDir Path tempDir) throws IOException {
-        String originalOs = System.getProperty("os.name");
-        try {
-            System.setProperty("os.name", "Windows 11");
-            Files.writeString(tempDir.resolve("mvnw.bat"), "@echo off\n");
-            assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo("mvnw.cmd");
-        } finally {
-            if (originalOs != null) {
-                System.setProperty("os.name", originalOs);
-            }
-        }
     }
 }

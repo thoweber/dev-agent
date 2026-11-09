@@ -2,6 +2,7 @@ package guru.thomasweber.devagent.workspace;
 
 import guru.thomasweber.devagent.spi.build.BackendBuildSystem;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
+import guru.thomasweber.devagent.testutil.ProcessResultMother;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,13 +39,7 @@ class BackendBuildServiceTest {
         List<String> command = List.of("./mvnw", "-B", "-Dproject.build.directory=target-agent", "-pl", "core", "-am", "test-compile");
         when(buildSystem.buildCompileCommand(repoRoot, "core", "target-agent")).thenReturn(command);
 
-        ProcessResult processResult = ProcessResult.builder()
-            .exitCode(0)
-            .stdOut("[INFO] BUILD SUCCESS")
-            .stdErr("")
-            .timedOut(false)
-            .truncated(false)
-            .build();
+        ProcessResult processResult = ProcessResultMother.success("[INFO] BUILD SUCCESS");
         when(subprocessExecutor.execute(eq(command), eq(repoRoot), any(Duration.class))).thenReturn(processResult);
 
         SanitizedLog expectedLog = SanitizedLog.builder()
@@ -75,13 +70,7 @@ class BackendBuildServiceTest {
         List<String> command = List.of("./mvnw", "-B", "-Dproject.build.directory=target-agent", "test", "-Dtest=OrderServiceTest");
         when(buildSystem.buildTestCommand(repoRoot, null, "OrderServiceTest", "target-agent")).thenReturn(command);
 
-        ProcessResult processResult = ProcessResult.builder()
-            .exitCode(1)
-            .stdOut("[ERROR] Tests run: 1, Failures: 1")
-            .stdErr("")
-            .timedOut(false)
-            .truncated(false)
-            .build();
+        ProcessResult processResult = ProcessResultMother.failure(1, "[ERROR] Tests run: 1, Failures: 1", "");
         when(subprocessExecutor.execute(eq(command), eq(repoRoot), any(Duration.class))).thenReturn(processResult);
 
         SanitizedLog expectedLog = SanitizedLog.builder()
@@ -126,13 +115,7 @@ class BackendBuildServiceTest {
         List<String> command = List.of("./mvnw", "-B", "-Dproject.build.directory=custom-target", "test-compile");
         when(buildSystem.buildCompileCommand(customRoot, null, "custom-target")).thenReturn(command);
 
-        ProcessResult processResult = ProcessResult.builder()
-            .exitCode(0)
-            .stdOut("OK")
-            .stdErr("")
-            .timedOut(false)
-            .truncated(false)
-            .build();
+        ProcessResult processResult = ProcessResultMother.success("OK");
         when(subprocessExecutor.execute(eq(command), eq(customRoot), any(Duration.class))).thenReturn(processResult);
 
         SanitizedLog expectedLog = SanitizedLog.builder().exitCode(0).build();
@@ -156,13 +139,7 @@ class BackendBuildServiceTest {
         List<String> command = List.of("./mvnw", "-B", "-Dproject.build.directory=custom-target", "test", "-Dtest=*Test");
         when(buildSystem.buildTestCommand(customRoot, "app", "*Test", "custom-target")).thenReturn(command);
 
-        ProcessResult processResult = ProcessResult.builder()
-            .exitCode(0)
-            .stdOut("OK")
-            .stdErr("")
-            .timedOut(false)
-            .truncated(false)
-            .build();
+        ProcessResult processResult = ProcessResultMother.success("OK");
         when(subprocessExecutor.execute(eq(command), eq(customRoot), any(Duration.class))).thenReturn(processResult);
 
         SanitizedLog expectedLog = SanitizedLog.builder().exitCode(0).build();
@@ -184,7 +161,7 @@ class BackendBuildServiceTest {
         when(contextResolver.resolveRepoRoot()).thenReturn(repoRoot);
         when(contextResolver.resolveBackendBuildSystem(repoRoot)).thenReturn(Optional.of(buildSystem));
 
-        ProcessResult processResult = ProcessResult.builder().exitCode(0).stdOut("").stdErr("").build();
+        ProcessResult processResult = ProcessResultMother.success("");
         when(subprocessExecutor.execute(any(), eq(repoRoot), any(Duration.class))).thenReturn(processResult);
         SanitizedLog expectedLog = SanitizedLog.builder().exitCode(0).build();
         when(buildSystem.sanitizeOutput(eq(0), any(), any())).thenReturn(expectedLog);
@@ -201,5 +178,57 @@ class BackendBuildServiceTest {
 
         verify(buildSystem, atLeast(2)).buildCompileCommand(repoRoot, "mod", "target-agent");
         verify(buildSystem, atLeast(2)).buildTestCommand(repoRoot, "mod", "*Test", "target-agent");
+    }
+
+    @Test
+    @DisplayName("Given subprocess timeout - when executed - then injects timeout notice and exit code 124")
+    void givenSubprocessTimeout_whenExecuted_thenInjectsTimeoutNoticeAndExitCode124() {
+        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
+        SubprocessExecutor subprocessExecutor = mock(SubprocessExecutor.class);
+        BackendBuildSystem buildSystem = mock(BackendBuildSystem.class);
+
+        when(contextResolver.resolveRepoRoot()).thenReturn(repoRoot);
+        when(contextResolver.resolveBackendBuildSystem(repoRoot)).thenReturn(Optional.of(buildSystem));
+
+        List<String> command = List.of("./mvnw", "test-compile");
+        when(buildSystem.buildCompileCommand(repoRoot, null, "target-agent")).thenReturn(command);
+
+        ProcessResult timedOutResult = ProcessResultMother.timedOut();
+        when(subprocessExecutor.execute(eq(command), eq(repoRoot), any(Duration.class))).thenReturn(timedOutResult);
+
+        SanitizedLog baseLog = SanitizedLog.builder().exitCode(0).build();
+        when(buildSystem.sanitizeOutput(124, "", "Process timed out")).thenReturn(baseLog);
+
+        BackendBuildService service = new BackendBuildService(contextResolver, subprocessExecutor);
+        SanitizedLog actualLog = service.compile((String) null);
+
+        assertThat(actualLog.exitCode()).isEqualTo(124);
+        assertThat(actualLog.errorLines()).contains("Build process timed out after 5 minutes");
+        assertThat(actualLog.hasErrors()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Given truncated subprocess output - when executed - then appends truncation notice to error lines")
+    void givenTruncatedSubprocessOutput_whenExecuted_thenAppendsTruncationNotice() {
+        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
+        SubprocessExecutor subprocessExecutor = mock(SubprocessExecutor.class);
+        BackendBuildSystem buildSystem = mock(BackendBuildSystem.class);
+
+        when(contextResolver.resolveRepoRoot()).thenReturn(repoRoot);
+        when(contextResolver.resolveBackendBuildSystem(repoRoot)).thenReturn(Optional.of(buildSystem));
+
+        List<String> command = List.of("./mvnw", "test");
+        when(buildSystem.buildTestCommand(repoRoot, null, null, "target-agent")).thenReturn(command);
+
+        ProcessResult truncatedResult = ProcessResultMother.truncated("huge output");
+        when(subprocessExecutor.execute(eq(command), eq(repoRoot), any(Duration.class))).thenReturn(truncatedResult);
+
+        SanitizedLog baseLog = SanitizedLog.builder().exitCode(0).build();
+        when(buildSystem.sanitizeOutput(0, "huge output", "")).thenReturn(baseLog);
+
+        BackendBuildService service = new BackendBuildService(contextResolver, subprocessExecutor);
+        SanitizedLog actualLog = service.test(null, null);
+
+        assertThat(actualLog.errorLines()).contains("Build process output was truncated due to buffer limits");
     }
 }

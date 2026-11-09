@@ -27,6 +27,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
 
     private static final String MVNW_UNIX = "./mvnw";
     private static final String MVNW_WIN = "mvnw.cmd";
+    private static final String MVNW_BAT = "mvnw.bat";
     private static final String MVN_FALLBACK = "mvn";
 
     private final MavenOutputParser outputParser;
@@ -61,15 +62,19 @@ public class MavenBuildSystem implements BackendBuildSystem {
         }
         boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         if (isWindows) {
-            if (Files.exists(projectRoot.resolve(MVNW_WIN), LinkOption.NOFOLLOW_LINKS)
-                || Files.exists(projectRoot.resolve("mvnw.bat"), LinkOption.NOFOLLOW_LINKS)) {
-                return MVNW_WIN;
+            Path winCmd = projectRoot.resolve(MVNW_WIN);
+            if (Files.isRegularFile(winCmd, LinkOption.NOFOLLOW_LINKS)) {
+                return winCmd.toAbsolutePath().toString();
+            }
+            Path winBat = projectRoot.resolve(MVNW_BAT);
+            if (Files.isRegularFile(winBat, LinkOption.NOFOLLOW_LINKS)) {
+                return winBat.toAbsolutePath().toString();
             }
         } else {
             Path unixWrapper = projectRoot.resolve("mvnw");
             if (Files.exists(unixWrapper, LinkOption.NOFOLLOW_LINKS) && Files.isRegularFile(unixWrapper, LinkOption.NOFOLLOW_LINKS)) {
                 if (!Files.isExecutable(unixWrapper)) {
-                    boolean success = unixWrapper.toFile().setExecutable(true, false);
+                    boolean success = unixWrapper.toFile().setExecutable(true, true);
                     if (!success && !Files.isExecutable(unixWrapper)) {
                         return MVN_FALLBACK;
                     }
