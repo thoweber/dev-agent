@@ -25,8 +25,8 @@ flowchart TD
 
     subgraph Cognitive ["Cognitive Orchestration (LangChain4j)"]
         PLAN["Universal Planner (Pro)"]
-        GATE["Invariant Gatekeeper (Flash / Ollama)"]
-        CODE["Universal Coder (Claude / Ollama)"]
+        GATE["Invariant Gatekeeper (Flash / Gemini)"]
+        CODE["Universal Coder (Claude 3.5 Sonnet)"]
         BM25["Pure-Java Lexical Retrieval (BM25)"]
         CACHE["Deterministic Caffeine Decision Cache"]
     end

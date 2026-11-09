@@ -14,7 +14,7 @@ Decouple execution capabilities into two orthogonal Service Provider Interface (
 ## Consequences
 ### Positive
 * Perfect adherence to Open-Closed Principle (OCP): new tools/frameworks added as isolated CDI beans.
-* Active initial implementations: `MavenBuildSystem`, `NpmBuildSystem`, `QuarkusConvention`, `AngularConvention`.
+* Active initial implementations: `MavenBuildSystem`, `QuarkusConvention`. Post-Cycle 5 extensions: `NpmBuildSystem`, `AngularConvention`.
 * Zero domain or framework coupling in CLI commands or LLM personas.
 
 ### Negative

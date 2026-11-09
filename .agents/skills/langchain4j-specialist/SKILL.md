@@ -13,8 +13,8 @@ This skill governs the cognitive orchestration layer, model routing, system prom
 
 Declare AiServices using Quarkus-LangChain4j annotations:
 * **`FullStackPlannerAiService`:** Model `planner` (Gemini Pro / Claude 3.5). System prompt analyzes stories and outputs implementation DAGs.
-* **`UniversalArchitectGatekeeperAiService`:** Model `architect-gate` (Flash / Claude / Ollama at `temperature = 0.0`). Returns JSON matching `GateVerdict`.
-* **`FullStackCodeSynthesizerAiService`:** Model `coder` (Claude 3.5 Sonnet / Ollama). Configured with `tools = { CodeWorkspaceTools.class, ExecutionToolProxy.class }`.
+* **`UniversalArchitectGatekeeperAiService`:** Model `architect-gate` (Flash / Claude / Gemini at `temperature = 0.0`). Returns JSON matching `GateVerdict`. (Ollama deferred as optional future feature).
+* **`FullStackCodeSynthesizerAiService`:** Model `coder` (Claude 3.5 Sonnet / Gemini Pro). Configured with `tools = { CodeWorkspaceTools.class, BackendBuildTool.class }`.
 
 ---
 

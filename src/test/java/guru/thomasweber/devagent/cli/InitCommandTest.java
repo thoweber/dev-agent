@@ -67,12 +67,40 @@ class InitCommandTest {
         assertThat(exit1).isZero();
 
         int exit2 = cmd.execute("--dir=" + tempDir.toString(), "--type=reactive-messaging");
-        assertThat(exit2).isZero();
+        assertThat(exit2).isEqualTo(1);
         assertThat(err.toString()).contains("Workspace already initialized with different archetype. Use --force to overwrite.");
 
         Path yamlPath = tempDir.resolve(".agents/dev-agent.yaml");
         String content = Files.readString(yamlPath);
         assertThat(content).contains("rest-panache").doesNotContain("reactive-messaging");
+    }
+
+    @Test
+    @DisplayName("Given existing configuration with different archetype - when executed with force - cleans obsolete rules and switches archetype")
+    void testInitExistingArchetypeMismatchWithForceCleansObsoleteRules() throws Exception {
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+
+        int exit1 = cmd.execute("--dir=" + tempDir.toString(), "--type=rest-panache");
+        assertThat(exit1).isZero();
+        assertThat(tempDir.resolve(".agents/rules/01-quarkus-panache-invariants.md")).exists();
+
+        // Create a user-authored custom rule
+        Path userRule = tempDir.resolve(".agents/rules/99-custom-user-rule.md");
+        Files.writeString(userRule, "# Custom User Rule");
+
+        int exit2 = cmd.execute("--dir=" + tempDir.toString(), "--type=reactive-messaging", "--force");
+        assertThat(exit2).isZero();
+
+        // Managed rest-panache rules should be deleted
+        assertThat(tempDir.resolve(".agents/rules/01-quarkus-panache-invariants.md")).doesNotExist();
+        assertThat(tempDir.resolve(".agents/rules/02-rest-validation-rules.md")).doesNotExist();
+
+        // New reactive-messaging rules should be created
+        assertThat(tempDir.resolve(".agents/rules/01-reactive-messaging-invariants.md")).exists();
+
+        // User-authored rule MUST be preserved
+        assertThat(userRule).exists();
     }
 
     @Test
@@ -184,5 +212,52 @@ class InitCommandTest {
         assertThat(exitCode).isZero();
         assertThat(subDir.resolve(".agents/dev-agent.yaml")).isRegularFile();
         assertThat(tempDir.resolve(".agents")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("Given direct call to run() - executes successfully")
+    void testInitDirectRun() {
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+        cmd.parseArgs("--dir=" + tempDir.toString());
+
+        command.run();
+
+        assertThat(tempDir.resolve(".agents/dev-agent.yaml")).isRegularFile();
+    }
+
+    @Test
+    @DisplayName("Given existing rule file - when init run without force - does not overwrite existing rule")
+    void testInitExistingRuleNotOverwrittenWithoutForce() throws Exception {
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+
+        int exit1 = cmd.execute("--dir=" + tempDir.toString(), "--type=rest-panache");
+        assertThat(exit1).isZero();
+
+        Path rulePath = tempDir.resolve(".agents/rules/01-quarkus-panache-invariants.md");
+        Files.writeString(rulePath, "# Custom Edited Rule");
+
+        int exit2 = cmd.execute("--dir=" + tempDir.toString(), "--type=rest-panache");
+        assertThat(exit2).isZero();
+        assertThat(Files.readString(rulePath)).isEqualTo("# Custom Edited Rule");
+    }
+
+    @Test
+    @DisplayName("Given archetype switch with force - cleans obsolete rules across all archetypes")
+    void testInitArchetypeSwitchCleansAllArchetypes() {
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+
+        // Switch to fullstack-angular with force
+        int exit1 = cmd.execute("--dir=" + tempDir.toString(), "--type=fullstack-angular", "--force");
+        assertThat(exit1).isZero();
+        assertThat(tempDir.resolve(".agents/rules/01-angular-standalone-signals.md")).exists();
+
+        // Switch to modulith with force
+        int exit2 = cmd.execute("--dir=" + tempDir.toString(), "--type=modulith", "--force");
+        assertThat(exit2).isZero();
+        assertThat(tempDir.resolve(".agents/rules/01-modulith-package-boundaries.md")).exists();
+        assertThat(tempDir.resolve(".agents/rules/01-angular-standalone-signals.md")).doesNotExist();
     }
 }

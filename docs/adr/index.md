@@ -13,7 +13,7 @@ This directory records the key architectural decisions for **dev-agent**.
 | [ADR-007](ADR-007-contract-driven-sync.md) | Contract-Driven OpenAPI to TypeScript Client Sync | Accepted | 2026-10-25 |
 | [ADR-008](ADR-008-context-aware-secret-redaction.md) | Context-Aware Secret Redaction Quarantine | Accepted | 2026-10-25 |
 | [ADR-009](ADR-009-cache-and-circuit-breaker.md) | Deterministic Caffeine Cache & Normalized Loop Breaker | Accepted | 2026-10-25 |
-| [ADR-010](ADR-010-embedded-vertx-review-gui.md) | Embedded Vert.x Local Web Diff Review Engine | Accepted | 2026-10-25 |
+| [ADR-010](ADR-010-embedded-vertx-review-gui.md) | Embedded Vert.x Local Web Diff Review Engine | Deferred (Optional) | 2026-10-25 |
 | [ADR-011](ADR-011-hierarchical-memory-invariants.md) | 3-Tier Hierarchical Memory Turn Invariants & Atomic Tool Eviction | Accepted | 2026-10-26 |
 | [ADR-012](ADR-012-entity-encapsulation-and-domain-mapping.md) | Panache Entity Encapsulation & Domain Model Decoupling | Accepted | 2026-10-26 |
 | [ADR-013](ADR-013-global-project-id-host-isolation.md) | Global Project ID Host Isolation and Deterministic UUIDv3 Derivation | Accepted | 2026-10-27 |

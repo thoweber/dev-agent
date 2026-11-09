@@ -19,4 +19,8 @@ public interface BackendBuildSystem {
     List<String> buildTestCommand(Path projectRoot, String modulePath, String testPattern, String targetDir);
 
     SanitizedLog sanitizeOutput(String rawStdout, String rawStderr);
+
+    default SanitizedLog sanitizeOutput(int exitCode, String rawStdout, String rawStderr) {
+        return sanitizeOutput(rawStdout, rawStderr);
+    }
 }

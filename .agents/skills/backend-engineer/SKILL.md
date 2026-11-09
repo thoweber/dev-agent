@@ -27,7 +27,7 @@ This skill governs the implementation of core CDI beans, Picocli CLI commands, w
 
 ## 3. Two-Axis SPI Implementations
 
-* When implementing `BackendBuildSystem` or `FrontendBuildSystem`, ensure `sanitizeOutput()` strips task execution noise and isolates error lines.
+* Axis 1 execution centers on `BackendBuildSystem` (Maven) for Cycles 1–5, with `FrontendBuildSystem` deferred to post-Cycle 5. When implementing build systems, ensure `sanitizeOutput()` strips task execution noise and isolates error lines.
 * When implementing `BackendFrameworkConvention` or `FrontendFrameworkConvention`, keep framework-specific flags and baseline invariants declarative.
 
 ---

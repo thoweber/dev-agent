@@ -108,6 +108,10 @@ Before pushing any commit, verify that all local checks pass in accordance with 
        exit 1
      fi
    done
+   if [ "$STATUS" != "OK" ]; then
+     echo "Quality Gate FAILED: status did not reach OK after 5 attempts (last status: $STATUS)"
+     exit 1
+   fi
    ```
 5. Bounded CodeRabbit Review Completion Polling:
    After pushing a new commit, CodeRabbit automatically triggers a background review on GitHub. To determine when CodeRabbit has finished its review, use one of the two canonical detection methods:

@@ -17,6 +17,12 @@ public record SanitizedLog(
     String cleanStdout,
     String cleanStderr
 ) {
+    public SanitizedLog {
+        errorLines = (errorLines != null) ? List.copyOf(errorLines) : List.of();
+        cleanStdout = (cleanStdout != null) ? cleanStdout : "";
+        cleanStderr = (cleanStderr != null) ? cleanStderr : "";
+    }
+
     public boolean hasErrors() {
         return exitCode != 0 || errorCount > 0 || !errorLines.isEmpty();
     }

@@ -1,10 +1,14 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.spi.build.BackendBuildSystem;
 import jakarta.enterprise.context.ApplicationScoped;
-import lombok.RequiredArgsConstructor;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.Optional;
 
 /**
@@ -12,13 +16,29 @@ import java.util.Optional;
  * Serves as the single authoritative component for workspace path resolution.
  */
 @ApplicationScoped
-@RequiredArgsConstructor
 public class WorkspaceContextResolver {
 
+    private static final String USER_DIR = "user.dir";
+
     private final Path workingDir;
+    private final Instance<BackendBuildSystem> backendBuildSystems;
+
+    @Inject
+    public WorkspaceContextResolver(Instance<BackendBuildSystem> backendBuildSystems) {
+        this(Path.of(System.getProperty(USER_DIR)), backendBuildSystems);
+    }
+
+    public WorkspaceContextResolver(Path workingDir, Instance<BackendBuildSystem> backendBuildSystems) {
+        this.workingDir = workingDir;
+        this.backendBuildSystems = backendBuildSystems;
+    }
+
+    public WorkspaceContextResolver(Path workingDir) {
+        this(workingDir, null);
+    }
 
     public WorkspaceContextResolver() {
-        this(Path.of(System.getProperty("user.dir")));
+        this(Path.of(System.getProperty(USER_DIR)), null);
     }
 
     /**
@@ -35,7 +55,7 @@ public class WorkspaceContextResolver {
         if (parentDir != null && !parentDir.equals(".") && !parentDir.isBlank()) {
             return Paths.get(parentDir).toAbsolutePath().normalize();
         }
-        return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        return Path.of(System.getProperty(USER_DIR)).toAbsolutePath().normalize();
     }
 
     /**
@@ -46,14 +66,26 @@ public class WorkspaceContextResolver {
      */
     public Path resolveRepoRoot() {
         Path current = workingDir.toAbsolutePath().normalize();
+        Path highestBuildRoot = null;
+        Path gitRoot = null;
+
         while (current != null) {
-            if (Files.exists(current.resolve(".git")) ||
-                Files.exists(current.resolve("pom.xml")) ||
+            if (gitRoot == null && Files.exists(current.resolve(".git"))) {
+                gitRoot = current;
+            }
+            if (Files.exists(current.resolve("pom.xml")) ||
                 Files.exists(current.resolve("build.gradle")) ||
                 Files.exists(current.resolve("build.gradle.kts"))) {
-                return current;
+                highestBuildRoot = current;
             }
             current = current.getParent();
+        }
+
+        if (gitRoot != null) {
+            return gitRoot;
+        }
+        if (highestBuildRoot != null) {
+            return highestBuildRoot;
         }
         return workingDir.toAbsolutePath().normalize();
     }
@@ -73,6 +105,30 @@ public class WorkspaceContextResolver {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Resolves the applicable backend build system with the highest priority for the given project root.
+     *
+     * @param projectRoot the repository or project root path
+     * @return Optional containing the matching BackendBuildSystem, or empty if none applicable
+     */
+    public Optional<BackendBuildSystem> resolveBackendBuildSystem(Path projectRoot) {
+        if (backendBuildSystems == null || backendBuildSystems.isUnsatisfied() || projectRoot == null) {
+            return Optional.empty();
+        }
+        return backendBuildSystems.stream()
+            .filter(bs -> bs.isApplicable(projectRoot))
+            .max(Comparator.comparingInt(BackendBuildSystem::priority));
+    }
+
+    /**
+     * Resolves the applicable backend build system with the highest priority for this workspace repository root.
+     *
+     * @return Optional containing the matching BackendBuildSystem, or empty if none applicable
+     */
+    public Optional<BackendBuildSystem> resolveBackendBuildSystem() {
+        return resolveBackendBuildSystem(resolveRepoRoot());
     }
 
     /**

@@ -3,10 +3,14 @@ package guru.thomasweber.devagent;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.domain.properties.HasName;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 import dev.langchain4j.agent.tool.Tool;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -84,4 +88,32 @@ public class AgentArchitectureTest {
                 HasName.Predicates.name("setAccessible")
             ))
             .as("Test classes must practice black-box behavioral verification and not use setAccessible(true)");
+
+    @ArchTest
+    public static final ArchRule recordsWithFourOrMoreFieldsMustProvideBuilder =
+        classes()
+            .that().areRecords()
+            .and().areTopLevelClasses()
+            .and().resideInAPackage("guru.thomasweber.devagent..")
+            .and(new DescribedPredicate<>("have 4 or more record components") {
+                @Override
+                public boolean test(JavaClass javaClass) {
+                    long componentFields = javaClass.getFields().stream()
+                        .filter(f -> !f.getModifiers().contains(JavaModifier.STATIC))
+                        .count();
+                    return componentFields >= 4;
+                }
+            })
+            .should(new ArchCondition<>("provide a builder() method") {
+                @Override
+                public void check(JavaClass javaClass, ConditionEvents events) {
+                    boolean hasBuilder = javaClass.getMethods().stream()
+                        .anyMatch(m -> m.getName().equals("builder") && m.getRawParameterTypes().isEmpty());
+                    if (!hasBuilder) {
+                        String message = String.format("Record %s has 4+ components but lacks a builder() method", javaClass.getName());
+                        events.add(SimpleConditionEvent.violated(javaClass, message));
+                    }
+                }
+            })
+            .as("Records with 4 or more fields must provide a fluent builder");
 }
