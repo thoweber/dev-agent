@@ -61,30 +61,36 @@ public class MavenBuildSystem implements BackendBuildSystem {
             return MVN_FALLBACK;
         }
         boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        if (isWindows) {
-            Path winCmd = projectRoot.resolve(MVNW_WIN);
-            if (Files.isRegularFile(winCmd, LinkOption.NOFOLLOW_LINKS)) {
-                return winCmd.toAbsolutePath().toString();
+        return isWindows ? resolveWindowsWrapper(projectRoot) : resolveUnixWrapper(projectRoot);
+    }
+
+    private String resolveWindowsWrapper(Path projectRoot) {
+        Path winCmd = projectRoot.resolve(MVNW_WIN);
+        if (Files.isRegularFile(winCmd, LinkOption.NOFOLLOW_LINKS)) {
+            return winCmd.toAbsolutePath().toString();
+        }
+        Path winBat = projectRoot.resolve(MVNW_BAT);
+        if (Files.isRegularFile(winBat, LinkOption.NOFOLLOW_LINKS)) {
+            return winBat.toAbsolutePath().toString();
+        }
+        return MVN_FALLBACK;
+    }
+
+    private String resolveUnixWrapper(Path projectRoot) {
+        Path unixWrapper = projectRoot.resolve("mvnw");
+        if (Files.isRegularFile(unixWrapper, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isExecutable(unixWrapper) && !tryMakeExecutable(unixWrapper) && !Files.isExecutable(unixWrapper)) {
+                return MVN_FALLBACK;
             }
-            Path winBat = projectRoot.resolve(MVNW_BAT);
-            if (Files.isRegularFile(winBat, LinkOption.NOFOLLOW_LINKS)) {
-                return winBat.toAbsolutePath().toString();
-            }
-        } else {
-            Path unixWrapper = projectRoot.resolve("mvnw");
-            if (Files.exists(unixWrapper, LinkOption.NOFOLLOW_LINKS) && Files.isRegularFile(unixWrapper, LinkOption.NOFOLLOW_LINKS)) {
-                if (!Files.isExecutable(unixWrapper)) {
-                    boolean success = unixWrapper.toFile().setExecutable(true, true);
-                    if (!success && !Files.isExecutable(unixWrapper)) {
-                        return MVN_FALLBACK;
-                    }
-                }
-                if (Files.isExecutable(unixWrapper)) {
-                    return MVNW_UNIX;
-                }
+            if (Files.isExecutable(unixWrapper)) {
+                return MVNW_UNIX;
             }
         }
         return MVN_FALLBACK;
+    }
+
+    private boolean tryMakeExecutable(Path unixWrapper) {
+        return unixWrapper.toFile().setExecutable(true, true);
     }
 
     @Override
