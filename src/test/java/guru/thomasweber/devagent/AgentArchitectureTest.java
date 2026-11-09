@@ -93,6 +93,7 @@ public class AgentArchitectureTest {
     public static final ArchRule recordsWithFourOrMoreFieldsMustProvideBuilder =
         classes()
             .that().areRecords()
+            .and().areTopLevelClasses()
             .and().resideInAPackage("guru.thomasweber.devagent..")
             .and(new DescribedPredicate<>("have 4 or more record components") {
                 @Override
