@@ -33,7 +33,7 @@ Implement a 3-Tier Hierarchical Memory architecture in `HierarchicalMemoryStore`
    - `HierarchicalMemoryStore` uses unsynchronized methods backed by thread-safe `java.util.concurrent` primitives:
      - `ConcurrentLinkedDeque<ChatMessage>` for the sliding scratchpad (weakly consistent iteration, lock-free insertions and poll operations).
      - `CopyOnWriteArrayList<SystemMessage>` for pinned system invariants.
-     - `volatile UserMessage` for the pinned task specification.
+     - `AtomicReference<UserMessage>` for the pinned task specification.
    - Read operations (`messages()`) operate on point-in-time snapshots, preventing monitor contention while guaranteeing thread safety under concurrent observer access.
 
 ## Consequences

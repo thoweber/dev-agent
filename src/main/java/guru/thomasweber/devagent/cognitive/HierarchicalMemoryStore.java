@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
@@ -23,7 +24,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * evicting tool execution requests and their corresponding results atomically as a single unit.
  *
  * <p>Backed by concurrent collections ({@link CopyOnWriteArrayList}, {@link ConcurrentLinkedDeque})
- * and volatile fields for lock-free thread safety without monitor synchronization overhead.
+ * and {@link AtomicReference} for explicit lock-free thread safety without monitor synchronization overhead.
  */
 public class HierarchicalMemoryStore implements ChatMemory {
 
@@ -32,7 +33,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     private final Object memoryId;
     private final List<SystemMessage> pinnedInvariants = new CopyOnWriteArrayList<>();
-    private volatile UserMessage pinnedTaskSpec;
+    private final AtomicReference<UserMessage> pinnedTaskSpec = new AtomicReference<>();
     private final Deque<ChatMessage> slidingScratchpad = new ConcurrentLinkedDeque<>();
 
     public HierarchicalMemoryStore(Object memoryId) {
@@ -59,7 +60,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         String content = String.format("### TASK SPECIFICATION%n%s%n%n### APPROVED IMPLEMENTATION PLAN%n%s",
             story != null ? story : "No story specified",
             planJson != null ? planJson : "{}");
-        this.pinnedTaskSpec = new UserMessage(content);
+        this.pinnedTaskSpec.set(new UserMessage(content));
     }
 
     @Override
@@ -151,7 +152,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     @Override
     public List<ChatMessage> messages() {
         List<ChatMessage> assembled = new ArrayList<>(pinnedInvariants);
-        UserMessage spec = this.pinnedTaskSpec;
+        UserMessage spec = this.pinnedTaskSpec.get();
         if (spec != null) {
             assembled.add(spec);
         }
@@ -162,7 +163,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     @Override
     public void clear() {
         pinnedInvariants.clear();
-        pinnedTaskSpec = null;
+        pinnedTaskSpec.set(null);
         slidingScratchpad.clear();
     }
 
