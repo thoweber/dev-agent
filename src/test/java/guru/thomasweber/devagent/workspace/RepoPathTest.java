@@ -67,6 +67,67 @@ class RepoPathTest {
     }
 
     @Test
+    @DisplayName("Given candidate resolves into ~/.config/dev-agent - when RepoPath.of called - throws SecurityException")
+    void testRejectsUserGlobalConfigDirectory() throws IOException {
+        Path configDir = tempDir.resolve(".config/dev-agent");
+        Files.createDirectories(configDir);
+        Path dbFile = configDir.resolve("agent.mv.db");
+
+        String originalHome = System.getProperty("user.home");
+        try {
+            System.setProperty("user.home", tempDir.toAbsolutePath().toString());
+            assertThatThrownBy(() -> RepoPath.of(dbFile, tempDir))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("user global configuration is forbidden");
+        } finally {
+            if (originalHome != null) {
+                System.setProperty("user.home", originalHome);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Given candidate targets ~/.local/bin/dev-agent binary - when RepoPath.of called - throws SecurityException")
+    void testRejectsCliBinary() throws IOException {
+        Path binDir = tempDir.resolve(".local/bin");
+        Files.createDirectories(binDir);
+        Path binary = binDir.resolve("dev-agent");
+        Files.writeString(binary, "binary");
+
+        String originalHome = System.getProperty("user.home");
+        try {
+            System.setProperty("user.home", tempDir.toAbsolutePath().toString());
+            assertThatThrownBy(() -> RepoPath.of(binary, tempDir))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("modification of CLI binary is forbidden");
+        } finally {
+            if (originalHome != null) {
+                System.setProperty("user.home", originalHome);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Given null or blank user.home - validateProtectedLocations completes safely")
+    void testNullOrBlankUserHomeHandled() throws IOException {
+        Path validFile = tempDir.resolve("Safe.java");
+        Files.writeString(validFile, "class Safe {}");
+
+        String originalHome = System.getProperty("user.home");
+        try {
+            System.clearProperty("user.home");
+            assertThat(RepoPath.of(validFile, tempDir).toPath()).isEqualTo(validFile.toRealPath());
+
+            System.setProperty("user.home", "   ");
+            assertThat(RepoPath.of(validFile, tempDir).toPath()).isEqualTo(validFile.toRealPath());
+        } finally {
+            if (originalHome != null) {
+                System.setProperty("user.home", originalHome);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("Given valid RepoPath - when resolve called with valid child - returns child RepoPath")
     void testResolveValidChild() throws IOException {
         Path subDir = tempDir.resolve(".agents/runs");

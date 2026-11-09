@@ -1,11 +1,11 @@
 package guru.thomasweber.devagent.cli;
 
+import guru.thomasweber.devagent.workspace.RepoPath;
+import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import guru.thomasweber.devagent.workspace.RepoPath;
-import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -13,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
+import java.util.concurrent.Callable;
 
 @Dependent
 @Unremovable
@@ -21,7 +23,16 @@ import java.nio.file.StandardOpenOption;
     description = "Inspects the workspace and initializes declarative .agents configuration",
     mixinStandardHelpOptions = true
 )
-public class InitCommand extends BaseAgentCommand {
+public class InitCommand extends BaseAgentCommand implements Callable<Integer> {
+
+    private static final Set<String> ALL_MANAGED_RULE_FILES = Set.of(
+        "01-quarkus-panache-invariants.md",
+        "02-rest-validation-rules.md",
+        "01-reactive-messaging-invariants.md",
+        "01-angular-standalone-signals.md",
+        "02-contract-sync.md",
+        "01-modulith-package-boundaries.md"
+    );
 
     @Option(names = {"-t", "--type"}, description = "Archetype profile (rest-panache, reactive-messaging, fullstack-angular, modulith)", defaultValue = "rest-panache")
     private String type = "rest-panache";
@@ -30,7 +41,7 @@ public class InitCommand extends BaseAgentCommand {
     private boolean force;
 
     @Override
-    public void run() {
+    public Integer call() {
         ArchetypeType archetype = ArchetypeType.fromString(type);
         Path targetRoot = getWorkspaceRoot();
         WorkspaceJailValidator jail = new WorkspaceJailValidator(targetRoot);
@@ -51,19 +62,29 @@ public class InitCommand extends BaseAgentCommand {
                 String existingYaml = Files.readString(yamlPath.toPath());
                 if (!existingYaml.contains("Archetype: " + archetype.getId())) {
                     getErr().printf("[dev-agent] Workspace already initialized with different archetype. Use --force to overwrite.%n");
-                    return;
+                    return 1;
                 }
             } else {
                 String yamlContent = generateYamlConfig(archetype);
                 Files.writeString(yamlPath.toPath(), yamlContent);
             }
 
+            if (force) {
+                cleanObsoleteManagedRules(rulesDir, archetype);
+            }
+
             scaffoldArchetypeRules(rulesDir, archetype, jail);
 
             getOut().printf("[dev-agent] Initialized workspace configuration for archetype '%s' in .agents/%n", archetype.getId());
+            return 0;
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to scaffold .agents configuration", e);
         }
+    }
+
+    @Override
+    public void run() {
+        call();
     }
 
     private String generateYamlConfig(ArchetypeType archetype) {
@@ -150,5 +171,26 @@ public class InitCommand extends BaseAgentCommand {
                 LinkOption.NOFOLLOW_LINKS
             );
         }
+    }
+
+    private void cleanObsoleteManagedRules(Path rulesDir, ArchetypeType newArchetype) throws IOException {
+        Set<String> activeRules = getManagedRuleFilesForArchetype(newArchetype);
+        for (String ruleFile : ALL_MANAGED_RULE_FILES) {
+            if (!activeRules.contains(ruleFile)) {
+                Path obsolete = rulesDir.resolve(ruleFile);
+                if (Files.exists(obsolete)) {
+                    Files.delete(obsolete);
+                }
+            }
+        }
+    }
+
+    private static Set<String> getManagedRuleFilesForArchetype(ArchetypeType archetype) {
+        return switch (archetype) {
+            case REST_PANACHE -> Set.of("01-quarkus-panache-invariants.md", "02-rest-validation-rules.md");
+            case REACTIVE_MESSAGING -> Set.of("01-reactive-messaging-invariants.md");
+            case FULLSTACK_ANGULAR -> Set.of("01-angular-standalone-signals.md", "02-contract-sync.md");
+            case MODULITH -> Set.of("01-modulith-package-boundaries.md");
+        };
     }
 }

@@ -109,6 +109,18 @@ public record RepoPath(Path path, Path root) {
         if (relStr.equals(".git") || relStr.startsWith(".git/")) {
             throw new SecurityException("Protected location: modification of .git directory is forbidden: " + canonicalCandidate);
         }
+
+        String userHome = System.getProperty("user.home");
+        if (userHome != null && !userHome.isBlank()) {
+            Path globalConfig = Path.of(userHome, ".config", "dev-agent").toAbsolutePath().normalize();
+            if (canonicalCandidate.startsWith(globalConfig)) {
+                throw new SecurityException("Protected location: modification of user global configuration is forbidden: " + canonicalCandidate);
+            }
+            Path localBin = Path.of(userHome, ".local", "bin", "dev-agent").toAbsolutePath().normalize();
+            if (canonicalCandidate.equals(localBin)) {
+                throw new SecurityException("Protected location: modification of CLI binary is forbidden: " + canonicalCandidate);
+            }
+        }
     }
 
     public RepoPath resolve(String relativePath) {
