@@ -253,4 +253,31 @@ class WorkspaceContextResolverTest {
 
         assertThat(selected).contains(highPriority);
     }
+
+    @Test
+    @DisplayName("Given CDI constructor with Instance - when instantiated - then initializes with user.dir")
+    @SuppressWarnings("unchecked")
+    void testCdiConstructor() {
+        Instance<BackendBuildSystem> instance = mock(Instance.class);
+        WorkspaceContextResolver resolver = new WorkspaceContextResolver(instance);
+        assertThat(resolver.getWorkingDir()).isEqualTo(Path.of(System.getProperty("user.dir")));
+        assertThat(resolver.getProjectRoot()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given workspace resolver - when getProjectRoot called - then delegates to resolveRepoRoot")
+    void testGetProjectRoot() {
+        WorkspaceContextResolver resolver = new WorkspaceContextResolver(tempDir);
+        assertThat(resolver.getProjectRoot()).isEqualTo(resolver.resolveRepoRoot());
+    }
+
+    @Test
+    @DisplayName("Given frontend dir with angular.json only - when resolveFrontendRoot called - then discovers frontend root")
+    void testResolveFrontendRootWithAngularJsonOnly() throws IOException {
+        Path frontendDir = Files.createDirectories(tempDir.resolve("frontend"));
+        Files.createFile(frontendDir.resolve("angular.json"));
+
+        WorkspaceContextResolver resolver = new WorkspaceContextResolver(tempDir);
+        assertThat(resolver.resolveFrontendRoot()).contains(frontendDir);
+    }
 }

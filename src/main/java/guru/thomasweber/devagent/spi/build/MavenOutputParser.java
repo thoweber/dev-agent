@@ -18,6 +18,8 @@ import java.util.regex.Pattern;
 @RegisterForReflection
 public class MavenOutputParser {
 
+    private static final String LINE_SPLIT_REGEX = "\\r?\\n";
+
     private static final Pattern DOWNLOAD_PROGRESS = Pattern.compile(
         "^(?:Progress \\(\\d+\\):|Downloading from|Downloaded from|\\[INFO\\] Download(?:ing|ed):).*",
         Pattern.CASE_INSENSITIVE
@@ -31,12 +33,8 @@ public class MavenOutputParser {
         "^\\[ERROR\\]\\s*(?:Failures|Errors):\\s*$"
     );
 
-    private static final Pattern SUREFIRE_SUMMARY_FOOTER = Pattern.compile(
-        "^\\[ERROR\\]\\s*Tests run:\\s*\\d+,\\s*Failures:\\s*\\d+.*"
-    );
-
     private static final Pattern EXCEPTION_HEADER = Pattern.compile(
-        "^(?:[a-zA-Z0-9_$.]+(?:Exception|Error|Failure)|[a-zA-Z0-9_$.]+Error):\\s*.*"
+        "^[a-zA-Z0-9_$.]+(?:Exception|Error|Failure):\\s*.*"
     );
 
     public SanitizedLog parse(String rawStdout, String rawStderr) {
@@ -63,9 +61,12 @@ public class MavenOutputParser {
         String cleanStdout = cleanStdoutBuilder.toString().stripTrailing();
         String cleanStderr = cleanStderrBuilder.toString().stripTrailing();
 
-        int effectiveExitCode = (explicitExitCode != null)
-            ? explicitExitCode
-            : (errorLines.isEmpty() ? 0 : 1);
+        int effectiveExitCode;
+        if (explicitExitCode != null) {
+            effectiveExitCode = explicitExitCode;
+        } else {
+            effectiveExitCode = errorLines.isEmpty() ? 0 : 1;
+        }
 
         // Invariant: If exitCode != 0, critical diagnostics must NEVER be omitted
         if (effectiveExitCode != 0 && errorLines.isEmpty()) {
@@ -82,7 +83,7 @@ public class MavenOutputParser {
     }
 
     private static void processLogStream(String rawStream, StringBuilder cleanBuilder, List<String> errorLines) {
-        String[] lines = rawStream.split("\\r?\\n");
+        String[] lines = rawStream.split(LINE_SPLIT_REGEX);
         boolean inErrorBlock = false;
 
         for (String line : lines) {
@@ -114,7 +115,7 @@ public class MavenOutputParser {
         if (MAVEN_NOISE_ERROR.matcher(trimmed).matches() || SUREFIRE_SUMMARY_HEADER.matcher(trimmed).matches()) {
             return false;
         }
-        if (SUREFIRE_SUMMARY_FOOTER.matcher(trimmed).matches() && !trimmed.contains("<<< FAILURE!")) {
+        if (trimmed.startsWith("[ERROR] Tests run:") && !trimmed.contains("<<< FAILURE!")) {
             return false;
         }
         if (trimmed.startsWith("[ERROR]") && !trimmed.equals("[ERROR]") && !trimmed.equals("[ERROR] BUILD FAILURE")) {
@@ -152,30 +153,41 @@ public class MavenOutputParser {
 
     private static void recoverOmittedErrors(String cleanStdout, String cleanStderr, List<String> errorLines) {
         if (!cleanStderr.isBlank()) {
-            for (String errLine : cleanStderr.split("\\r?\\n")) {
-                String trimmed = errLine.trim();
-                if (!trimmed.isBlank()) {
-                    errorLines.add(trimmed);
-                }
-            }
+            recoverFromStderr(cleanStderr, errorLines);
             return;
         }
-
         if (!cleanStdout.isBlank()) {
-            String[] stdoutLines = cleanStdout.split("\\r?\\n");
-            for (String outLine : stdoutLines) {
-                String trimmed = outLine.trim();
-                String lower = trimmed.toLowerCase(Locale.ROOT);
-                if (trimmed.contains("OutOfMemoryError")
-                    || trimmed.contains("BUILD FAILURE")
-                    || lower.contains("fatal")
-                    || lower.contains("error")) {
-                    errorLines.add(trimmed);
-                }
-            }
-            if (errorLines.isEmpty() && stdoutLines.length > 0) {
-                errorLines.add(stdoutLines[stdoutLines.length - 1].trim());
+            recoverFromStdout(cleanStdout, errorLines);
+        }
+    }
+
+    private static void recoverFromStderr(String cleanStderr, List<String> errorLines) {
+        for (String errLine : cleanStderr.split(LINE_SPLIT_REGEX)) {
+            String trimmed = errLine.trim();
+            if (!trimmed.isBlank()) {
+                errorLines.add(trimmed);
             }
         }
+    }
+
+    private static void recoverFromStdout(String cleanStdout, List<String> errorLines) {
+        String[] stdoutLines = cleanStdout.split(LINE_SPLIT_REGEX);
+        for (String outLine : stdoutLines) {
+            String trimmed = outLine.trim();
+            if (isRecoverableStdoutLine(trimmed)) {
+                errorLines.add(trimmed);
+            }
+        }
+        if (errorLines.isEmpty() && stdoutLines.length > 0) {
+            errorLines.add(stdoutLines[stdoutLines.length - 1].trim());
+        }
+    }
+
+    private static boolean isRecoverableStdoutLine(String trimmed) {
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        return trimmed.contains("OutOfMemoryError")
+            || trimmed.contains("BUILD FAILURE")
+            || lower.contains("fatal")
+            || lower.contains("error");
     }
 }

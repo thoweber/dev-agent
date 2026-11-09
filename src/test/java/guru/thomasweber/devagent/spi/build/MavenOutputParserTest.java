@@ -220,8 +220,8 @@ class MavenOutputParserTest {
         SanitizedLog log = parser.parse(0, stdout, "");
 
         assertThat(log.hasErrors()).isFalse();
-        assertThat(log.exitCode()).isEqualTo(0);
-        assertThat(log.errorCount()).isEqualTo(0);
+        assertThat(log.exitCode()).isZero();
+        assertThat(log.errorCount()).isZero();
         assertThat(log.errorLines()).isEmpty();
         assertThat(log.cleanStdout())
             .doesNotContain("Downloading from central", "Progress (1)", "Downloaded from central")
@@ -346,5 +346,63 @@ class MavenOutputParserTest {
         assertThat(logBlank.hasErrors()).isFalse();
         assertThat(logBlank.cleanStdout()).isEmpty();
         assertThat(logBlank.cleanStderr()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Given test error with <<< ERROR! - when parsed - then marks line as meaningful error")
+    void givenTestErrorWithErrorMessage_whenParsed_thenCapturesError() {
+        String stdout = String.join("\n",
+            "[INFO] Running com.example.CrashTest",
+            "com.example.CrashTest.testCrash <<< ERROR!",
+            "java.lang.RuntimeException: Crash"
+        );
+        SanitizedLog log = parser.parse(1, stdout, "");
+
+        assertThat(log.hasErrors()).isTrue();
+        assertThat(log.errorLines())
+            .anyMatch(line -> line.contains("<<< ERROR!"));
+    }
+
+    @Test
+    @DisplayName("Given exitCode != 0 and stderr without [ERROR] tags - when parsed - then recovers error lines from stderr")
+    void givenNonZeroExitAndStderrWithoutErrorTags_whenParsed_thenRecoversFromStderr() {
+        String stderr = """
+            
+            fatal: native library missing
+            
+            process terminated abruptly
+            """;
+        SanitizedLog log = parser.parse(1, "", stderr);
+
+        assertThat(log.hasErrors()).isTrue();
+        assertThat(log.errorLines()).contains("fatal: native library missing", "process terminated abruptly");
+    }
+
+    @Test
+    @DisplayName("Given exitCode != 0 and stdout with OutOfMemoryError and fatal lines - when parsed - then recovers them from stdout")
+    void givenNonZeroExitAndStdoutWithOomOrFatal_whenParsed_thenRecoversFromStdout() {
+        String stdout = """
+            [INFO] Compiling classes
+            Unexpected termination: OutOfMemoryError detected
+            Process crashed with fatal signal
+            """;
+        SanitizedLog log = parser.parse(1, stdout, "");
+
+        assertThat(log.hasErrors()).isTrue();
+        assertThat(log.errorLines()).contains("Unexpected termination: OutOfMemoryError detected", "Process crashed with fatal signal");
+    }
+
+    @Test
+    @DisplayName("Given exitCode != 0 and stdout without error keywords - when parsed - then falls back to last line of stdout")
+    void givenNonZeroExitAndStdoutWithoutKeywords_whenParsed_thenFallsBackToLastLine() {
+        String stdout = """
+            [INFO] Line 1
+            [INFO] Line 2
+            Execution interrupted unexpectedly
+            """;
+        SanitizedLog log = parser.parse(1, stdout, "");
+
+        assertThat(log.hasErrors()).isTrue();
+        assertThat(log.errorLines()).containsExactly("Execution interrupted unexpectedly");
     }
 }

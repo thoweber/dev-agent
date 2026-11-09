@@ -61,7 +61,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
         }
         boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         if (isWindows) {
-            if (Files.exists(projectRoot.resolve("mvnw.cmd"), LinkOption.NOFOLLOW_LINKS)
+            if (Files.exists(projectRoot.resolve(MVNW_WIN), LinkOption.NOFOLLOW_LINKS)
                 || Files.exists(projectRoot.resolve("mvnw.bat"), LinkOption.NOFOLLOW_LINKS)) {
                 return MVNW_WIN;
             }
@@ -69,7 +69,10 @@ public class MavenBuildSystem implements BackendBuildSystem {
             Path unixWrapper = projectRoot.resolve("mvnw");
             if (Files.exists(unixWrapper, LinkOption.NOFOLLOW_LINKS) && Files.isRegularFile(unixWrapper, LinkOption.NOFOLLOW_LINKS)) {
                 if (!Files.isExecutable(unixWrapper)) {
-                    unixWrapper.toFile().setExecutable(true, false);
+                    boolean success = unixWrapper.toFile().setExecutable(true, false);
+                    if (!success && !Files.isExecutable(unixWrapper)) {
+                        return MVN_FALLBACK;
+                    }
                 }
                 if (Files.isExecutable(unixWrapper)) {
                     return MVNW_UNIX;

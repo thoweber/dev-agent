@@ -118,8 +118,9 @@ class MavenBuildSystemTest {
     void givenSingleModuleProject_whenBuildCompileCommandCalled_thenGeneratesBatchTestCompileWithTargetAgentAndNoPl(@TempDir Path tempDir) {
         List<String> command = buildSystem.buildCompileCommand(tempDir, null, null);
 
-        assertThat(command).contains("mvn", "-B", "-Dproject.build.directory=target-agent", "test-compile");
-        assertThat(command).doesNotContain("-pl", "-am");
+        assertThat(command)
+            .contains("mvn", "-B", "-Dproject.build.directory=target-agent", "test-compile")
+            .doesNotContain("-pl", "-am");
     }
 
     @Test
@@ -153,10 +154,10 @@ class MavenBuildSystemTest {
         List<String> cmd3 = buildSystem.buildCompileCommand(tempDir, "./", "target-agent");
         List<String> cmd4 = buildSystem.buildCompileCommand(tempDir, ".\\", "target-agent");
 
-        assertThat(cmd1).doesNotContain("-pl", "-am");
-        assertThat(cmd2).doesNotContain("-pl", "-am");
-        assertThat(cmd3).doesNotContain("-pl", "-am");
-        assertThat(cmd4).doesNotContain("-pl", "-am");
+        assertThat(cmd1).isNotEmpty().doesNotContain("-pl", "-am");
+        assertThat(cmd2).isNotEmpty().doesNotContain("-pl", "-am");
+        assertThat(cmd3).isNotEmpty().doesNotContain("-pl", "-am");
+        assertThat(cmd4).isNotEmpty().doesNotContain("-pl", "-am");
     }
 
     @Test
@@ -164,15 +165,16 @@ class MavenBuildSystemTest {
     void givenSingleModuleWithTestPattern_whenBuildTestCommandCalled_thenInjectsTestGoalPatternAndSurefireMemoryArgs(@TempDir Path tempDir) {
         List<String> command = buildSystem.buildTestCommand(tempDir, null, "MyServiceTest", "target-agent");
 
-        assertThat(command).contains(
-            "mvn",
-            "-B",
-            "-Dproject.build.directory=target-agent",
-            "-DargLine=-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1",
-            "test",
-            "-Dtest=MyServiceTest"
-        );
-        assertThat(command).doesNotContain("-pl", "-am");
+        assertThat(command)
+            .contains(
+                "mvn",
+                "-B",
+                "-Dproject.build.directory=target-agent",
+                "-DargLine=-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1",
+                "test",
+                "-Dtest=MyServiceTest"
+            )
+            .doesNotContain("-pl", "-am");
     }
 
     @Test
@@ -198,8 +200,9 @@ class MavenBuildSystemTest {
     void givenBlankTestPattern_whenBuildTestCommandCalled_thenOmitsDtestFlag(@TempDir Path tempDir) {
         List<String> command = buildSystem.buildTestCommand(tempDir, null, "  ", null);
 
-        assertThat(command).contains("mvn", "-B", "-Dproject.build.directory=target-agent", "test");
-        assertThat(command).noneMatch(arg -> arg.startsWith("-Dtest="));
+        assertThat(command)
+            .contains("mvn", "-B", "-Dproject.build.directory=target-agent", "test")
+            .noneMatch(arg -> arg.startsWith("-Dtest="));
     }
 
     @Test
@@ -218,8 +221,8 @@ class MavenBuildSystemTest {
         SanitizedLog log = buildSystem.sanitizeOutput(stdout, "");
 
         assertThat(log.hasErrors()).isFalse();
-        assertThat(log.exitCode()).isEqualTo(0);
-        assertThat(log.errorCount()).isEqualTo(0);
+        assertThat(log.exitCode()).isZero();
+        assertThat(log.errorCount()).isZero();
         assertThat(log.errorLines()).isEmpty();
         assertThat(log.cleanStdout()).contains("Compiling 12 source files", "BUILD SUCCESS");
     }
@@ -304,7 +307,7 @@ class MavenBuildSystemTest {
     void givenNullOrEmptyLogs_whenSanitizeOutputCalled_thenHandlesGracefullyWithoutException() {
         SanitizedLog logNull = buildSystem.sanitizeOutput(null, null);
         assertThat(logNull.hasErrors()).isFalse();
-        assertThat(logNull.errorCount()).isEqualTo(0);
+        assertThat(logNull.errorCount()).isZero();
         assertThat(logNull.errorLines()).isEmpty();
         assertThat(logNull.cleanStdout()).isEmpty();
         assertThat(logNull.cleanStderr()).isEmpty();
@@ -407,5 +410,30 @@ class MavenBuildSystemTest {
         assertThat(log.errorLines()).hasSize(2);
         assertThat(log.errorLines().get(0)).isEqualTo("[ERROR] Main test failure\nat com.example.MyTest.verify(MyTest.java:10)");
         assertThat(log.errorLines().get(1)).isEqualTo("java.lang.AssertionError: Condition failed");
+    }
+
+    @Test
+    @DisplayName("Given blank targetDir - when buildCompileCommand and buildTestCommand called - then falls back to DEFAULT_TARGET_DIR")
+    void givenBlankTargetDir_whenCommandsBuilt_thenFallsBackToDefaultTargetDir(@TempDir Path tempDir) {
+        List<String> compileCmd = buildSystem.buildCompileCommand(tempDir, null, "   ");
+        List<String> testCmd = buildSystem.buildTestCommand(tempDir, null, null, "   ");
+
+        assertThat(compileCmd).contains("-Dproject.build.directory=target-agent");
+        assertThat(testCmd).contains("-Dproject.build.directory=target-agent");
+    }
+
+    @Test
+    @DisplayName("Given Windows environment with mvnw.bat - when resolveExecutable called - then returns mvnw.cmd")
+    void givenWindowsWithMvnwBat_whenResolveExecutableCalled_thenReturnsMvnwCmd(@TempDir Path tempDir) throws IOException {
+        String originalOs = System.getProperty("os.name");
+        try {
+            System.setProperty("os.name", "Windows 11");
+            Files.writeString(tempDir.resolve("mvnw.bat"), "@echo off\n");
+            assertThat(buildSystem.resolveExecutable(tempDir)).isEqualTo("mvnw.cmd");
+        } finally {
+            if (originalOs != null) {
+                System.setProperty("os.name", originalOs);
+            }
+        }
     }
 }

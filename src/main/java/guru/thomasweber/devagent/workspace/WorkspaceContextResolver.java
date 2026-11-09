@@ -18,12 +18,14 @@ import java.util.Optional;
 @ApplicationScoped
 public class WorkspaceContextResolver {
 
+    private static final String USER_DIR = "user.dir";
+
     private final Path workingDir;
     private final Instance<BackendBuildSystem> backendBuildSystems;
 
     @Inject
     public WorkspaceContextResolver(Instance<BackendBuildSystem> backendBuildSystems) {
-        this(Path.of(System.getProperty("user.dir")), backendBuildSystems);
+        this(Path.of(System.getProperty(USER_DIR)), backendBuildSystems);
     }
 
     public WorkspaceContextResolver(Path workingDir, Instance<BackendBuildSystem> backendBuildSystems) {
@@ -36,7 +38,7 @@ public class WorkspaceContextResolver {
     }
 
     public WorkspaceContextResolver() {
-        this(Path.of(System.getProperty("user.dir")), null);
+        this(Path.of(System.getProperty(USER_DIR)), null);
     }
 
     /**
@@ -53,7 +55,7 @@ public class WorkspaceContextResolver {
         if (parentDir != null && !parentDir.equals(".") && !parentDir.isBlank()) {
             return Paths.get(parentDir).toAbsolutePath().normalize();
         }
-        return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        return Path.of(System.getProperty(USER_DIR)).toAbsolutePath().normalize();
     }
 
     /**
