@@ -18,10 +18,15 @@
 * **Initial Wait Threshold:** When waiting for GitHub Actions workflow runs or SonarCloud analysis after a push or trigger, assume an initial wait time of 2 minutes (120 seconds) before checking status for the first time.
 * **Status Polling Interval (`gh run view`):** Recheck status only after waiting at least 45 seconds between subsequent status polls.
 
-## 4. Code Coverage Quality Gates & Spotless Protocol
+## 4. Code Coverage Quality Gates & Local JaCoCo Audit Protocol
 * **Line Coverage Gate:** Repository overall line coverage MUST satisfy $\ge 95.0\%$.
 * **Condition / Branch Coverage Gate:** Repository overall branch/condition coverage MUST satisfy $\ge 90.0\%$.
 * **Gate Enforcement Command:** Verified via `./scripts/parse_jacoco.py --fail-under-gates`.
+* **Targeted Class Analysis:** Autonomous agents MUST analyze local JaCoCo reports (`target/site/jacoco/jacoco.csv`) using `scripts/parse_jacoco.py` to inspect modified classes:
+  - Check specific class: `./scripts/parse_jacoco.py --class <ClassName>`
+  - Check classes below quality gate: `./scripts/parse_jacoco.py --threshold 95.0`
+  - Enforce quality gates: `./scripts/parse_jacoco.py --fail-under-gates`
+  - Verbose class breakdown: `./scripts/parse_jacoco.py --verbose`
 * **Spotless-First Invariant:** Whenever writing or modifying code, run `./mvnw spotless:apply` before executing any other Maven goal.
 
 ## 5. Autonomous PR Merge Prohibition Invariant

@@ -34,3 +34,11 @@
 * **Explicit Imports Standard:** Always import types explicitly at the top of the file rather than using inline fully qualified references (e.g., `import java.util.concurrent.atomic.AtomicReference;` instead of `java.util.concurrent.atomic.AtomicReference<...>`).
 * **Clean Code Invariant:** Inline fully qualified class names clutter source code and obscure architectural dependencies. They are strictly prohibited across both production and test files.
 * **Collision Disambiguation Exception:** An inline fully qualified type reference is permitted solely when disambiguating two classes that share the exact same simple name within the same file and cannot be resolved through aliasing.
+
+## 7. Tool Execution & Scripting Governance
+* **Prefer Standard Tool Combinations:** For operational commands, querying GitHub APIs, inspecting review threads, or parsing JSON data, agents MUST prefer standard tool chaining (e.g., `gh` with `jq`, `gh api ... --jq '...'`, `git`, `grep`, `sed`, `awk`, `curl | jq`) over ad-hoc scripts.
+* **Prohibition of Ad-Hoc Scripts:** Running inline Python snippets (`python3 -c "..."`) or creating ephemeral scratch scripts to inspect or manipulate state is strictly prohibited.
+* **First-Class Script Lifecycle:** If a workflow genuinely requires custom scripting:
+  1. Author the script cleanly in `scripts/<script_name>.py`.
+  2. Implement unit tests in `tests/scripts/test_<script_name>.py` (verified via `python3 -m unittest discover -s tests/scripts`).
+  3. Document the script and its flags in `AGENTS.md` (Section 2) and the appropriate skills in `.agents/skills/`.

@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-check_sonarcloud.py - Query and audit SonarCloud Quality Gate status and open issues.
+check_sonarcloud.py - Query and audit SonarCloud Quality Gate status, open issues, and security hotspots.
 
-Fetches Quality Gate results and open issues for the repository and active Pull Request
-from the SonarCloud Web API.
+Fetches Quality Gate results, open issues, and unreviewed security hotspots for the repository,
+active Pull Request, or target branch from the SonarCloud Web API.
 
 Usage:
     ./scripts/check_sonarcloud.py
     ./scripts/check_sonarcloud.py --check-status
     ./scripts/check_sonarcloud.py --issues
+    ./scripts/check_sonarcloud.py --hotspots
     ./scripts/check_sonarcloud.py --details
-    ./scripts/check_sonarcloud.py --pr 6
+    ./scripts/check_sonarcloud.py --pr 8
+    ./scripts/check_sonarcloud.py --branch main
     ./scripts/check_sonarcloud.py --json
     ./scripts/check_sonarcloud.py --fail-on-error
 """
@@ -29,6 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 SONARCLOUD_API_BASE = "https://sonarcloud.io/api"
 DEFAULT_PROJECT_KEY = "thoweber_dev-agent"
+MAX_SONARCLOUD_RESULTS = 10000
 
 
 def run_gh_cmd(args: List[str]) -> Tuple[int, str, str]:
@@ -57,6 +60,26 @@ def detect_pr_number(cli_pr: Optional[int]) -> Optional[int]:
             return data.get("number")
         except json.JSONDecodeError:
             pass
+    return None
+
+
+def detect_branch(cli_branch: Optional[str]) -> Optional[str]:
+    """Detect current Git branch from CLI argument or via git command."""
+    if cli_branch:
+        return cli_branch
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            branch = proc.stdout.strip()
+            return branch if branch != "HEAD" else None
+    except FileNotFoundError:
+        pass
     return None
 
 
@@ -109,19 +132,25 @@ def make_sonarcloud_request(endpoint: str, params: Dict[str, Any]) -> Dict[str, 
         sys.exit(2)
 
 
-def fetch_quality_gate(project_key: str, pr_num: Optional[int]) -> Dict[str, Any]:
-    """Fetch Quality Gate status."""
+def fetch_quality_gate(
+    project_key: str, pr_num: Optional[int] = None, branch: Optional[str] = None
+) -> Dict[str, Any]:
+    """Fetch Quality Gate status for PR or branch."""
     params: Dict[str, Any] = {"projectKey": project_key}
     if pr_num:
         params["pullRequest"] = pr_num
+    elif branch:
+        params["branch"] = branch
     return make_sonarcloud_request("qualitygates/project_status", params)
 
 
-MAX_SONARCLOUD_RESULTS = 10000
-
-
-def fetch_issues(project_key: str, pr_num: Optional[int], resolved: bool = False) -> List[Dict[str, Any]]:
-    """Fetch all issues for project or PR across all pages up to SonarCloud's 10,000-result ceiling."""
+def fetch_issues(
+    project_key: str,
+    pr_num: Optional[int] = None,
+    branch: Optional[str] = None,
+    resolved: bool = False,
+) -> List[Dict[str, Any]]:
+    """Fetch all issues for project, PR, or branch across all pages up to SonarCloud's 10,000-result ceiling."""
     all_issues: List[Dict[str, Any]] = []
     page = 1
     page_size = 100
@@ -134,6 +163,8 @@ def fetch_issues(project_key: str, pr_num: Optional[int], resolved: bool = False
         }
         if pr_num:
             params["pullRequest"] = pr_num
+        elif branch:
+            params["branch"] = branch
         data = make_sonarcloud_request("issues/search", params)
         issues = data.get("issues", [])
         all_issues.extend(issues)
@@ -147,6 +178,44 @@ def fetch_issues(project_key: str, pr_num: Optional[int], resolved: bool = False
             break
         page += 1
     return all_issues
+
+
+def fetch_hotspots(
+    project_key: str,
+    pr_num: Optional[int] = None,
+    branch: Optional[str] = None,
+    status: Optional[str] = "TO_REVIEW",
+) -> List[Dict[str, Any]]:
+    """Fetch all security hotspots for project, PR, or branch."""
+    all_hotspots: List[Dict[str, Any]] = []
+    page = 1
+    page_size = 100
+    while True:
+        params: Dict[str, Any] = {
+            "projectKey": project_key,
+            "ps": page_size,
+            "p": page,
+        }
+        if status:
+            params["status"] = status
+        if pr_num:
+            params["pullRequest"] = pr_num
+        elif branch:
+            params["branch"] = branch
+        data = make_sonarcloud_request("hotspots/search", params)
+        hotspots = data.get("hotspots", [])
+        all_hotspots.extend(hotspots)
+        paging = data.get("paging", {})
+        total = paging.get("total", len(all_hotspots))
+        if (
+            len(all_hotspots) >= total
+            or not hotspots
+            or len(all_hotspots) >= MAX_SONARCLOUD_RESULTS
+            or (page * page_size) >= MAX_SONARCLOUD_RESULTS
+        ):
+            break
+        page += 1
+    return all_hotspots
 
 
 def format_condition(cond: Dict[str, Any]) -> str:
@@ -163,23 +232,36 @@ def format_condition(cond: Dict[str, Any]) -> str:
 def print_summary(
     project_key: str,
     pr_num: Optional[int],
+    branch: Optional[str],
     qg_data: Dict[str, Any],
     issues: List[Dict[str, Any]],
+    hotspots: List[Dict[str, Any]],
     show_details: bool = False,
 ) -> None:
     """Print a clean human-readable audit summary."""
     status = qg_data.get("projectStatus", {}).get("status", "UNKNOWN")
     conditions = qg_data.get("projectStatus", {}).get("conditions", [])
+    failed_conditions = [c for c in conditions if c.get("status") not in ("OK", "")]
 
     print("=" * 80)
     print("                     SONARCLOUD QUALITY GATE AUDIT")
     print("=" * 80)
-    print(f"Project Key:  {project_key}")
+    print(f"Project Key:       {project_key}")
     if pr_num:
-        print(f"Pull Request: #{pr_num}")
-    print(f"Status:       {status}")
-    print(f"Open Issues:  {len(issues)}")
+        print(f"Pull Request:      #{pr_num}")
+    elif branch:
+        print(f"Branch:            {branch}")
+    print(f"Status:            {status}")
+    print(f"Open Issues:       {len(issues)}")
+    print(f"Security Hotspots: {len(hotspots)}")
     print("-" * 80)
+
+    if failed_conditions:
+        print(f"FAILED CONDITIONS ({len(failed_conditions)}):")
+        for c in failed_conditions:
+            print(format_condition(c))
+        print("-" * 80)
+
     print("QUALITY GATE CONDITIONS:")
     for c in conditions:
         print(format_condition(c))
@@ -197,46 +279,79 @@ def print_summary(
             print(f"  {idx}. [{severity}] {rule} - {comp}:{line}")
             print(f"     \"{msg}\" (Key: {key})")
         print("-" * 80)
-    elif show_details:
+    elif show_details and not hotspots:
         print("No open issues detected.")
+        print("-" * 80)
+
+    if hotspots:
+        print(f"SECURITY HOTSPOTS ({len(hotspots)}):")
+        for idx, h in enumerate(hotspots, 1):
+            key = h.get("key", "")
+            rule = h.get("ruleKey", "")
+            security_category = h.get("securityCategory", "")
+            vuln_prob = h.get("vulnerabilityProbability", "")
+            msg = h.get("message", "")
+            comp = h.get("component", "").replace(f"{project_key}:", "")
+            line = h.get("line", "?")
+            print(f"  {idx}. [{vuln_prob}] {rule} ({security_category}) - {comp}:{line}")
+            print(f"     \"{msg}\" (Key: {key})")
         print("-" * 80)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Query SonarCloud Quality Gate status and issues.")
+    parser = argparse.ArgumentParser(description="Query SonarCloud Quality Gate status, issues, and hotspots.")
     parser.add_argument("--project", help="SonarCloud project key (default: thoweber_dev-agent)")
     parser.add_argument("--pr", type=int, help="Pull Request number (auto-detected if omitted)")
+    parser.add_argument("--branch", help="Branch name to check if not auditing a PR (auto-detected if omitted)")
     parser.add_argument("--check-status", action="store_true", help="Check Quality Gate status")
     parser.add_argument("--issues", action="store_true", help="List open issues")
-    parser.add_argument("--details", action="store_true", help="Show full conditions and issue details")
+    parser.add_argument("--hotspots", action="store_true", help="List security hotspots")
+    parser.add_argument("--details", action="store_true", help="Show full conditions, issues, and hotspots")
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
-    parser.add_argument("--fail-on-error", action="store_true", help="Exit code 1 if status is ERROR or issues exist")
+    parser.add_argument("--fail-on-error", action="store_true", help="Exit code 1 if status is ERROR, or open issues/hotspots exist")
 
     args = parser.parse_args()
 
     project_key = detect_project_key(args.project)
     pr_num = detect_pr_number(args.pr)
+    branch = detect_branch(args.branch) if not pr_num else None
 
-    qg_data = fetch_quality_gate(project_key, pr_num)
-    issues = (
-        fetch_issues(project_key, pr_num)
-        if (args.issues or args.details or args.fail_on_error or not args.check_status)
-        else []
-    )
+    qg_data = fetch_quality_gate(project_key, pr_num, branch)
+    status = qg_data.get("projectStatus", {}).get("status", "UNKNOWN")
+    conditions = qg_data.get("projectStatus", {}).get("conditions", [])
+    failed_conditions = [c for c in conditions if c.get("status") not in ("OK", "")]
+
+    should_fetch_issues = args.issues or args.details or args.fail_on_error or not args.check_status
+    should_fetch_hotspots = args.hotspots or args.details or args.fail_on_error or not args.check_status
+
+    issues = fetch_issues(project_key, pr_num, branch) if should_fetch_issues else []
+    hotspots = fetch_hotspots(project_key, pr_num, branch) if should_fetch_hotspots else []
 
     if args.json:
         result = {
             "projectKey": project_key,
             "pullRequest": pr_num,
+            "branch": branch,
             "qualityGate": qg_data.get("projectStatus", {}),
             "issues": issues,
+            "hotspots": hotspots,
         }
         print(json.dumps(result, indent=2))
+    elif args.check_status and not (args.details or args.issues or args.hotspots):
+        target = f"PR: #{pr_num}" if pr_num else (f"Branch: {branch}" if branch else "Main")
+        print(f"Repository: {project_key} | {target} | Quality Gate: {status}")
     else:
-        print_summary(project_key, pr_num, qg_data, issues, show_details=args.details or args.issues)
+        print_summary(
+            project_key,
+            pr_num,
+            branch,
+            qg_data,
+            issues,
+            hotspots,
+            show_details=args.details or args.issues or args.hotspots,
+        )
 
-    status = qg_data.get("projectStatus", {}).get("status", "UNKNOWN")
-    if args.fail_on_error and (status == "ERROR" or len(issues) > 0):
+    if args.fail_on_error and (status == "ERROR" or failed_conditions or len(issues) > 0 or len(hotspots) > 0):
         sys.exit(1)
 
     sys.exit(0)

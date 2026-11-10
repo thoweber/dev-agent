@@ -47,3 +47,14 @@ To guarantee honest test coverage metrics and prevent the "happy-path coverage i
 * **L2 Integration Tests (`*IT.java` via Failsafe):**
   - Execute container-dependent tests (`@QuarkusTest`) during `integration-test` / `verify` phases.
   - Failsafe explicitly disables Quarkus JaCoCo via `<quarkus.jacoco.enabled>false</quarkus.jacoco.enabled>` to prevent bytecode conflicts, coverage inflation, and 10-second agent shutdown timeouts.
+
+---
+
+## 4. Standard Tool Chaining & Script Lifecycle Governance
+
+* **Standard CI Tool Chaining:** Use standard `gh` and `jq` commands to inspect pull requests and workflow runs rather than writing ad-hoc scripts:
+  - Check PR checks: `gh pr checks <PR>`
+  - Get latest run status: `gh run list --branch <BRANCH> --json databaseId,status,conclusion --jq '.[0]'`
+  - Stream workflow run progress: `gh run watch <RUN_ID>`
+* **Prohibition of Ad-Hoc Scripts:** Ad-hoc inline Python commands (`python3 -c "..."`) or scratch files are strictly prohibited.
+* **Script Lifecycle Requirement:** Any script added to `scripts/` MUST have unit tests under `tests/scripts/` (executed via `python3 -m unittest discover -s tests/scripts`) and be documented in `AGENTS.md` (Section 2).

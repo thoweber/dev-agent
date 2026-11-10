@@ -38,6 +38,10 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 ## 4. Coverage SLA & Quality Gates
 
 * Repository overall code coverage MUST satisfy Line Coverage $\ge 95.0\%$ and Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`. Consult [03-quality-and-slas.md](../../rules/03-quality-and-slas.md).
+* Test engineers MUST analyze local JaCoCo reports (`target/site/jacoco/jacoco.csv`) using `scripts/parse_jacoco.py` to inspect modified classes:
+  - Inspect target class: `./scripts/parse_jacoco.py --class <ClassName>`
+  - Inspect classes below threshold: `./scripts/parse_jacoco.py --threshold 95.0`
+  - Enforce quality gates: `./scripts/parse_jacoco.py --fail-under-gates`
 
 ---
 
@@ -45,4 +49,4 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 
 * **Zero-Reflection & Anti-Synthetic-Seams Policy:** Tests must verify observable behaviors through public APIs; using reflection (`field.setAccessible(true)`), weakening private methods to package-private for test access, or adding artificial subclassing seams to game coverage is strictly prohibited.
 * **Canonical Fixtures:** Complex records (4+ fields) must use `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture` instead of repeating inline builder code.
-* **Script Test Parity:** Python automation scripts in `scripts/` must have companion unit test suites under `tests/scripts/`.
+* **Script Test Parity & Tool Standards:** Python automation scripts in `scripts/` must have companion unit test suites under `tests/scripts/` and be documented in `AGENTS.md` and skills. Ad-hoc inline scripts (`python3 -c`) for tool execution are strictly prohibited.

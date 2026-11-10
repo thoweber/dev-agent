@@ -22,14 +22,31 @@ Implement a 3-Tier Hierarchical Memory architecture in `HierarchicalMemoryStore`
    - Bounded by `MAX_SCRATCHPAD_TURNS`.
    - Eviction operates on **atomic conversational turns**: evicting a turn removes the `UserMessage` prompt AND its answering `AiMessage` and all associated `ToolExecutionResultMessage`s together as a single unit.
    - Never leaves a severed `AiMessage` or orphaned `ToolExecutionResultMessage` at the head of the scratchpad.
-4. **Structural Invariant Verification:**
-   - Provides `assertTurnStructureInvariants()` to verify structural integrity before and during cognitive orchestration.
+4. **Structural Invariants Guaranteed by Construction & Black-Box Test Verification:**
+   - Turn structure invariants (pinned system invariants at head, atomic eviction preserving full turns, rejection of orphaned tool results) are guaranteed by construction within `HierarchicalMemoryStore`.
+   - Structural integrity is verified black-box through the public `messages()` contract using test assertions (`HierarchicalMemoryAssert`), avoiding synthetic test hooks in production code.
+5. **Multi-Tenant Registry & Constructor-Enforced Session Tying:**
+   - `HierarchicalMemoryStore` is unmanaged and tied strictly to an explicit, strongly-typed `SessionId` at construction time. The legacy no-arg constructor is eliminated, prohibiting untied or session-less memory stores.
+   - An `@ApplicationScoped` `HierarchicalChatMemoryProvider` implements LangChain4j `ChatMemoryProvider`, maintaining a concurrent map of active `HierarchicalMemoryStore` buffers indexed by `SessionId` (adapted transparently from LangChain4j's `Object memoryId` via `SessionId.from(memoryId)`).
+   - Quarkus-LangChain4j automatically discovers `HierarchicalChatMemoryProvider` via `BeanChatMemoryProviderSupplier` and injects conversation-specific stores into `@RegisterAiService` beans.
+6. **Lock-Free Concurrency & Thread-Safety Scope:**
+   - `HierarchicalMemoryStore` uses unsynchronized methods backed by `java.util.concurrent` primitives:
+     - `ConcurrentLinkedDeque<ChatMessage>` for the sliding scratchpad (weakly consistent iteration, lock-free insertion and poll operations).
+     - `CopyOnWriteArrayList<SystemMessage>` for pinned system invariants.
+     - `AtomicReference<UserMessage>` for the pinned task specification.
+   - **Guarantees & Boundaries:**
+     - Individual collection operations and field accesses are thread-safe, ensuring safe publication and memory visibility across worker thread handoffs and non-blocking observer reads (`messages()`).
+     - **Compound operations are intentionally not atomic:** Multi-step turn operations (such as validating preceding tool requests during `add()` or turn trimming) are unsynchronized and not serialized. Each `HierarchicalMemoryStore` is designed to be operated sequentially by its session execution thread.
+     - Concurrency across tasks is achieved by physical instance isolation per `SessionId` via `HierarchicalChatMemoryProvider`, rather than concurrent mutation of a single shared memory store.
 
 ## Consequences
 ### Positive
 * Prevents API 400 Bad Request rejections across Claude, OpenAI, and Gemini providers.
 * Eliminates hallucinations caused by assistant responses lacking user context.
 * Protects prompt invariants from being pushed out by verbose compiler traces.
+* Eliminates cross-task memory pollution by isolating memory store instances per session in `HierarchicalChatMemoryProvider`.
+* Fully compliant with Quarkus-LangChain4j SPI conventions without manual factory wiring.
 
 ### Negative
 * Turn-based eviction may discard multiple messages in a single trim cycle when a turn contains multiple tool calls.
+* Single `HierarchicalMemoryStore` instances do not synchronize compound operations across concurrent threads; concurrent mutations on the same store instance can interleave.

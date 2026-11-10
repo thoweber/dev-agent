@@ -7,32 +7,54 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
-import jakarta.enterprise.context.ApplicationScoped;
+import guru.thomasweber.devagent.model.SessionId;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
- * Tier 1 (Pinned Invariants) and Tier 2 (Pinned Task Spec) are preserved across sliding iterations.
- * Tier 3 (Sliding Scratchpad) maintains a bounded window of recent compiler/test interactions,
- * evicting tool execution requests and their corresponding results atomically as a single unit.
+ * 3-Tier Hierarchical Memory store implementing LangChain4j {@link ChatMemory}.
+ *
+ * <p>Each instance is explicitly tied to a {@link SessionId} at construction and operated sequentially
+ * by its session thread. Multi-tenant isolation across tasks is governed by {@link HierarchicalChatMemoryProvider}.
+ *
+ * <ul>
+ *   <li><b>Tier 1 (Pinned Invariants):</b> Preserved system rules and conventions.</li>
+ *   <li><b>Tier 2 (Pinned Task Spec):</b> Preserved user story and approved plan.</li>
+ *   <li><b>Tier 3 (Sliding Scratchpad):</b> Bounded conversational turns, atomically evicting tool calls with results.</li>
+ * </ul>
+ *
+ * <p>Internal state tiers use lock-free concurrent primitives ({@link CopyOnWriteArrayList},
+ * {@link ConcurrentLinkedDeque}, and {@link AtomicReference}) for memory visibility across threads
+ * without monitor locking.
  */
-@ApplicationScoped
 public class HierarchicalMemoryStore implements ChatMemory {
 
-    private final List<SystemMessage> pinnedInvariants = new ArrayList<>();
-    private UserMessage pinnedTaskSpec;
-    private final List<ChatMessage> slidingScratchpad = new LinkedList<>();
     private static final int MAX_SCRATCHPAD_TURNS = 4;
     private static final int MAX_SCRATCHPAD_MESSAGES = 24;
 
+    private final SessionId sessionId;
+    private final List<SystemMessage> pinnedInvariants = new CopyOnWriteArrayList<>();
+    private final AtomicReference<UserMessage> pinnedTaskSpec = new AtomicReference<>();
+    private final Deque<ChatMessage> slidingScratchpad = new ConcurrentLinkedDeque<>();
+
+    public HierarchicalMemoryStore(SessionId sessionId) {
+        this.sessionId = Objects.requireNonNull(sessionId, "sessionId cannot be null");
+    }
+
     @Override
     public Object id() {
-        return "hierarchical-memory";
+        return sessionId.value();
+    }
+
+    public SessionId sessionId() {
+        return sessionId;
     }
 
     public void pinInvariants(String invariants) {
@@ -46,7 +68,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
         String content = String.format("### TASK SPECIFICATION%n%s%n%n### APPROVED IMPLEMENTATION PLAN%n%s",
             story != null ? story : "No story specified",
             planJson != null ? planJson : "{}");
-        this.pinnedTaskSpec = new UserMessage(content);
+        this.pinnedTaskSpec.set(new UserMessage(content));
     }
 
     @Override
@@ -97,11 +119,9 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private int countTurns() {
-        if (slidingScratchpad.isEmpty()) {
-            return 0;
-        }
         int count = 0;
-        if (slidingScratchpad.getFirst() instanceof AiMessage) {
+        ChatMessage first = slidingScratchpad.peekFirst();
+        if (first instanceof AiMessage) {
             count++;
         }
         for (ChatMessage msg : slidingScratchpad) {
@@ -113,18 +133,13 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private void evictOldestTurn() {
-        if (slidingScratchpad.isEmpty()) {
-            return;
-        }
-        ChatMessage first = slidingScratchpad.removeFirst();
-        if (first instanceof UserMessage || first instanceof AiMessage) {
-            evictUntilNextUserMessage();
-        }
+        slidingScratchpad.pollFirst();
+        evictUntilNextUserMessage();
     }
 
     private void evictUntilNextUserMessage() {
-        while (!slidingScratchpad.isEmpty() && !(slidingScratchpad.getFirst() instanceof UserMessage)) {
-            ChatMessage next = slidingScratchpad.removeFirst();
+        while (!(slidingScratchpad.peekFirst() instanceof UserMessage)) {
+            ChatMessage next = slidingScratchpad.pollFirst();
             if (next instanceof AiMessage ai && ai.hasToolExecutionRequests()) {
                 purgeLeadingToolResults();
             }
@@ -132,57 +147,17 @@ public class HierarchicalMemoryStore implements ChatMemory {
     }
 
     private void purgeLeadingToolResults() {
-        while (!slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage) {
-            slidingScratchpad.removeFirst();
+        while (slidingScratchpad.peekFirst() instanceof ToolExecutionResultMessage) {
+            slidingScratchpad.pollFirst();
         }
-    }
-
-    public boolean assertTurnStructureInvariants() {
-        if (containsSystemMessage() || startsWithToolExecutionResult()) {
-            return false;
-        }
-        return allToolResultsHaveMatchingRequests();
-    }
-
-    private boolean containsSystemMessage() {
-        for (ChatMessage msg : slidingScratchpad) {
-            if (msg instanceof SystemMessage) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean startsWithToolExecutionResult() {
-        return !slidingScratchpad.isEmpty() && slidingScratchpad.getFirst() instanceof ToolExecutionResultMessage;
-    }
-
-    private boolean allToolResultsHaveMatchingRequests() {
-        for (int i = 0; i < slidingScratchpad.size(); i++) {
-            if (slidingScratchpad.get(i) instanceof ToolExecutionResultMessage toolResult
-                && !hasPrecedingRequest(toolResult.id(), i)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean hasPrecedingRequest(String toolResultId, int currentIndex) {
-        for (int j = 0; j < currentIndex; j++) {
-            if (slidingScratchpad.get(j) instanceof AiMessage ai
-                && ai.hasToolExecutionRequests()
-                && hasMatchingId(ai, toolResultId)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     @Override
     public List<ChatMessage> messages() {
         List<ChatMessage> assembled = new ArrayList<>(pinnedInvariants);
-        if (pinnedTaskSpec != null) {
-            assembled.add(pinnedTaskSpec);
+        UserMessage spec = this.pinnedTaskSpec.get();
+        if (spec != null) {
+            assembled.add(spec);
         }
         assembled.addAll(slidingScratchpad);
         return Collections.unmodifiableList(assembled);
@@ -191,7 +166,7 @@ public class HierarchicalMemoryStore implements ChatMemory {
     @Override
     public void clear() {
         pinnedInvariants.clear();
-        pinnedTaskSpec = null;
+        pinnedTaskSpec.set(null);
         slidingScratchpad.clear();
     }
 
