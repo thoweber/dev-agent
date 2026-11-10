@@ -25,9 +25,9 @@ Implement a 3-Tier Hierarchical Memory architecture in `HierarchicalMemoryStore`
 4. **Structural Invariants Guaranteed by Construction & Black-Box Test Verification:**
    - Turn structure invariants (pinned system invariants at head, atomic eviction preserving full turns, rejection of orphaned tool results) are guaranteed by construction within `HierarchicalMemoryStore`.
    - Structural integrity is verified black-box through the public `messages()` contract using test assertions (`HierarchicalMemoryAssert`), avoiding synthetic test hooks in production code.
-5. **Multi-Tenant Registry & Session Lifecycle Decoupling:**
-   - `HierarchicalMemoryStore` is unmanaged and instantiated per conversation / task session, carrying an explicit `memoryId`. It is not `@ApplicationScoped`.
-   - An `@ApplicationScoped` `HierarchicalChatMemoryProvider` implements LangChain4j `ChatMemoryProvider`, maintaining a concurrent map of active `HierarchicalMemoryStore` buffers indexed by `memoryId` (e.g. `taskId`).
+5. **Multi-Tenant Registry & Constructor-Enforced Session Tying:**
+   - `HierarchicalMemoryStore` is unmanaged and tied strictly to an explicit, strongly-typed `SessionId` at construction time. The legacy no-arg constructor is eliminated, prohibiting untied or session-less memory stores.
+   - An `@ApplicationScoped` `HierarchicalChatMemoryProvider` implements LangChain4j `ChatMemoryProvider`, maintaining a concurrent map of active `HierarchicalMemoryStore` buffers indexed by `SessionId` (adapted transparently from LangChain4j's `Object memoryId` via `SessionId.from(memoryId)`).
    - Quarkus-LangChain4j automatically discovers `HierarchicalChatMemoryProvider` via `BeanChatMemoryProviderSupplier` and injects conversation-specific stores into `@RegisterAiService` beans.
 6. **Lock-Free Concurrency & Thread Safety:**
    - `HierarchicalMemoryStore` uses unsynchronized methods backed by thread-safe `java.util.concurrent` primitives:

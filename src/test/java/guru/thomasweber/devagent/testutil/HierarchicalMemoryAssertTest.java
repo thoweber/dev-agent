@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import guru.thomasweber.devagent.cognitive.HierarchicalMemoryStore;
+import guru.thomasweber.devagent.model.SessionId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +37,7 @@ class HierarchicalMemoryAssertTest {
     void givenEmptyMessages_whenSatisfiesTurnStructureInvariants_thenPassesCleanly() {
         assertThatMessages(Collections.emptyList()).satisfiesTurnStructureInvariants();
 
-        HierarchicalMemoryStore store = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore store = new HierarchicalMemoryStore(SessionId.of("assert-test"));
         assertThatMemory(store).satisfiesTurnStructureInvariants();
     }
 

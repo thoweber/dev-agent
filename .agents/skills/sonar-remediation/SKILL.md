@@ -30,3 +30,19 @@ This skill governs static analysis, security hotspot analysis, and Quality Gate 
 * **PR Review Thread Audit:** `./scripts/check_pr_reviews.py`
 * **Detailed Finding Inspection:** `./scripts/check_pr_reviews.py --details`
 * **Resolve Thread with Reply:** `./scripts/check_pr_reviews.py --thread <THREAD_ID> --reply "Resolved..." --resolve`
+* **SonarCloud Quality Gate Audit:** `./scripts/check_sonarcloud.py --pr <PR_NUMBER>`
+
+---
+
+## 4. Standard Tool Chaining & Anti-Ad-Hoc Scripting Invariant
+
+* **Prefer Standard Tools:** Agents MUST prefer standard tool chaining (`gh` with `jq`, `curl | jq`) or existing repository scripts in `scripts/`.
+* **Inspect Review Thread Comments:**
+  ```bash
+  gh api graphql -f query='query { node(id: "<THREAD_ID>") { ... on PullRequestReviewThread { comments(first: 10) { nodes { body } } } } }' --jq '.data.node.comments.nodes[].body'
+  ```
+* **Inspect SonarCloud Status via Standard Tools:**
+  ```bash
+  curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=thoweber_dev-agent&pullRequest=<PR>" | jq '.projectStatus.status'
+  ```
+* **Prohibition of Ad-Hoc Scripts:** Executing ad-hoc `python3 -c "..."` commands or creating scratch scripts to query APIs or parse JSON is strictly prohibited. If a script is needed, develop it in `scripts/` with tests in `tests/scripts/`.

@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
+import guru.thomasweber.devagent.model.SessionId;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,35 +19,42 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 3-Tier Hierarchical Memory store implementing LangChain4j ChatMemory.
- * Tier 1 (Pinned Invariants) and Tier 2 (Pinned Task Spec) are preserved across sliding iterations.
- * Tier 3 (Sliding Scratchpad) maintains a bounded window of recent compiler/test interactions,
- * evicting tool execution requests and their corresponding results atomically as a single unit.
+ * 3-Tier Hierarchical Memory store implementing LangChain4j {@link ChatMemory}.
  *
- * <p>Backed by concurrent collections ({@link CopyOnWriteArrayList}, {@link ConcurrentLinkedDeque})
- * and {@link AtomicReference} for explicit lock-free thread safety without monitor synchronization overhead.
+ * <p>Each instance is explicitly tied to a {@link SessionId} at construction and operated sequentially
+ * by its session thread. Multi-tenant isolation across tasks is governed by {@link HierarchicalChatMemoryProvider}.
+ *
+ * <ul>
+ *   <li><b>Tier 1 (Pinned Invariants):</b> Preserved system rules and conventions.</li>
+ *   <li><b>Tier 2 (Pinned Task Spec):</b> Preserved user story and approved plan.</li>
+ *   <li><b>Tier 3 (Sliding Scratchpad):</b> Bounded conversational turns, atomically evicting tool calls with results.</li>
+ * </ul>
+ *
+ * <p>Internal state tiers use lock-free concurrent primitives ({@link CopyOnWriteArrayList},
+ * {@link ConcurrentLinkedDeque}, and {@link AtomicReference}) for memory visibility across threads
+ * without monitor locking.
  */
 public class HierarchicalMemoryStore implements ChatMemory {
 
     private static final int MAX_SCRATCHPAD_TURNS = 4;
     private static final int MAX_SCRATCHPAD_MESSAGES = 24;
 
-    private final Object memoryId;
+    private final SessionId sessionId;
     private final List<SystemMessage> pinnedInvariants = new CopyOnWriteArrayList<>();
     private final AtomicReference<UserMessage> pinnedTaskSpec = new AtomicReference<>();
     private final Deque<ChatMessage> slidingScratchpad = new ConcurrentLinkedDeque<>();
 
-    public HierarchicalMemoryStore(Object memoryId) {
-        this.memoryId = Objects.requireNonNull(memoryId, "memoryId cannot be null");
-    }
-
-    public HierarchicalMemoryStore() {
-        this("hierarchical-memory");
+    public HierarchicalMemoryStore(SessionId sessionId) {
+        this.sessionId = Objects.requireNonNull(sessionId, "sessionId cannot be null");
     }
 
     @Override
     public Object id() {
-        return memoryId;
+        return sessionId.value();
+    }
+
+    public SessionId sessionId() {
+        return sessionId;
     }
 
     public void pinInvariants(String invariants) {

@@ -109,14 +109,22 @@ void setUp() {
 
 ---
 
-## 4. Multi-Language Automation Script Parity
+## 4. Multi-Language Automation Script Parity & Tool Execution Governance
 
 > [!NOTE]
 > Autonomous guardrails, PR review parsers, and coverage checkers written in Python (`scripts/*.py`) are first-class engineering components and must not be committed without unit tests.
 
-* Python automation scripts must have dedicated unit test suites under `tests/scripts/`:
+* **Tool Execution Standard:** Autonomous agents MUST prefer chaining standard CLI tools (e.g., `gh` with `jq`, `gh api ... --jq '...'`, `git`, `grep`, `sed`, `awk`, `curl | jq`) over ad-hoc scripts. Ad-hoc inline Python commands (`python3 -c "..."`) are strictly prohibited.
+* **First-Class Script Lifecycle:** If an operational requirement genuinely requires custom scripting:
+  * The script MUST be authored in `scripts/<script_name>.py`.
+  * Dedicated unit test suites MUST be authored under `tests/scripts/test_<script_name>.py`.
+  * The script MUST be documented in `AGENTS.md` (Section 2) and the appropriate skills.
+* Existing Python automation scripts and test pairs:
   * [`scripts/check_pr_reviews.py`](../../scripts/check_pr_reviews.py) $\rightarrow$ `tests/scripts/test_check_pr_reviews.py`
   * [`scripts/parse_jacoco.py`](../../scripts/parse_jacoco.py) $\rightarrow$ `tests/scripts/test_parse_jacoco.py`
+  * [`scripts/check_sonarcloud.py`](../../scripts/check_sonarcloud.py) $\rightarrow$ `tests/scripts/test_check_sonarcloud.py`
+  * [`scripts/verify_import_hygiene.py`](../../scripts/verify_import_hygiene.py) $\rightarrow$ `tests/scripts/test_verify_import_hygiene.py`
+  * [`scripts/verify_markdown_links.py`](../../scripts/verify_markdown_links.py) $\rightarrow$ `tests/scripts/test_verify_markdown_links.py`
 * Script tests must be executed locally and in CI using `python3 -m unittest discover -s tests/scripts`.
 * Must cover parsing edge cases (code fences, nested markdown blockquotes, horizontal rules, pagination headers, and zero-coverage XML files).
 

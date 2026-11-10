@@ -53,6 +53,7 @@ dev-agent/
 9. **Programmatic Test Transaction Scope Protocol:** Test and setup methods (`@Test`, `@BeforeEach`, `@AfterEach`) must never be annotated with `@Transactional`. Integration tests use programmatic transactions (`QuarkusTransaction.requiringNew().run(...)`).
 10. **Tool Annotation Scoping:** All `@Tool`-annotated methods MUST be declared inside `@ApplicationScoped` classes.
 11. **Native Reflection Registration:** All classes and records residing in `..model..`, `..entity..`, `..remote..`, or `..gui..` MUST be annotated with `@RegisterForReflection`.
+12. **Standard Tool Chaining & Script Governance (Directive 21):** For operational tasks, agents MUST prefer standard tool chaining (e.g. `gh` with `jq`, `curl | jq`, `git`) over ad-hoc inline Python scripts (`python3 -c`). Permanent automation scripts must reside in `scripts/`, have unit tests in `tests/scripts/`, and be documented in `AGENTS.md` and skills.
 
 ---
 
@@ -125,3 +126,10 @@ To ensure high-speed developer ergonomics and autonomous feedback loops, key uti
   * Check active review status: `./scripts/check_pr_reviews.py --check-status`
   * Reply & resolve thread: `./scripts/check_pr_reviews.py --thread <THREAD_ID> --reply "Resolved..." --resolve`
   * Gate check on unresolved threads: `./scripts/check_pr_reviews.py --fail-on-unresolved`
+* `scripts/check_sonarcloud.py`: Queries SonarCloud project status, component measures, issues, and quality gate metrics for PRs and branches.
+  * Audit PR status: `./scripts/check_sonarcloud.py --pr <PR_NUMBER>`
+  * Audit branch status: `./scripts/check_sonarcloud.py --branch <BRANCH_NAME>`
+* `scripts/verify_import_hygiene.py`: Verifies Java source and test files adhere to Directive 20 (no inline fully qualified class names).
+  * Run check: `python3 scripts/verify_import_hygiene.py`
+* `scripts/verify_markdown_links.py`: Scans documentation and markdown files to ensure all relative links and anchor fragments resolve.
+  * Run check: `python3 scripts/verify_markdown_links.py`

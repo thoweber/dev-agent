@@ -40,3 +40,4 @@ This skill coordinates the fast local inner execution feedback loop during auton
 4. **Canonical Fixtures:** Use `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture` instead of repeating inline builder code.
 5. **Precision Modification:** Apply unified diff patches or targeted edits. Never rewrite whole files.
 6. **Re-Test:** Execute targeted test method: `./mvnw test -Dtest=TargetClassTest#testMethod`.
+7. **Standard Tool Chaining:** Use standard tool combinations (e.g., `gh` with `jq`, `git`, `grep`) or repository scripts (`scripts/*.py`). Never execute ad-hoc inline Python scripts (`python3 -c`).

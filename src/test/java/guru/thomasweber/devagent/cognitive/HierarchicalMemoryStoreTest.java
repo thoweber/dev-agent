@@ -6,6 +6,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
+import guru.thomasweber.devagent.model.SessionId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -23,10 +24,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HierarchicalMemoryStoreTest {
 
+    private static final SessionId TEST_SESSION = SessionId.of("test-session");
+
     @Test
     @DisplayName("Given 3-tier memory store - when messages added beyond capacity - then evicts scratchpad but preserves pinned tiers")
     void testHierarchicalEvictionStrategy() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants("Rules: Quarkus Arc CDI Scoping Invariants");
         memory.pinTaskSpecification("US-042: Add OAuth2 Endpoint", "{\"steps\":[\"step1\"]}");
 
@@ -54,8 +57,8 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given memory store - when id and clear called - then behaves as expected")
     void testStoreIdAndClear() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
-        assertThat(memory.id()).isEqualTo("hierarchical-memory");
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
+        assertThat(memory.id()).isEqualTo(TEST_SESSION.value());
 
         memory.add(new UserMessage("Scratchpad message"));
         assertThat(memory.messages()).hasSize(1);
@@ -67,7 +70,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given system message - when added directly - then updates pinned invariants")
     void testDirectSystemMessageUpdate() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new SystemMessage("Direct System Invariant"));
 
         assertThat(memory.messages()).hasSize(1);
@@ -78,7 +81,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given blank or null inputs to pin methods - when passed - then handles gracefully")
     void testPinNullAndBlankInputs() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants(null);
         memory.pinInvariants("   ");
         assertThat(memory.messages()).isEmpty();
@@ -87,7 +90,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given pinned invariants - when SystemMessage added via add() - then does not overwrite pinned invariants")
     void testAddSystemMessageDoesNotOverwritePinnedInvariants() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants("Pinned Invariants");
         memory.add(new SystemMessage("Secondary System Instructions"));
 
@@ -100,7 +103,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given tool request and execution result - when scratchpad trimmed - then evicts tool result with request")
     void testAtomicToolCallAndResultEviction() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
 
         ToolExecutionRequest toolRequest = ToolExecutionRequest.builder()
             .id("call-1")
@@ -129,7 +132,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given multiple tool execution results - when added - then does not self-evict during addition and drops orphaned results")
     void testMultipleToolResultsAndOrphanRejection() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
 
         ToolExecutionRequest req1 = ToolExecutionRequest.builder().id("c1").name("t1").arguments("{}").build();
         ToolExecutionRequest req2 = ToolExecutionRequest.builder().id("c2").name("t2").arguments("{}").build();
@@ -156,7 +159,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given memory with all tiers - when clear called - then removes all tiers")
     void testClearAllTiersVsScratchpad() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants("Invariants");
         memory.pinTaskSpecification("Story", "{}");
         memory.add(new UserMessage("Scratchpad"));
@@ -173,7 +176,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given conversation turns - when scratchpad trimmed - then evicts user message and ai response together atomically")
     void testAtomicUserAndAiTurnEviction() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
 
         memory.add(new UserMessage("Question 1"));
         memory.add(new AiMessage("Answer 1"));
@@ -196,7 +199,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given duplicate SystemMessage via add() - when added - then ignores duplicates and does not grow Tier 1")
     void testDuplicateSystemMessageIgnored() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants("Base Invariant");
         memory.add(new SystemMessage("Base Invariant"));
         memory.add(new SystemMessage("Base Invariant"));
@@ -212,7 +215,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given secondary SystemMessage via add() - when added - then preserves in Tier 1 and keeps scratchpad free of SystemMessages")
     void testSystemMessageQuarantinedToTier1() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants("Primary Invariants");
         memory.pinTaskSpecification("Task Story", "{}");
         memory.add(new SystemMessage("Secondary Invariants"));
@@ -237,7 +240,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given single active turn with many tool executions - when exceeding message budget - then preserves full turn in-flight without mid-turn severance")
     void testSingleTurnToolBudgetTrimming() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Root prompt for single long turn"));
 
         for (int i = 1; i <= 15; i++) {
@@ -264,7 +267,7 @@ class HierarchicalMemoryStoreTest {
         assertThatMemory(memory).satisfiesTurnStructureInvariants();
 
         // Edge case: when initial message is AiMessage with tool requests (no UserMessage at index 0)
-        HierarchicalMemoryStore aiFirstMemory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore aiFirstMemory = new HierarchicalMemoryStore(TEST_SESSION);
         for (int i = 1; i <= 15; i++) {
             ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("call-ai-" + i)
@@ -287,7 +290,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given single active turn with plain AiMessage before tool executions - when exceeding message budget - then preserves user prompt and thoughts in-flight")
     void testSingleTurnWithPlainAiMessageBeforeToolInteractionsTrimming() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Root prompt for single long turn"));
         memory.add(new AiMessage("Thinking about how to solve the problem..."));
 
@@ -318,7 +321,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given single turn with active in-flight tool call - when exceeding budget without later AiMessage - then preserves in-flight tool results")
     void testScratchpadExceedsBudgetWithInFlightToolCallPreserved() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         ToolExecutionRequest req = ToolExecutionRequest.builder()
             .id("call-solo")
             .name("tool")
@@ -340,7 +343,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given single turn with plain AI thoughts - when exceeding message budget without tool calls - then terminates trimming cleanly")
     void testSingleTurnPlainAiThoughtsExceedingBudget() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Analyze complex architecture"));
         for (int i = 1; i <= 26; i++) {
             memory.add(new AiMessage("Analysis step " + i));
@@ -355,7 +358,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given multi-tool execution in older turn - when message budget exceeded - then evicts multi-tool request and all results atomically")
     void testMultiToolExecutionAtomicallyTrimmed() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Execute batch tasks"));
 
         // Step 1: AI requests 3 tools concurrently
@@ -397,7 +400,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given multi-tool execution with intervening reasoning message in older turn - when message budget exceeded - then evicts all tool results and thoughts atomically")
     void testMultiToolExecutionWithInterveningMessageTrimmed() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Batch processing"));
 
         // AI requests two tools: call-inter-1 and call-inter-2
@@ -436,7 +439,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given conversation starting with AiMessage followed by tool interactions - when new turn exceeds budget - then evicts cleanly")
     void testAiMessageStartingConversationWithToolTrimming() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         for (int i = 1; i <= 15; i++) {
             ToolExecutionRequest req = ToolExecutionRequest.builder()
                 .id("ai-init-" + i)
@@ -459,7 +462,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given turn structure validator - when verifying memory - then validates alternating turns and absence of dangling tool calls")
     void testTurnStructureInvariants() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinInvariants("Rules");
         memory.pinTaskSpecification("Spec", "{}");
 
@@ -474,20 +477,20 @@ class HierarchicalMemoryStoreTest {
 
         // Verify observable handling of invalid messages through public API
         // Case 1: SystemMessage is routed to pinned invariants, not scratchpad
-        HierarchicalMemoryStore m1 = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore m1 = new HierarchicalMemoryStore(TEST_SESSION);
         m1.add(new UserMessage("Do X"));
         m1.add(new SystemMessage("Invariant"));
         assertThatMemory(m1).satisfiesTurnStructureInvariants();
         assertThat(m1.messages().getFirst()).isInstanceOf(SystemMessage.class);
 
         // Case 2: Orphaned ToolExecutionResultMessage is dropped by add()
-        HierarchicalMemoryStore m2 = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore m2 = new HierarchicalMemoryStore(TEST_SESSION);
         m2.add(ToolExecutionResultMessage.from(req, "Orphan"));
         assertThatMemory(m2).satisfiesTurnStructureInvariants();
         assertThat(m2.messages()).isEmpty();
 
         // Case 3: ToolExecutionResultMessage without preceding matching request is dropped
-        HierarchicalMemoryStore m3 = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore m3 = new HierarchicalMemoryStore(TEST_SESSION);
         m3.add(new UserMessage("Start"));
         m3.add(ToolExecutionResultMessage.from(req, "Dangling"));
         assertThatMemory(m3).satisfiesTurnStructureInvariants();
@@ -497,7 +500,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given null story and plan in pinTaskSpecification - when pinned - then uses fallback values")
     void testPinTaskSpecificationNullDefaults() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.pinTaskSpecification(null, null);
 
         List<ChatMessage> messages = memory.messages();
@@ -510,7 +513,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given AiMessage without tool requests - when turn count exceeds capacity - then evicts cleanly")
     void testEvictScratchpadStartingWithAiMessage() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new AiMessage("Leading Ai turn"));
         memory.add(new UserMessage("Turn 1"));
         memory.add(new AiMessage("Ans 1"));
@@ -529,7 +532,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given ToolExecutionResultMessage with non-matching request ID - when added - then dropped by store")
     void testNonMatchingToolExecutionRequestIdDropped() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         ToolExecutionRequest req1 = ToolExecutionRequest.builder()
             .id("req-1").name("tool1").arguments("{}").build();
         ToolExecutionRequest req2 = ToolExecutionRequest.builder()
@@ -549,7 +552,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given multiple turns with many messages - when message budget exceeded - then evicts complete older turns")
     void testMessageBudgetEvictsOlderTurns() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Turn 1"));
         for (int i = 1; i <= 6; i++) {
             ToolExecutionRequest req = ToolExecutionRequest.builder()
@@ -575,7 +578,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given multiple turns below message budget - when added - then preserves all turns")
     void testMultipleTurnsBelowMessageBudget() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new UserMessage("Turn 1"));
         memory.add(new AiMessage("Ans 1"));
         memory.add(new UserMessage("Turn 2"));
@@ -587,7 +590,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given duplicate SystemMessage and null task spec - when updating - then deduplicates and handles nulls")
     void testDuplicateSystemMessageAndNullTaskSpec() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new SystemMessage("Invariant A"));
         memory.add(new SystemMessage("Invariant A")); // Duplicate
         assertThat(memory.messages()).hasSize(1);
@@ -605,7 +608,7 @@ class HierarchicalMemoryStoreTest {
     @Test
     @DisplayName("Given AiMessage without tool requests - when tool result added - then dropped as unmatched")
     void testAiMessageWithoutToolRequestsDropsToolResult() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore();
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
         memory.add(new AiMessage("Plain AI answer"));
         ToolExecutionRequest req = ToolExecutionRequest.builder().id("call-x").name("tool").arguments("{}").build();
         memory.add(ToolExecutionResultMessage.from(req, "res"));
@@ -613,20 +616,22 @@ class HierarchicalMemoryStoreTest {
     }
 
     @Test
-    @DisplayName("Given custom memoryId - when instantiated - then id returns assigned memoryId")
-    void testStoreCustomMemoryId() {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore("task-42-custom");
+    @DisplayName("Given SessionId - when instantiated - then id and sessionId return assigned session")
+    void testStoreSessionId() {
+        SessionId session = SessionId.of("task-42-custom");
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(session);
         assertThat(memory.id()).isEqualTo("task-42-custom");
+        assertThat(memory.sessionId()).isEqualTo(session);
 
         assertThatThrownBy(() -> new HierarchicalMemoryStore(null))
             .isInstanceOf(NullPointerException.class)
-            .hasMessageContaining("memoryId cannot be null");
+            .hasMessageContaining("sessionId cannot be null");
     }
 
     @Test
     @DisplayName("Given concurrent threads - when adding and reading messages - then no race conditions or exceptions occur")
     void testConcurrentAccessUnderHighContention() throws Exception {
-        HierarchicalMemoryStore memory = new HierarchicalMemoryStore("task-concurrency-test");
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(SessionId.of("task-concurrency-test"));
         memory.pinInvariants("Rules: Invariants");
         memory.pinTaskSpecification("Story 1", "{}");
 

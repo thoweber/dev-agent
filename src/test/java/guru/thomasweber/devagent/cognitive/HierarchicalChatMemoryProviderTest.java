@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.cognitive;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import guru.thomasweber.devagent.model.SessionId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -65,8 +66,9 @@ class HierarchicalChatMemoryProviderTest {
         assertThat(provider.activeSessionsCount()).isZero();
 
         // Evicting null or non-existent task returns false
-        assertThat(provider.evict(null)).isFalse();
+        assertThat(provider.evict((Object) null)).isFalse();
         assertThat(provider.evict("non-existent")).isFalse();
+        assertThat(provider.evict(SessionId.of("non-existent"))).isFalse();
 
         // Subsequent get creates a fresh new instance
         HierarchicalMemoryStore fresh = provider.get("task-ephemeral");
@@ -79,9 +81,29 @@ class HierarchicalChatMemoryProviderTest {
     void givenNullTaskId_whenGet_thenThrowsNullPointerException() {
         HierarchicalChatMemoryProvider provider = new HierarchicalChatMemoryProvider();
 
-        assertThatThrownBy(() -> provider.get(null))
+        assertThatThrownBy(() -> provider.get((Object) null))
             .isInstanceOf(NullPointerException.class)
             .hasMessageContaining("memoryId cannot be null");
+    }
+
+    @Test
+    @DisplayName("Given strongly-typed SessionId - when get and evict - then manages store by typed identity")
+    void givenTypedSessionId_whenGetAndEvict_thenManagesStoreByTypedIdentity() {
+        HierarchicalChatMemoryProvider provider = new HierarchicalChatMemoryProvider();
+        SessionId sessionId = SessionId.of("task-strongly-typed");
+
+        HierarchicalMemoryStore store = provider.get(sessionId);
+        assertThat(store.sessionId()).isEqualTo(sessionId);
+        assertThat(provider.activeSessionsCount()).isEqualTo(1);
+
+        boolean evicted = provider.evict(sessionId);
+        assertThat(evicted).isTrue();
+        assertThat(provider.activeSessionsCount()).isZero();
+
+        assertThat(provider.evict((SessionId) null)).isFalse();
+        assertThatThrownBy(() -> provider.get((SessionId) null))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("sessionId cannot be null");
     }
 
     @Test
