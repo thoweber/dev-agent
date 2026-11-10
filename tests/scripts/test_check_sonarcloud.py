@@ -29,6 +29,29 @@ class TestCheckSonarcloud(unittest.TestCase):
         mock_gh.return_value = (1, "", "not found")
         self.assertIsNone(sc.detect_pr_number(None))
 
+    def test_detect_branch_from_cli(self):
+        self.assertEqual(sc.detect_branch("feature/my-branch"), "feature/my-branch")
+
+    @patch("subprocess.run")
+    def test_detect_branch_from_git(self, mock_run):
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "feature/TASK-008-test\n"
+        mock_run.return_value = mock_proc
+        self.assertEqual(sc.detect_branch(None), "feature/TASK-008-test")
+
+    @patch("subprocess.run")
+    def test_detect_branch_detached_head(self, mock_run):
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "HEAD\n"
+        mock_run.return_value = mock_proc
+        self.assertIsNone(sc.detect_branch(None))
+
+    @patch("subprocess.run", side_effect=FileNotFoundError)
+    def test_detect_branch_git_not_found(self, mock_run):
+        self.assertIsNone(sc.detect_branch(None))
+
     def test_detect_project_key_from_cli(self):
         self.assertEqual(sc.detect_project_key("custom_key"), "custom_key")
 
@@ -73,17 +96,38 @@ class TestCheckSonarcloud(unittest.TestCase):
         self.assertEqual(cm.exception.code, 2)
 
     @patch("scripts.check_sonarcloud.make_sonarcloud_request")
-    def test_fetch_quality_gate(self, mock_req):
+    def test_fetch_quality_gate_pr(self, mock_req):
         mock_req.return_value = {"projectStatus": {"status": "OK"}}
-        res = sc.fetch_quality_gate("my_proj", 6)
+        res = sc.fetch_quality_gate("my_proj", pr_num=6)
         self.assertEqual(res, {"projectStatus": {"status": "OK"}})
         mock_req.assert_called_with("qualitygates/project_status", {"projectKey": "my_proj", "pullRequest": 6})
 
     @patch("scripts.check_sonarcloud.make_sonarcloud_request")
+    def test_fetch_quality_gate_branch(self, mock_req):
+        mock_req.return_value = {"projectStatus": {"status": "OK"}}
+        res = sc.fetch_quality_gate("my_proj", branch="feature/test")
+        self.assertEqual(res, {"projectStatus": {"status": "OK"}})
+        mock_req.assert_called_with("qualitygates/project_status", {"projectKey": "my_proj", "branch": "feature/test"})
+
+    @patch("scripts.check_sonarcloud.make_sonarcloud_request")
     def test_fetch_issues(self, mock_req):
         mock_req.return_value = {"issues": [{"key": "ISSUE-1"}]}
-        res = sc.fetch_issues("my_proj", 6)
+        res = sc.fetch_issues("my_proj", pr_num=6)
         self.assertEqual(res, [{"key": "ISSUE-1"}])
+
+    @patch("scripts.check_sonarcloud.make_sonarcloud_request")
+    def test_fetch_issues_with_branch(self, mock_req):
+        mock_req.return_value = {"issues": [{"key": "ISSUE-B"}]}
+        res = sc.fetch_issues("my_proj", branch="main")
+        self.assertEqual(res, [{"key": "ISSUE-B"}])
+
+    @patch("scripts.check_sonarcloud.make_sonarcloud_request")
+    def test_fetch_hotspots(self, mock_req):
+        mock_req.return_value = {"hotspots": [{"key": "HOTSPOT-1", "ruleKey": "javasecurity:S5144"}], "paging": {"total": 1}}
+        res = sc.fetch_hotspots("my_proj", pr_num=8)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["key"], "HOTSPOT-1")
+        mock_req.assert_called_with("hotspots/search", {"projectKey": "my_proj", "ps": 100, "p": 1, "status": "TO_REVIEW", "pullRequest": 8})
 
     def test_format_condition(self):
         cond = {
@@ -111,19 +155,43 @@ class TestCheckSonarcloud(unittest.TestCase):
         issues = [
             {"key": "K1", "rule": "java:S123", "severity": "MAJOR", "message": "fix this", "component": "thoweber_dev-agent:src/App.java", "line": 42}
         ]
+        hotspots = [
+            {"key": "H1", "ruleKey": "javasecurity:S5144", "securityCategory": "sql-injection", "vulnerabilityProbability": "HIGH", "message": "review this", "component": "thoweber_dev-agent:src/Db.java", "line": 10}
+        ]
         buf = io.StringIO()
         with patch("sys.stdout", buf):
-            sc.print_summary("thoweber_dev-agent", 6, qg_data, issues, show_details=True)
+            sc.print_summary("thoweber_dev-agent", 6, None, qg_data, issues, hotspots, show_details=True)
         out = buf.getvalue()
         self.assertIn("SONARCLOUD QUALITY GATE AUDIT", out)
         self.assertIn("thoweber_dev-agent", out)
         self.assertIn("fix this", out)
+        self.assertIn("SECURITY HOTSPOTS (1):", out)
+        self.assertIn("review this", out)
+
+    def test_print_summary_failed_conditions(self):
+        qg_data = {
+            "projectStatus": {
+                "status": "ERROR",
+                "conditions": [
+                    {"metricKey": "new_coverage", "comparator": "LT", "errorThreshold": "95", "actualValue": "80.0", "status": "ERROR"}
+                ]
+            }
+        }
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            sc.print_summary("thoweber_dev-agent", None, "feature/failing", qg_data, [], [], show_details=False)
+        out = buf.getvalue()
+        self.assertIn("FAILED CONDITIONS (1):", out)
+        self.assertIn("new_coverage", out)
+        self.assertIn("Branch:            feature/failing", out)
 
     @patch("scripts.check_sonarcloud.fetch_quality_gate")
     @patch("scripts.check_sonarcloud.fetch_issues")
-    def test_main_cli_json(self, mock_issues, mock_qg):
+    @patch("scripts.check_sonarcloud.fetch_hotspots")
+    def test_main_cli_json(self, mock_hotspots, mock_issues, mock_qg):
         mock_qg.return_value = {"projectStatus": {"status": "OK"}}
         mock_issues.return_value = []
+        mock_hotspots.return_value = []
         buf = io.StringIO()
         with patch.object(sys, "argv", ["check_sonarcloud.py", "--pr", "6", "--json"]), patch("sys.stdout", buf):
             with self.assertRaises(SystemExit) as cm:
@@ -132,12 +200,28 @@ class TestCheckSonarcloud(unittest.TestCase):
         data = json.loads(buf.getvalue())
         self.assertEqual(data["pullRequest"], 6)
         self.assertEqual(data["qualityGate"]["status"], "OK")
+        self.assertEqual(data["hotspots"], [])
 
     @patch("scripts.check_sonarcloud.fetch_quality_gate")
     @patch("scripts.check_sonarcloud.fetch_issues")
-    def test_main_cli_fail_on_error(self, mock_issues, mock_qg):
+    @patch("scripts.check_sonarcloud.fetch_hotspots")
+    def test_main_cli_check_status_concise(self, mock_hotspots, mock_issues, mock_qg):
+        mock_qg.return_value = {"projectStatus": {"status": "OK"}}
+        buf = io.StringIO()
+        with patch.object(sys, "argv", ["check_sonarcloud.py", "--pr", "8", "--check-status"]), patch("sys.stdout", buf):
+            with self.assertRaises(SystemExit) as cm:
+                sc.main()
+            self.assertEqual(cm.exception.code, 0)
+        out = buf.getvalue().strip()
+        self.assertEqual(out, "Repository: thoweber_dev-agent | PR: #8 | Quality Gate: OK")
+
+    @patch("scripts.check_sonarcloud.fetch_quality_gate")
+    @patch("scripts.check_sonarcloud.fetch_issues")
+    @patch("scripts.check_sonarcloud.fetch_hotspots")
+    def test_main_cli_fail_on_error(self, mock_hotspots, mock_issues, mock_qg):
         mock_qg.return_value = {"projectStatus": {"status": "ERROR"}}
         mock_issues.return_value = []
+        mock_hotspots.return_value = []
         with patch.object(sys, "argv", ["check_sonarcloud.py", "--pr", "6", "--check-status", "--fail-on-error"]), patch("sys.stdout", io.StringIO()):
             with self.assertRaises(SystemExit) as cm:
                 sc.main()
@@ -145,9 +229,23 @@ class TestCheckSonarcloud(unittest.TestCase):
 
     @patch("scripts.check_sonarcloud.fetch_quality_gate")
     @patch("scripts.check_sonarcloud.fetch_issues")
-    def test_main_cli_fail_on_error_with_open_issues(self, mock_issues, mock_qg):
+    @patch("scripts.check_sonarcloud.fetch_hotspots")
+    def test_main_cli_fail_on_error_with_open_issues(self, mock_hotspots, mock_issues, mock_qg):
         mock_qg.return_value = {"projectStatus": {"status": "OK"}}
         mock_issues.return_value = [{"key": "issue-1"}]
+        mock_hotspots.return_value = []
+        with patch.object(sys, "argv", ["check_sonarcloud.py", "--pr", "6", "--check-status", "--fail-on-error"]), patch("sys.stdout", io.StringIO()):
+            with self.assertRaises(SystemExit) as cm:
+                sc.main()
+            self.assertEqual(cm.exception.code, 1)
+
+    @patch("scripts.check_sonarcloud.fetch_quality_gate")
+    @patch("scripts.check_sonarcloud.fetch_issues")
+    @patch("scripts.check_sonarcloud.fetch_hotspots")
+    def test_main_cli_fail_on_error_with_open_hotspots(self, mock_hotspots, mock_issues, mock_qg):
+        mock_qg.return_value = {"projectStatus": {"status": "OK"}}
+        mock_issues.return_value = []
+        mock_hotspots.return_value = [{"key": "hotspot-1"}]
         with patch.object(sys, "argv", ["check_sonarcloud.py", "--pr", "6", "--check-status", "--fail-on-error"]), patch("sys.stdout", io.StringIO()):
             with self.assertRaises(SystemExit) as cm:
                 sc.main()
@@ -167,7 +265,6 @@ class TestCheckSonarcloud(unittest.TestCase):
 
     @patch("scripts.check_sonarcloud.make_sonarcloud_request")
     def test_fetch_issues_respects_max_ceiling(self, mock_req):
-        # Even if total is reported as 20000, it stops at ceiling
         mock_req.return_value = {"total": 20000, "issues": [{"key": f"issue-{i}"} for i in range(100)]}
         with patch("scripts.check_sonarcloud.MAX_SONARCLOUD_RESULTS", 200):
             issues = sc.fetch_issues("my-proj", 6)
