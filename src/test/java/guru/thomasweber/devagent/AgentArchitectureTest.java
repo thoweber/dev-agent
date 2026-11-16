@@ -12,6 +12,8 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import dev.langchain4j.agent.tool.Tool;
+import guru.thomasweber.devagent.cli.LogsCommand;
+import guru.thomasweber.devagent.cli.StatusCommand;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.Entity;
@@ -116,4 +118,16 @@ public class AgentArchitectureTest {
                 }
             })
             .as("Records with 4 or more fields must provide a fluent builder");
+
+    @ArchTest
+    public static final ArchRule statusAndLogsCommandsMustNotAccessPersistenceOrJpa =
+        noClasses()
+            .that().areAssignableTo(StatusCommand.class)
+            .or().areAssignableTo(LogsCommand.class)
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "guru.thomasweber.devagent.entity..",
+                "jakarta.persistence..",
+                "javax.sql.."
+            )
+            .as("StatusCommand and LogsCommand must read state.json without opening JDBC/JPA connections (ADR-006)");
 }

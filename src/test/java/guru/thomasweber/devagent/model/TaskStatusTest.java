@@ -16,6 +16,7 @@ class TaskStatusTest {
         assertThat(TaskStatus.FAILED.isTerminal()).isTrue();
         assertThat(TaskStatus.ABORTED.isTerminal()).isTrue();
 
+        assertThat(TaskStatus.QUEUED.isTerminal()).isFalse();
         assertThat(TaskStatus.PLANNING.isTerminal()).isFalse();
         assertThat(TaskStatus.RED_TEST.isTerminal()).isFalse();
         assertThat(TaskStatus.GREEN_PATCH.isTerminal()).isFalse();

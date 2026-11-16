@@ -33,6 +33,12 @@ public interface DevAgentConfig {
 
     BudgetConfig budget();
 
+    @WithDefault("2")
+    @WithName("max-concurrent-workers")
+    int maxConcurrentWorkers();
+
+    NotificationsConfig notifications();
+
     interface WorkspaceConfig {
         @WithDefault(".")
         @WithName("backend-root")
@@ -262,5 +268,19 @@ public interface DevAgentConfig {
         @WithDefault("rollback")
         @WithName("on-limit-exceeded")
         String onLimitExceeded();
+    }
+
+    interface NotificationsConfig {
+        @WithDefault("true")
+        @WithName("desktop-enabled")
+        boolean desktopEnabled();
+
+        @WithDefault("true")
+        @WithName("on-success")
+        boolean onSuccess();
+
+        @WithDefault("true")
+        @WithName("on-failure")
+        boolean onFailure();
     }
 }

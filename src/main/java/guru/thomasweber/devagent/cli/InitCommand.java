@@ -102,6 +102,7 @@ public class InitCommand extends BaseAgentCommand implements Callable<Integer> {
             # ==============================================================================
 
             agent:
+              max-concurrent-workers: 2
               workspace:
                 backend-root: "."
               build:

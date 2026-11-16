@@ -7,6 +7,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
  */
 @RegisterForReflection
 public enum TaskStatus {
+    QUEUED,
     PLANNING,
     RED_TEST,
     GREEN_PATCH,

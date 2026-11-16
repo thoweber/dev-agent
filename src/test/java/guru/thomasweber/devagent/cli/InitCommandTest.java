@@ -36,6 +36,7 @@ class InitCommandTest {
         assertThat(tempDir.resolve(".agents")).isDirectory();
         assertThat(tempDir.resolve(".agents/dev-agent.yaml")).isRegularFile();
         assertThat(tempDir.resolve(".agents/rules")).isDirectory();
+        assertThat(tempDir.resolve(".agents/dev-agent.yaml")).content().contains("max-concurrent-workers: 2");
         assertThat(command.getDir()).isEqualTo(tempDir.toString());
     }
 
