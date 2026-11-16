@@ -18,4 +18,7 @@ Active background tasks emit atomic `state.json` heartbeats within their dedicat
 * Requires maintaining state synchronization between filesystem heartbeats and relational storage.
 
 ## Non-Negotiable Invariants
-* CLI `status` and `logs` commands must read `state.json` without opening JDBC database connections.
+* CLI `status` and `logs` commands must read `state.json` (and `worker.log` / `.agents/runs/` fallbacks) without opening JDBC database connections (`AgentArchitectureTest.statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
+* `StateSocketService` writes `state.json` atomically using temp files + `StandardCopyOption.REPLACE_EXISTING` / `ATOMIC_MOVE` with `SecretRedactionFilter` applied to `lastMessage`, `worktreePath`, and `branch`.
+* `DetachedWorkerLauncher` spawns hidden `worker` subprocesses with stdin closed immediately (no child hangs) and stdout/stderr redirected to `.git/dev-agent-worktrees/<task-id>/worker.log`.
+* `DesktopAlertService` sends non-blocking desktop alerts (`notify-send`, `osascript`, or PowerShell Toast) using secret-redacted messages, respecting `agent.notifications.*` config toggles.

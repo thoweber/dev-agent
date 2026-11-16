@@ -1,6 +1,6 @@
 # dev-agent Core Architecture Invariants
 
-> **Master Architecture Reference:** Consult `PROJECT_CONTEXT.md` and `docs/adr/index.md` (ADR-001 through ADR-010).
+> **Master Architecture Reference:** Consult `PROJECT_CONTEXT.md` and `docs/adr/index.md` (ADR-001 through ADR-013).
 
 ## 1. Zero-Knowledge Engine vs. Knowledge Separation (ADR-001)
 * The CLI binary is a zero-knowledge execution engine. It contains **zero hardcoded project domain rules, framework keywords, or fixed documentation paths**.
@@ -17,18 +17,21 @@
 * Direct write access to `.git/**`, `~/.config/dev-agent/**`, or the CLI binary itself is strictly forbidden.
 
 ## 4. Worktree Concurrency & Build Slicing (ADR-004)
-* Background task execution runs inside dedicated Git worktrees allocated at `.git/dev-agent-worktrees/<task-id>/`.
-* The developer's primary workspace (`user.dir`) remains untouched and unlocked.
-* Build target directories are sliced to `target-agent/` (Maven) or `build-agent/` (Gradle) to prevent collision with primary IDE build artifacts.
-* `target-agent/` and `.cache-agent/` are excluded from Git status.
+* Isolated and background task execution runs inside dedicated Git worktrees allocated at `.git/dev-agent-worktrees/<task-id>/` and bound via `WorktreeExecutionContext` (`ScopedValue<Path>`).
+* `WorkspaceContextResolver.resolveRepoRoot()` skips worktree `.git` pointer files to resolve the primary repository root; `resolveExecutionRoot()` returns the bound worktree root when active.
+* The developer's primary workspace (`user.dir`) remains untouched and unlocked; uncommitted changes are hydrated via ephemeral `git stash create` + `apply`.
+* Build target directories are sliced to `target-agent/` (Maven) or `build-agent/` (Gradle) and registered inside `.git/info/exclude` via `GitExcludeManager` without mutating tracked `.gitignore`.
+* Per-CLI-invocation worker concurrency is bounded via `LocalWorkerLimiter` (`agent.max-concurrent-workers`, default `2`), marking overflowing tasks `TaskStatus.QUEUED`.
+* `dev-agent abort` preserves `feature/{task-id}-...` branches by default unless `--delete-branch` is explicitly supplied.
 
 ## 5. Zero-JNI Native Safety (ADR-005)
 * Semantic rule and ADR discovery uses a pure-Java lexical BM25 inverted index.
 * Native C++ ONNX runtime JNI bindings are strictly forbidden in core search pipelines to ensure flawless GraalVM native binary portability.
 
 ## 6. Non-Locking Ephemeral State Sockets (ADR-006)
-* Active tasks write atomic `state.json` heartbeats inside their isolated worktree.
-* Foreground CLI commands (`dev-agent status`, `dev-agent logs`) read `state.json` directly from the filesystem without opening JDBC connections to the central H2 database, avoiding database lock crashes.
+* Active tasks write atomic `state.json` heartbeats inside their isolated worktree via `StateSocketService` (temp file + `ATOMIC_MOVE` + `SecretRedactionFilter`), mirrored by `StateSyncService`.
+* Foreground CLI read commands (`StatusCommand`, `LogsCommand`) read `state.json` (and `worker.log` / `.agents/runs/`) directly without accessing `..entity..`, `jakarta.persistence..`, or `javax.sql..` (enforced by ArchUnit `statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
+* Detached runs spawn hidden `worker` OS subprocesses via `DetachedWorkerLauncher` with stdin closed immediately and stdout/stderr redirected to `worker.log`. `DesktopAlertService` sends non-blocking OS notifications using secret-redacted text.
 
 ## 7. Context-Aware Secret Redaction Quarantine (ADR-008)
 * Secret scrubbing is strictly quarantined:

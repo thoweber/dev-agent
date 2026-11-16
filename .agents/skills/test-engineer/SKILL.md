@@ -24,6 +24,7 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 2. All non-interface classes in packages `..model..`, `..entity..`, `..remote..`, and `..gui..` must be annotated with `@RegisterForReflection`.
 3. Panache entities annotated with `@Entity` must only be accessed by classes in `guru.thomasweber.devagent.entity..`.
 4. Test methods (`@Test`, `@BeforeEach`, `@AfterEach`) must not be annotated with `@Transactional`.
+5. `StatusCommand` and `LogsCommand` must not depend on `..entity..`, `jakarta.persistence..`, or `javax.sql..` (`statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
 
 ---
 
@@ -48,5 +49,5 @@ All tests in `AgentArchitectureTest` verify native GraalVM safety and architectu
 ## 5. Behavioral Testing & Ergonomics
 
 * **Zero-Reflection & Anti-Synthetic-Seams Policy:** Tests must verify observable behaviors through public APIs; using reflection (`field.setAccessible(true)`), weakening private methods to package-private for test access, or adding artificial subclassing seams to game coverage is strictly prohibited.
-* **Canonical Fixtures:** Complex records (4+ fields) must use `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture` instead of repeating inline builder code.
+* **Canonical Fixtures:** Complex records (4+ fields) must use `TaskRunMother`, `StepAuditMother`, `WorktreeStateMother`, and `WorktreeTestFixture` instead of repeating inline builder code. CLI unit tests (`*CommandTest`) must always target `@TempDir` via `--dir=<tempDir>` so unit tests never allocate worktrees inside the host repository.
 * **Script Test Parity & Tool Standards:** Python automation scripts in `scripts/` must have companion unit test suites under `tests/scripts/` and be documented in `AGENTS.md` and skills. Ad-hoc inline scripts (`python3 -c`) for tool execution are strictly prohibited.

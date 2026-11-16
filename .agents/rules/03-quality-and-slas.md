@@ -6,7 +6,7 @@
 * **Sub-50ms Native Cold Boot:** The GraalVM native binary (`dev-agent`) MUST achieve $<50\text{ ms}$ cold start latency when executing `--help` or `status`.
 * **JVM Cold Boot:** Development JVM runs must initialize in $<800\text{ ms}$.
 * **Surefire Memory Limits:** Inner Maven test forks are bounded with `-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1` to prevent workstation memory exhaustion.
-* **Worker Concurrency Limit:** Bounded to a maximum of 2 concurrent JVM background worker processes (`maxConcurrentWorkers = 2`). Additional tasks enter a `QUEUED` state.
+* **Worker Concurrency Limit:** Bounded per CLI invocation via an in-memory `Semaphore` (`LocalWorkerLimiter`) configured by `agent.max-concurrent-workers` in `.agents/dev-agent.yaml` (default `2`). Overflowing tasks transition to `TaskStatus.QUEUED` in `state.json` until a permit opens.
 
 ## 2. Normalized Loop Circuit Breaker & Budget Guardrails
 * **Consecutive Repeat Warning ($A \rightarrow A$):** Injects a warning into memory when identical errors repeat.

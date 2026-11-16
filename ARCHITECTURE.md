@@ -405,19 +405,23 @@ Main Workspace (Branch: main)             Isolated Worktree (Branch: feature/US-
 ```
 
 ### Git Worktree Lifecycle Engine (`GitWorktreeService`)
-* **Worktree Allocation**: Detached runs create an isolated working directory under `.git/dev-agent-worktrees/<task-id>/` checked out to branch `feature/{task-id}-{story-slug}`.
-* **Automatic Working-Tree Hydration**: If the developer has uncommitted changes in their IDE, the agent creates an ephemeral stash (`git stash create`) and applies it inside the newly allocated worktree, capturing in-progress thoughts without altering the primary workspace index.
+* **Worktree Allocation**: Isolated runs create a dedicated working directory under `.git/dev-agent-worktrees/<task-id>/` checked out to branch `feature/{task-id}-{story-slug}` and bind the worktree root via `WorktreeExecutionContext` (`ScopedValue<Path>`), overriding `WorkspaceContextResolver.resolveExecutionRoot()` while preserving `resolveRepoRoot()`.
+* **Build Cache Exclusion (`GitExcludeManager`)**: Automatically registers configured build slice directories (e.g., `target-agent/`) inside `.git/info/exclude` without mutating tracked `.gitignore` files.
+* **Automatic Working-Tree Hydration**: If the developer has uncommitted changes in their IDE, the agent creates an ephemeral stash (`git stash create`) and applies it inside the newly allocated worktree (`auto-stash-uncommitted`), capturing in-progress work without altering the primary workspace index.
+* **Branch Preservation Policy**: `dev-agent abort <task-id>` terminates active worker PIDs, unlinks the worktree directory, and preserves the `feature/{task-id}-...` branch by default unless `--delete-branch` is explicitly passed.
 * **Dependency Isolation & Zero-Symlink Module Resolution**: Symlinks between worktrees and primary `node_modules` are strictly skipped to prevent mutation leaks, IDE watcher recursion, and Windows privilege issues. The agent injects `NODE_PATH=<root>/node_modules` and prepends `<root>/node_modules/.bin` to `PATH`, while slicing all tool caches to `target-agent/` (e.g. configuring `cacheDir: 'target-agent/.vite-cache'` in Vite configuration, `--cacheDirectory target-agent/.jest-cache`). The primary workspace `node_modules` remains strictly read-only.
 
-### Non-Locking Ephemeral State Sockets (`state.json`)
+### Non-Locking Ephemeral State Sockets (`state.json` & `StateSocketService`)
 To avoid H2 MVStore database lock crashes (`Database may be already in use`) when running status queries while a background worker is compiling:
 1. Active background workers write an atomic JSON heartbeat file into their worktree:
-   `.git/dev-agent-worktrees/<task-id>/state.json` containing `taskId`, `status`, `phase`, `tokens`, `cost`, and `pid`.
-2. CLI read commands (`dev-agent status`, `dev-agent logs`) read these JSON heartbeats directly without opening JDBC database connections.
-3. Central H2 database writes (`~/.config/dev-agent/data/agent.mv.db`) occur strictly at major phase boundaries and task completion, fully namespaced by `project_id`.
+   `.git/dev-agent-worktrees/<task-id>/state.json` (written via temp file + `ATOMIC_MOVE` with secret redaction via `SecretRedactionFilter`) containing `taskId`, `projectId`, `status`, `phase`, `tokens`, `cost`, `pid`, `branch`, `worktreePath`, `startedAt`, `updatedAt`, and `lastMessage`.
+2. CLI read commands (`dev-agent status`, `dev-agent logs`) read these JSON heartbeats and `worker.log` / `.agents/runs/<task-id>.md` directly without opening JDBC database connections (enforced by ArchUnit `statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
+3. Central H2 database writes (`~/.config/dev-agent/data/agent.mv.db`) occur strictly at major phase boundaries and task completion, fully namespaced by `project_id`, with `StateSyncService` mirroring phase transitions into `state.json`.
+4. Detached execution spawns OS background processes via `DetachedWorkerLauncher` invoking the hidden `worker` subcommand, closing stdin immediately and redirecting stdout/stderr to `.git/dev-agent-worktrees/<task-id>/worker.log`.
+5. Native desktop notifications (`DesktopAlertService`) alert developers asynchronously on terminal task outcomes (`notify-send`, `osascript`, or PowerShell Toast) with secret-scrubbed summaries.
 
 ### Concurrency & Host Resource Guardrails (`LocalWorkerLimiter`)
-* **Worker Limit**: Caps simultaneous background worker JVMs at **2** (configurable via `agent.max-concurrent-workers`). Additional detached runs enter a `QUEUED` state.
+* **Single-Invocation Worker Gate**: Enforces a per-CLI-invocation in-memory `Semaphore` (`LocalWorkerLimiter.PermitGate`) bounded by `agent.max-concurrent-workers` in `.agents/dev-agent.yaml` (default **2**). Overflowing tasks within that invocation write `TaskStatus.QUEUED` to `state.json` until a permit opens.
 * **Surefire Heap Slicing**: Inner Maven test forks are bounded with `-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1`, preventing workstation memory exhaustion.
 
 ### Subprocess Lifetime & Timeout Governance (`SubprocessExecutor` & `BoundedOverflowBuffer`)
@@ -479,6 +483,8 @@ Configuration resolves across five tiers, allowing zero-boilerplate defaults for
 # ==============================================================================
 
 agent:
+  max-concurrent-workers: 2 # Per-CLI-invocation worker concurrency gate
+
   # 1. Project & Workspace Roots
   workspace:
     # backend-root: "."
@@ -547,7 +553,7 @@ agent:
   # 6. Git Isolation & Worktree Placement
   isolation:
     use-worktrees: true
-    branch-template: "feat/{task-id}-{story-slug}"
+    branch-template: "feature/{task-id}-{story-slug}"
     auto-stash-uncommitted: true
     auto-prune-on-complete: true
 
@@ -584,6 +590,12 @@ agent:
     storybook:
       enabled: true
       url: "http://localhost:6006"
+
+  # 10. Desktop Notifications
+  notifications:
+    enabled: true
+    on-success: true
+    on-failure: true
 ```
 
 ---
@@ -707,6 +719,13 @@ public class AgentArchitectureTest {
             .that().haveSimpleNameEndingWith("Test")
             .or().haveSimpleNameEndingWith("IT")
             .should().notBeAnnotatedWith(jakarta.transaction.Transactional.class);
+
+    @ArchTest
+    public static final ArchRule statusAndLogsCommandsMustNotAccessPersistenceOrJpa =
+        noClasses()
+            .that().areAssignableTo(StatusCommand.class)
+            .or().areAssignableTo(LogsCommand.class)
+            .should().dependOnClassesThat().resideInAnyPackage("..entity..", "jakarta.persistence..", "javax.sql..");
 }
 ```
 
@@ -742,7 +761,7 @@ Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority ar
 | **Cycle 1** | **Standalone Maven Walking Skeleton** | Standalone repo, Maven build SPI (`MavenBuildSystem`, `MavenOutputParser`, `BackendBuildTool`), workspace auto-detection, canonical path jail, secret scrubber, transactional Git rollback. | **DONE** |
 | **Cycle 2** | **Multi-Tenant State & Memory Hardening** | Central H2 database (`~/.config/dev-agent/`), deterministic `ProjectId` isolation, Markdown projection sync, 3-tier memory store, context-aware secret scrubbing. | **DONE** |
 | **Cycle 3** | **Pure-Java Lexical RAG & Caching** | Dynamic ADR discovery, pure-Java BM25 search, Caffeine gatekeeper cache (`@CacheResult`), normalized error loop circuit breaker. | **DONE** |
-| **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, Maven build target slicing (`target-agent/`), non-locking `state.json` heartbeats, worker concurrency gate (max 2), desktop alerts. | Week 4 |
+| **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, Maven build target slicing (`target-agent/`), non-locking `state.json` heartbeats, single-invocation worker concurrency gate (default 2), detached `worker`, `abort`/`status`/`logs`, desktop alerts. | **DONE** |
 | **Cycle 5** | **Remote Quality Gates & Automated Review** | Draft PR lifecycle, remote Maven CI self-healing, SonarCloud auto-patcher, CodeRabbit triage state machine. | Week 5 |
 | **Cycle 6** | **Native Hardening, CLI Packaging & v1.0 Release** | Sub-50ms GraalVM Mandrel Ahead-of-Time native binary, financial budget stops ($2.00 limit), global CLI installation (`~/.local/bin/dev-agent`). | Week 6 |
 | *Future* | *Frontend Subsystem (Optional)* | `NpmBuildSystem`, `FrontendBuildTool`, `AngularConvention`, OpenAPI $\rightarrow$ TypeScript generator, headless testing (`ChromeHeadless`), Storybook review. | Backlog |
