@@ -596,6 +596,15 @@ agent:
     desktop-enabled: true
     on-success: true
     on-failure: true
+
+  # 11. Opt-In Per-Session Logging & Redacted Diagnostics
+  logging:
+    enabled: false                    # Silent OFF by default; overridden to true by any -v flag
+    level: WARN                       # WARN (-v) | INFO (-vv) | DEBUG (-vvv) | ALL (-vvvv)
+    file-enabled: true                # Default sink: isolated per-session log file
+    console-enabled: false            # Optional stderr mirroring (stdout stays strictly clean)
+    dir: "~/.config/dev-agent/logs"   # Per-session log directory
+    max-files: 50                     # Bounded session log retention
 ```
 
 ---
@@ -762,6 +771,7 @@ Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority ar
 | **Cycle 2** | **Multi-Tenant State & Memory Hardening** | Central H2 database (`~/.config/dev-agent/`), deterministic `ProjectId` isolation, Markdown projection sync, 3-tier memory store, context-aware secret scrubbing. | **DONE** |
 | **Cycle 3** | **Pure-Java Lexical RAG & Caching** | Dynamic ADR discovery, pure-Java BM25 search, Caffeine gatekeeper cache (`@CacheResult`), normalized error loop circuit breaker. | **DONE** |
 | **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, Maven build target slicing (`target-agent/`), non-locking `state.json` heartbeats, single-invocation worker concurrency gate (default 2), detached `worker`, `abort`/`status`/`logs`, desktop alerts (`FeatureCommand`/`WorkerCommand` cognitive loop wiring deferred cleanly). | **DONE** |
+| **Cycle 4.5** | **Opt-In Per-Session Logging & Redacted Diagnostics** | Silent-by-default logging (`min-level=ALL`, runtime `OFF`), 4-tier inheritable `-v`..`-vvvv` verbosity scoping (`dev-agent` vs 3rd-party levels), opt-in `agent.logging` YAML schema, per-session default log files under `~/.config/dev-agent/logs/`, `SecretRedactionFilter` formatter quarantine, and detached worker verbosity propagation ([Cycle 4.5 Plan](docs/plans/cycle-4.5-logging-plan.md)). | Planned |
 | **Cycle 5** | **Remote Quality Gates & Automated Review** | Draft PR lifecycle, remote Maven CI self-healing, SonarCloud auto-patcher, CodeRabbit triage state machine. | Week 5 |
 | **Cycle 6** | **Native Hardening, CLI Packaging & v1.0 Release** | Sub-50ms GraalVM Mandrel Ahead-of-Time native binary, financial budget stops ($2.00 limit), global CLI installation (`~/.local/bin/dev-agent`). | Week 6 |
 | *Future* | *Frontend Subsystem (Optional)* | `NpmBuildSystem`, `FrontendBuildTool`, `AngularConvention`, OpenAPI $\rightarrow$ TypeScript generator, headless testing (`ChromeHeadless`), Storybook review. | Backlog |
