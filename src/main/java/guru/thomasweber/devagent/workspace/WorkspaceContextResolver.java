@@ -67,11 +67,15 @@ public class WorkspaceContextResolver {
     public Path resolveRepoRoot() {
         Path current = workingDir.toAbsolutePath().normalize();
         Path highestBuildRoot = null;
-        Path gitRoot = null;
+        Path gitDirRoot = null;
+        Path gitFileRoot = null;
 
         while (current != null) {
-            if (gitRoot == null && Files.exists(current.resolve(".git"))) {
-                gitRoot = current;
+            Path dotGit = current.resolve(".git");
+            if (gitDirRoot == null && Files.isDirectory(dotGit)) {
+                gitDirRoot = current;
+            } else if (gitFileRoot == null && Files.exists(dotGit)) {
+                gitFileRoot = current;
             }
             if (Files.exists(current.resolve("pom.xml")) ||
                 Files.exists(current.resolve("build.gradle")) ||
@@ -81,13 +85,23 @@ public class WorkspaceContextResolver {
             current = current.getParent();
         }
 
-        if (gitRoot != null) {
-            return gitRoot;
+        if (gitDirRoot != null) {
+            return gitDirRoot;
+        }
+        if (gitFileRoot != null) {
+            return gitFileRoot;
         }
         if (highestBuildRoot != null) {
             return highestBuildRoot;
         }
         return workingDir.toAbsolutePath().normalize();
+    }
+
+    /**
+     * Resolves the active execution root, preferring a bound isolated worktree over the primary repository root.
+     */
+    public Path resolveExecutionRoot() {
+        return WorktreeExecutionContext.currentWorktreeRoot().orElseGet(this::resolveRepoRoot);
     }
 
     /**
@@ -135,14 +149,28 @@ public class WorkspaceContextResolver {
      * Resolves the target directory for sliced agent builds.
      */
     public Path resolveAgentTargetDir() {
-        return resolveRepoRoot().resolve("target-agent");
+        return resolveExecutionRoot().resolve("target-agent");
+    }
+
+    /**
+     * Resolves the cache directory for sliced agent build and test caches.
+     */
+    public Path resolveAgentCacheDir() {
+        return resolveExecutionRoot().resolve(".cache-agent");
+    }
+
+    /**
+     * Resolves the root directory containing dedicated task worktrees.
+     */
+    public Path resolveWorktreesRoot() {
+        return resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees");
     }
 
     /**
      * Resolves the dedicated worktree directory for a specific task.
      */
     public Path resolveWorktreeDir(String taskId) {
-        return resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
+        return resolveWorktreesRoot().resolve(taskId);
     }
 
     /**
@@ -167,10 +195,10 @@ public class WorkspaceContextResolver {
     }
 
     /**
-     * Creates a jail validator anchored to this workspace's repository root.
+     * Creates a jail validator anchored to the active execution root.
      */
     public WorkspaceJailValidator getJailValidator() {
-        return new WorkspaceJailValidator(resolveRepoRoot());
+        return new WorkspaceJailValidator(resolveExecutionRoot());
     }
 
     public Path getWorkingDir() {

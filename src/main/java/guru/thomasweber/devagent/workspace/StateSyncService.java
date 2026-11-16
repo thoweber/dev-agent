@@ -6,6 +6,7 @@ import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.StepAudit;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStateChangeEvent;
+import guru.thomasweber.devagent.model.WorktreeState;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Instance;
@@ -38,6 +39,7 @@ public class StateSyncService {
     private final TaskPersistenceService persistenceService;
     private final MarkdownParserService markdownParserService;
     private final Instance<TransactionSynchronizationRegistry> registryInstance;
+    private final StateSocketService stateSocketService;
 
     @Inject
     public StateSyncService(
@@ -45,13 +47,25 @@ public class StateSyncService {
         SecretRedactionFilter secretFilter,
         TaskPersistenceService persistenceService,
         MarkdownParserService markdownParserService,
-        Instance<TransactionSynchronizationRegistry> registryInstance
+        Instance<TransactionSynchronizationRegistry> registryInstance,
+        StateSocketService stateSocketService
     ) {
         this.workspaceResolver = workspaceResolver;
         this.secretFilter = secretFilter;
         this.persistenceService = persistenceService;
         this.markdownParserService = markdownParserService;
         this.registryInstance = registryInstance;
+        this.stateSocketService = stateSocketService;
+    }
+
+    public StateSyncService(
+        WorkspaceContextResolver workspaceResolver,
+        SecretRedactionFilter secretFilter,
+        TaskPersistenceService persistenceService,
+        MarkdownParserService markdownParserService,
+        Instance<TransactionSynchronizationRegistry> registryInstance
+    ) {
+        this(workspaceResolver, secretFilter, persistenceService, markdownParserService, registryInstance, new StateSocketService(secretFilter, workspaceResolver));
     }
 
     public StateSyncService(
@@ -60,7 +74,7 @@ public class StateSyncService {
         TaskPersistenceService persistenceService,
         Instance<TransactionSynchronizationRegistry> registryInstance
     ) {
-        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), registryInstance);
+        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), registryInstance, new StateSocketService(secretFilter, workspaceResolver));
     }
 
     public StateSyncService(
@@ -68,11 +82,11 @@ public class StateSyncService {
         SecretRedactionFilter secretFilter,
         TaskPersistenceService persistenceService
     ) {
-        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), null);
+        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), null, new StateSocketService(secretFilter, workspaceResolver));
     }
 
     public StateSyncService() {
-        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), new MarkdownParserService(), null);
+        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), new MarkdownParserService(), null, new StateSocketService());
     }
 
     @Transactional
@@ -179,9 +193,36 @@ public class StateSyncService {
                 StandardOpenOption.WRITE,
                 LinkOption.NOFOLLOW_LINKS
             );
+            mirrorStateSocketIfWorktreeExists(repoRoot, taskRun);
         } catch (IOException e) {
             LOG.warnf(e, "Failed to project Markdown state journal: %s", e.getMessage());
         }
+    }
+
+    private void mirrorStateSocketIfWorktreeExists(Path repoRoot, TaskRun taskRun) {
+        if (stateSocketService == null) {
+            return;
+        }
+        Path worktreeDir = repoRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskRun.taskId());
+        if (!Files.isDirectory(worktreeDir, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        Optional<WorktreeState> existing = stateSocketService.readState(repoRoot, taskRun.taskId());
+        WorktreeState updated = WorktreeState.builder()
+            .taskId(taskRun.taskId())
+            .projectId(taskRun.projectId())
+            .status(taskRun.status())
+            .phase(taskRun.currentPhase())
+            .tokens(existing.map(WorktreeState::tokens).orElse(0L))
+            .cost(existing.map(WorktreeState::cost).orElse(null))
+            .pid(taskRun.pid() != null ? taskRun.pid() : existing.map(WorktreeState::pid).orElse(null))
+            .branch(taskRun.branch() != null ? taskRun.branch() : existing.map(WorktreeState::branch).orElse(null))
+            .worktreePath(worktreeDir.toString())
+            .startedAt(existing.map(WorktreeState::startedAt).orElse(taskRun.createdAt()))
+            .updatedAt(taskRun.updatedAt())
+            .lastMessage(existing.map(WorktreeState::lastMessage).orElse(taskRun.currentPhase()))
+            .build();
+        stateSocketService.writeHeartbeat(repoRoot, updated);
     }
 
     /**

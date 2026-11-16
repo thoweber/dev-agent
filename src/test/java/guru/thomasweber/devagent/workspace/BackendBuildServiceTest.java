@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.spi.build.BackendBuildSystem;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
 import guru.thomasweber.devagent.testutil.ProcessResultMother;
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -230,5 +232,47 @@ class BackendBuildServiceTest {
         SanitizedLog actualLog = service.test(null, null);
 
         assertThat(actualLog.errorLines()).contains("Build process output was truncated due to buffer limits");
+    }
+
+    @Test
+    @DisplayName("Given WorktreeExecutionContext and custom dev-agent.yaml target-dir - when compile called - then executes in worktree with configured target-dir and git excludes")
+    void givenWorktreeContextAndCustomTargetDir_whenCompileCalled_thenSlicesTargetAndUpdatesExcludes() throws Exception {
+        Files.createDirectories(repoRoot.resolve(".git/info"));
+        Files.createDirectories(repoRoot.resolve(".agents"));
+        Files.writeString(repoRoot.resolve(".agents/dev-agent.yaml"), """
+            agent:
+              build:
+                backend:
+                  target-dir: "target-custom"
+            """);
+        Path worktreeRoot = Files.createDirectories(repoRoot.resolve(".git/dev-agent-worktrees/TASK-430"));
+
+        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
+        SubprocessExecutor subprocessExecutor = mock(SubprocessExecutor.class);
+        BackendBuildSystem buildSystem = mock(BackendBuildSystem.class);
+
+        when(contextResolver.resolveRepoRoot()).thenReturn(repoRoot);
+        when(contextResolver.resolveExecutionRoot()).thenReturn(worktreeRoot);
+        when(contextResolver.resolveConfigFile()).thenReturn(repoRoot.resolve(".agents/dev-agent.yaml"));
+        when(contextResolver.resolveBackendBuildSystem(worktreeRoot)).thenReturn(Optional.of(buildSystem));
+
+        List<String> command = List.of("./mvnw", "-B", "-Dproject.build.directory=target-custom", "test-compile");
+        when(buildSystem.buildCompileCommand(worktreeRoot, null, "target-custom")).thenReturn(command);
+        when(subprocessExecutor.execute(eq(command), eq(worktreeRoot), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success("OK"));
+        SanitizedLog expected = SanitizedLog.builder().exitCode(0).build();
+        when(buildSystem.sanitizeOutput(0, "OK", "")).thenReturn(expected);
+
+        BackendBuildService service = new BackendBuildService(
+            contextResolver,
+            subprocessExecutor,
+            new DevAgentConfigLoader(),
+            new GitExcludeManager()
+        );
+
+        SanitizedLog result = WorktreeExecutionContext.runInWorktree(worktreeRoot, () -> service.compile(null));
+
+        assertThat(result).isEqualTo(expected);
+        assertThat(Files.readAllLines(repoRoot.resolve(".git/info/exclude"))).contains("target-custom/", ".cache-agent/");
     }
 }

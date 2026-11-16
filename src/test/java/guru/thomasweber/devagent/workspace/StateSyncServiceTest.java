@@ -6,8 +6,10 @@ import guru.thomasweber.devagent.model.StepAudit;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStateChangeEvent;
 import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.testutil.StepAuditMother;
 import guru.thomasweber.devagent.testutil.TaskRunMother;
+import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import jakarta.enterprise.inject.Instance;
 import jakarta.transaction.Status;
 import jakarta.transaction.Synchronization;
@@ -386,5 +388,30 @@ class StateSyncServiceTest {
         // Validate default constructor
         StateSyncService defaultService = new StateSyncService();
         assertThat(defaultService).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given existing task worktree - when projectToMarkdown called - then mirrors state transition to state.json")
+    void testProjectToMarkdownMirrorsStateJsonWhenWorktreeExists() throws IOException {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        SecretRedactionFilter secretFilter = new SecretRedactionFilter();
+        StateSocketService socketService = new StateSocketService(secretFilter, workspace);
+        StateSyncService service = new StateSyncService(workspace, secretFilter, null, new MarkdownParserService(), null, socketService);
+
+        Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-SOCK-1"));
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.active("TASK-SOCK-1", 777L));
+        TaskRun taskRun = TaskRunMother.active("org/repo", "TASK-SOCK-1", ProcessHandle.current().pid())
+            .toBuilder()
+            .userStory("Implement socket sync")
+            .build();
+
+        service.projectToMarkdown(taskRun);
+
+        Optional<WorktreeState> socketState = socketService.readState(tempDir, "TASK-SOCK-1");
+        assertThat(socketState).isPresent();
+        assertThat(socketState.get().status()).isEqualTo(TaskStatus.GREEN_PATCH);
+        assertThat(socketState.get().phase()).isEqualTo("GREEN_PATCH");
+        assertThat(socketState.get().pid()).isEqualTo(ProcessHandle.current().pid());
+        assertThat(socketState.get().tokens()).isEqualTo(1200L);
     }
 }

@@ -1,10 +1,12 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.spi.build.BackendBuildSystem;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,21 +26,34 @@ public class BackendBuildService {
 
     private final WorkspaceContextResolver contextResolver;
     private final SubprocessExecutor subprocessExecutor;
+    private final DevAgentConfigLoader configLoader;
+    private final GitExcludeManager gitExcludeManager;
 
     @Inject
-    public BackendBuildService(WorkspaceContextResolver contextResolver, SubprocessExecutor subprocessExecutor) {
+    public BackendBuildService(
+        WorkspaceContextResolver contextResolver,
+        SubprocessExecutor subprocessExecutor,
+        DevAgentConfigLoader configLoader,
+        GitExcludeManager gitExcludeManager
+    ) {
         this.contextResolver = contextResolver;
         this.subprocessExecutor = subprocessExecutor;
+        this.configLoader = configLoader;
+        this.gitExcludeManager = gitExcludeManager;
+    }
+
+    public BackendBuildService(WorkspaceContextResolver contextResolver, SubprocessExecutor subprocessExecutor) {
+        this(contextResolver, subprocessExecutor, new DevAgentConfigLoader(), new GitExcludeManager());
     }
 
     /**
-     * Compiles the backend project in the workspace repository root.
+     * Compiles the backend project in the active execution root.
      *
      * @param modulePath optional relative module path within a multi-module reactor
      * @return SanitizedLog containing exit code, clean stdout/stderr, and isolated error lines
      */
     public SanitizedLog compile(String modulePath) {
-        return compile(contextResolver.resolveRepoRoot(), modulePath, DEFAULT_TARGET_DIR);
+        return compile(resolveActiveRoot(), modulePath, resolveConfiguredTargetDir());
     }
 
     /**
@@ -50,8 +65,9 @@ public class BackendBuildService {
      * @return SanitizedLog containing exit code, clean stdout/stderr, and isolated error lines
      */
     public SanitizedLog compile(Path projectRoot, String modulePath, String targetDir) {
-        Path effectiveRoot = (projectRoot != null) ? projectRoot : contextResolver.resolveRepoRoot();
+        Path effectiveRoot = (projectRoot != null) ? projectRoot : resolveActiveRoot();
         String effectiveTarget = (targetDir != null && !targetDir.isBlank()) ? targetDir : DEFAULT_TARGET_DIR;
+        ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
         List<String> command = buildSystem.buildCompileCommand(effectiveRoot, modulePath, effectiveTarget);
@@ -60,14 +76,14 @@ public class BackendBuildService {
     }
 
     /**
-     * Executes backend tests in the workspace repository root.
+     * Executes backend tests in the active execution root.
      *
      * @param testPattern class name pattern or method pattern (e.g. OrderServiceTest or *Test)
      * @param modulePath optional relative module path within a multi-module reactor
      * @return SanitizedLog containing exit code, clean stdout/stderr, and isolated error lines
      */
     public SanitizedLog test(String testPattern, String modulePath) {
-        return test(contextResolver.resolveRepoRoot(), modulePath, testPattern, DEFAULT_TARGET_DIR);
+        return test(resolveActiveRoot(), modulePath, testPattern, resolveConfiguredTargetDir());
     }
 
     /**
@@ -80,13 +96,33 @@ public class BackendBuildService {
      * @return SanitizedLog containing exit code, clean stdout/stderr, and isolated error lines
      */
     public SanitizedLog test(Path projectRoot, String modulePath, String testPattern, String targetDir) {
-        Path effectiveRoot = (projectRoot != null) ? projectRoot : contextResolver.resolveRepoRoot();
+        Path effectiveRoot = (projectRoot != null) ? projectRoot : resolveActiveRoot();
         String effectiveTarget = (targetDir != null && !targetDir.isBlank()) ? targetDir : DEFAULT_TARGET_DIR;
+        ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
         List<String> command = buildSystem.buildTestCommand(effectiveRoot, modulePath, testPattern, effectiveTarget);
 
         return executeAndSanitize(buildSystem, command, effectiveRoot);
+    }
+
+    private Path resolveActiveRoot() {
+        Path executionRoot = contextResolver.resolveExecutionRoot();
+        return executionRoot != null ? executionRoot : contextResolver.resolveRepoRoot();
+    }
+
+    private String resolveConfiguredTargetDir() {
+        Path configFile = contextResolver.resolveConfigFile();
+        if (configFile == null || !Files.isRegularFile(configFile)) {
+            return DEFAULT_TARGET_DIR;
+        }
+        String configured = configLoader.load(configFile).build().backend().targetDir();
+        return (configured != null && !configured.isBlank()) ? configured : DEFAULT_TARGET_DIR;
+    }
+
+    private void ensureExcludes(Path effectiveRoot, String targetDir) {
+        Path repoRoot = contextResolver.resolveRepoRoot();
+        gitExcludeManager.ensureExcluded(repoRoot != null ? repoRoot : effectiveRoot, targetDir);
     }
 
     private SanitizedLog executeAndSanitize(BackendBuildSystem buildSystem, List<String> command, Path workingDir) {
