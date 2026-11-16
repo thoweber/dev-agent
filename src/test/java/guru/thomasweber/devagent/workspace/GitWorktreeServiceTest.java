@@ -265,7 +265,7 @@ class GitWorktreeServiceTest {
 
     @Test
     @DisplayName("Given flag-like baseCommit or null commit message - when git operations called - then throws SecurityException or IllegalArgumentException")
-    void givenUnsafeBaseCommitOrNullMessage_whenCalled_thenRejectsInputs() {
+    void givenUnsafeBaseCommitOrNullMessage_whenCalled_thenRejectsInputs() throws IOException {
         SubprocessExecutor mocked = mock(SubprocessExecutor.class);
         GitWorktreeService service = new GitWorktreeService(mocked, new GitExcludeManager());
 
@@ -302,6 +302,30 @@ class GitWorktreeServiceTest {
 
         assertThatThrownBy(() -> service.allocateWorktree(tempDir, "TASK-HYD-1", "slug", null, "target-agent"))
             .isInstanceOf(WorkspaceException.class);
+
+        // autoStashUncommitted=false skips stash/hydration; failing status/false stdout in isGitRepository; clean commitChanges -> false
+        DevAgentConfig.IsolationConfig noStashIso = mock(DevAgentConfig.IsolationConfig.class);
+        when(noStashIso.branchTemplate()).thenReturn("feature/{task-id}-{story-slug}");
+        when(noStashIso.autoStashUncommitted()).thenReturn(false);
+        when(mocked.execute(eq(List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/feature/TASK-NOSTASH-slug")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.failure(1, "", ""));
+        WorktreeAllocation noStashAlloc = service.allocateWorktree(tempDir, "TASK-NOSTASH", "slug", noStashIso, "target-agent");
+        assertThat(noStashAlloc.hydrated()).isFalse();
+
+        when(mocked.execute(eq(List.of("git", "status", "--porcelain")), eq(tempDir), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
+        assertThat(service.commitChanges(tempDir, "no changes")).isFalse();
+
+        when(mocked.execute(eq(List.of("git", "rev-parse", "--is-inside-work-tree")), eq(tempDir), any(Duration.class)))
+            .thenReturn(ProcessResultMother.failure(128, "", "not git"))
+            .thenReturn(ProcessResultMother.success("false"));
+        assertThat(service.isGitRepository(tempDir)).isFalse();
+        assertThat(service.isGitRepository(tempDir)).isFalse();
+
+        Path wtDir = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-SUB"));
+        Files.writeString(tempDir.resolve(".git/dev-agent-worktrees/not-a-dir.txt"), "x");
+        assertThat(service.listWorktreeTaskIds(tempDir)).containsExactly("TASK-SUB");
+        assertThat(wtDir).isDirectory();
     }
 
     private static void initGitRepo(SubprocessExecutor executor, Path dir) {

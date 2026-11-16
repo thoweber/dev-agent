@@ -209,5 +209,26 @@ class DesktopAlertServiceTest {
 
         DesktopAlertService defaultService = new DesktopAlertService();
         assertThat(defaultService).isNotNull();
+
+        // Failing notification command + blank DISPLAY + DBUS_SESSION_BUS_ADDRESS + on-failure=false
+        when(executor.execute(any(), any(), any(Duration.class))).thenReturn(ProcessResultMother.failure(1, "", "notify-send missing"));
+        DesktopAlertService dbusService = new DesktopAlertService(
+            executor,
+            new SecretRedactionFilter(),
+            new DevAgentConfigLoader(),
+            Map.of("DISPLAY", "   ", "DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")::get
+        );
+        dbusService.notifyTaskOutcome(tempDir, WorktreeStateMother.builder("TASK-609").status(TaskStatus.FAILED).build());
+        verify(executor, times(2)).execute(any(), any(), eq(Duration.ofSeconds(3)));
+
+        Files.writeString(tempDir.resolve(".agents/dev-agent.yaml"), """
+            agent:
+              notifications:
+                desktop-enabled: true
+                on-success: true
+                on-failure: false
+            """);
+        dbusService.notifyTaskOutcome(tempDir, WorktreeStateMother.builder("TASK-610").status(TaskStatus.FAILED).build());
+        verify(executor, times(2)).execute(any(), any(), eq(Duration.ofSeconds(3)));
     }
 }

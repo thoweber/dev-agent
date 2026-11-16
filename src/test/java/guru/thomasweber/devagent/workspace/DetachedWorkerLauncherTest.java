@@ -31,7 +31,7 @@ class DetachedWorkerLauncherTest {
 
     @Test
     @DisplayName("Given valid command and worker.log target - when launchCommand executed - then spawns detached process and captures log output")
-    void givenCommandAndLogFile_whenLaunchCommand_thenSpawnsProcessAndWritesLog() throws Exception {
+    void givenCommandAndLogFile_whenLaunchCommand_thenSpawnsProcessAndWritesLog() {
         StateSocketService socketService = new StateSocketService();
         DetachedWorkerLauncher launcher = new DetachedWorkerLauncher(socketService);
         Path logFile = socketService.resolveWorkerLogFile(tempDir, "TASK-702");
@@ -90,6 +90,10 @@ class DetachedWorkerLauncherTest {
             System.setProperty("sun.java.command", "guru.thomasweber.devagent.Main arg1");
             List<String> mainClassCmd = launcher.buildWorkerCommand(tempDir, "TASK-706", "inst");
             assertThat(mainClassCmd).contains("-cp", "/opt/a:/opt/b", "guru.thomasweber.devagent.Main");
+
+            System.setProperty("sun.java.command", "quarkus");
+            List<String> noDotMainCmd = launcher.buildWorkerCommand(tempDir, "TASK-707", "inst");
+            assertThat(noDotMainCmd).contains("-cp", "/opt/a:/opt/b", "io.quarkus.runner.GeneratedMain");
         } finally {
             if (originalClasspath != null) {
                 System.setProperty("java.class.path", originalClasspath);
@@ -99,8 +103,10 @@ class DetachedWorkerLauncherTest {
             }
         }
 
-        long pid = launcher.launchCommand(List.of("sh", "-c", "true"), null, null);
+        long pid = launcher.launchCommand(List.of("sh", "-c", "true"), tempDir, null);
         assertThat(pid).isPositive();
+        long pidNoDirs = launcher.launchCommand(List.of("sh", "-c", "true"), null, null);
+        assertThat(pidNoDirs).isPositive();
     }
 
     @Test

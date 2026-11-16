@@ -233,5 +233,37 @@ class WorktreeTaskExecutorTest {
                 .build()
         );
         assertThat(nullLogPasses.status()).isEqualTo(TaskStatus.COMPLETED);
+
+        // Merge with existing baseCommit/checkpointStash + explicit instruction, and createNewRun with allocation
+        TaskRun populatedExisting = TaskRunMother.builder("TASK-SPI-1")
+            .baseCommit("existing-base")
+            .checkpointStash("existing-stash")
+            .userStory("Old story")
+            .build();
+        when(persistenceService.findByProjectAndTask("proj-spi", "TASK-SPI-1"))
+            .thenReturn(Optional.of(populatedExisting))
+            .thenReturn(Optional.empty());
+        when(persistenceService.saveTask(any(TaskRun.class))).thenReturn(null);
+
+        WorktreeAllocation spiAllocation = WorktreeAllocation.builder()
+            .taskId("TASK-SPI-1")
+            .branch("feature/TASK-SPI-1-alloc")
+            .worktreePath(worktreeDir)
+            .baseCommit("alloc-base")
+            .checkpointStash("alloc-stash")
+            .hydrated(true)
+            .build();
+        executor.executeInWorktree(
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(tempDir)
+                .executionRoot(worktreeDir)
+                .initialState(initial)
+                .allocation(spiAllocation)
+                .instruction("Override story")
+                .targetDir(TargetDir.DEFAULT)
+                .autoPruneOnComplete(false)
+                .build()
+        );
+        executor.persistTaskRun(initial, spiAllocation, "New run story");
     }
 }

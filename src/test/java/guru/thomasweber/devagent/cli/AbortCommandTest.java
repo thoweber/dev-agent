@@ -116,7 +116,8 @@ class AbortCommandTest {
         StateSocketService socketService = new StateSocketService();
         Process sleeper = new ProcessBuilder("sleep", "30").start();
         StringWriter out = new StringWriter();
-        try (AutoCloseable _ = sleeper::destroyForcibly; PrintWriter outWriter = new PrintWriter(out)) {
+        AutoCloseable destroySleeper = sleeper::destroyForcibly;
+        try (destroySleeper; PrintWriter outWriter = new PrintWriter(out)) {
             WorktreeState active = WorktreeStateMother.active("TASK-KILL-1", sleeper.pid())
                 .toBuilder()
                 .branch("feature/TASK-KILL-1-demo")
@@ -242,5 +243,36 @@ class AbortCommandTest {
         assertThat(exitCode).isZero();
         assertThat(Files.readString(tempDir.resolve(".agents/runs/TASK-PERSIST-ONLY.md")))
             .contains("ABORTED");
+
+        // Fallback when persistence throws on find/save and stateSyncService throws
+        when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-ERR-FALLBACK")))
+            .thenThrow(new IllegalStateException("db down"));
+        AbortCommand throwingSyncAbort = new AbortCommand(
+            new StateSocketService(),
+            worktreeService,
+            persistenceService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService() {
+                @Override
+                public void projectToMarkdown(Path repoRoot, TaskRun taskRun) {
+                    throw new IllegalStateException("sync down");
+                }
+            }
+        );
+        assertThat(new CommandLine(throwingSyncAbort).execute("--dir=" + tempDir, "TASK-ERR-FALLBACK")).isZero();
+
+        TaskPersistenceService throwingSavePersistence = mock(TaskPersistenceService.class);
+        when(throwingSavePersistence.findByProjectAndTask(any(String.class), eq("TASK-SAVE-ERR")))
+            .thenReturn(Optional.of(persisted));
+        when(throwingSavePersistence.saveTask(any(TaskRun.class)))
+            .thenThrow(new IllegalStateException("save failed"));
+        AbortCommand saveFailAbort = new AbortCommand(
+            new StateSocketService(),
+            worktreeService,
+            throwingSavePersistence,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService()
+        );
+        assertThat(new CommandLine(saveFailAbort).execute("--dir=" + tempDir, "TASK-SAVE-ERR")).isZero();
     }
 }

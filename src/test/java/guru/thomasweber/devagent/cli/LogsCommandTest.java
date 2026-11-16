@@ -171,7 +171,7 @@ class LogsCommandTest {
 
     @Test
     @DisplayName("Given worker.log without --follow or with live worker finishing asynchronously - when logs executed - then prints complete output")
-    void testLogsWithoutFollowAndLiveFollowTransition() throws IOException, InterruptedException {
+    void testLogsWithoutFollowAndLiveFollowTransition() throws IOException {
         StateSocketService socketService = new StateSocketService();
         socketService.writeHeartbeat(tempDir, WorktreeStateMother.active("TASK-LOG-ONCE", ProcessHandle.current().pid()));
         Path onceLog = socketService.resolveWorkerLogFile(tempDir, "TASK-LOG-ONCE");
@@ -316,5 +316,16 @@ class LogsCommandTest {
         } finally {
             Thread.interrupted();
         }
+
+        // Regular journal fallback without worker.log
+        Path runsDir = Files.createDirectories(tempDir.resolve(".agents/runs"));
+        Files.writeString(runsDir.resolve("TASK-JOURNAL-FALLBACK.md"), "# Journal\nAll steps passed with token ghp_1234567890abcdef1234567890abcdef1234\n");
+        StringWriter journalOut = new StringWriter();
+        CommandLine journalCmd = new CommandLine(new LogsCommand(socketService));
+        journalCmd.setOut(new PrintWriter(journalOut));
+        assertThat(journalCmd.execute("--dir=" + tempDir, "TASK-JOURNAL-FALLBACK")).isZero();
+        assertThat(journalOut.toString())
+            .contains("# Journal", "***REDACTED_CREDENTIAL***")
+            .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234");
     }
 }

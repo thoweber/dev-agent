@@ -135,5 +135,20 @@ class GitExcludeManagerTest {
         assertThatThrownBy(() -> manager.ensureExcluded(repoD, "target-agent"))
             .isInstanceOf(SecurityException.class);
         Files.deleteIfExists(commonFile);
+
+        // Symlinked commonGitDir referenced by commondir + IOException when exclude is a directory
+        Path repoE = Files.createDirectories(tempDir.resolve("repoE"));
+        Path realGitDirE = Files.createDirectories(tempDir.resolve("real-gitdir-e"));
+        Path symCommonDir = tempDir.resolve("sym-commondir-target");
+        Files.createSymbolicLink(symCommonDir, targetDir);
+        Files.writeString(realGitDirE.resolve("commondir"), "../sym-commondir-target\n");
+        Files.writeString(repoE.resolve(".git"), "gitdir: " + realGitDirE + "\n");
+        assertThatThrownBy(() -> manager.ensureExcluded(repoE, "target-agent"))
+            .isInstanceOf(SecurityException.class);
+
+        Path repoDirAsExclude = Files.createDirectories(tempDir.resolve("repoDirExclude"));
+        Files.createDirectories(repoDirAsExclude.resolve(".git/info/exclude"));
+        assertThatThrownBy(() -> manager.ensureExcluded(repoDirAsExclude, "target-agent"))
+            .isInstanceOf(WorkspaceException.class);
     }
 }

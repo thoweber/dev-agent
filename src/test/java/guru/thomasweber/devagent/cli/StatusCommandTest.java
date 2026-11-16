@@ -247,6 +247,36 @@ class StatusCommandTest {
         Path runsDir = Files.createDirectories(tempDir.resolve(".agents/runs"));
         Files.createDirectories(runsDir.resolve("subdir.md"));
         Files.writeString(runsDir.resolve("notes.txt"), "not markdown");
+        Files.writeString(runsDir.resolve("valid-date.md"), """
+            ---
+            task_id: "TASK-DATE-1"
+            status: ""
+            updated_at: "2026-11-16T10:00:00Z"
+            ---
+            Valid timestamp
+            """);
+        Files.writeString(runsDir.resolve("bad-date.md"), """
+            ---
+            task_id: "TASK-BAD-DATE"
+            updated_at: "not-an-instant"
+            ---
+            Invalid timestamp
+            """);
+        Files.writeString(runsDir.resolve("blank-id.md"), """
+            ---
+            task_id: "  "
+            ---
+            Blank id
+            """);
         assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
+        assertThat(out.toString()).contains("TASK-DATE-1", "TASK-BAD-DATE");
+
+        // Empty workspace --json branch
+        Path emptyRepo = Files.createDirectories(tempDir.resolve("empty-json-repo"));
+        StringWriter emptyJsonOut = new StringWriter();
+        CommandLine emptyCmd = new CommandLine(new StatusCommand());
+        emptyCmd.setOut(new PrintWriter(emptyJsonOut));
+        assertThat(emptyCmd.execute("--dir=" + emptyRepo, "--json")).isZero();
+        assertThat(emptyJsonOut.toString()).contains("No active background tasks detected.");
     }
 }

@@ -486,5 +486,19 @@ class ResumeCommandTest {
             .isSuccess()
             .containsAnsiFree("PID 77778");
         assertThat(cl.execute("--dir=" + otherRepo)).isZero();
+
+        // Live PID without pidStartedAt in state.json must block resume
+        Files.deleteIfExists(socketService.resolveStateFile(otherRepo, "TASK-REC-RES"));
+        int liveNoTsExit = cl.execute("--dir=" + otherRepo, "TASK-REC-RES");
+        assertThat(liveNoTsExit).isEqualTo(1);
+
+        // Fallback WorktreeState when socket file does not exist yet on --detach with dead/null PID
+        WorktreeTestFixture.createWorktree(otherRepo, "TASK-NO-SOCK");
+        when(mockPersistence.findByProjectAndTask(any(ProjectId.class), eq("TASK-NO-SOCK")))
+            .thenReturn(Optional.of(TaskRunMother.builder("TASK-NO-SOCK").status(TaskStatus.GREEN_PATCH).pid(null).build()));
+        when(launcher.launchWorker(otherRepo.toAbsolutePath().normalize(), "TASK-NO-SOCK", ""))
+            .thenReturn(77779L);
+        int fallbackExit = cl.execute("--dir=" + otherRepo, "--detach", "TASK-NO-SOCK");
+        assertThatCli(fallbackExit, out.toString()).isSuccess().containsAnsiFree("PID 77779");
     }
 }
