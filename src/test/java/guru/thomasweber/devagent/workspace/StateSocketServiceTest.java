@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.workspace;
 
 import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import org.junit.jupiter.api.DisplayName;
@@ -163,12 +164,9 @@ class StateSocketServiceTest {
 
         WorktreeState matchingPidState = WorktreeStateMother.active("TASK-MATCH", currentPid)
             .toBuilder()
-            .pidStartedAt(StateSocketService.resolvePidStartInstant(currentPid))
+            .pidStartedAt(WorkerProcess.current().startedAt())
             .build();
         assertThat(service.isProcessAlive(matchingPidState)).isTrue();
-        assertThat(StateSocketService.resolvePidStartInstant(null)).isNull();
-        assertThat(StateSocketService.resolvePidStartInstant(0L)).isNull();
-        assertThat(StateSocketService.matchesPidStart(null, null)).isFalse();
         assertThat(service.isProcessAlive(WorktreeStateMother.builder("TASK-ZERO").pid(0L).build())).isFalse();
     }
 }

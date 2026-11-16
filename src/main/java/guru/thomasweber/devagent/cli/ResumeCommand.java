@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.TaskRun;
+import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.workspace.CrashRecoveryDetector;
 import guru.thomasweber.devagent.workspace.DetachedWorkerLauncher;
@@ -191,7 +192,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
 
         TaskRun task = taskOpt.get();
         String validationError = validateTaskEligibility(task, targetTaskId);
-        if (validationError != null) {
+        if (nonNull(validationError)) {
             err.println(CANNOT_RESUME_PREFIX + targetTaskId + ": " + validationError);
             return 1;
         }
@@ -200,16 +201,16 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             Path repoRoot = getWorkspaceRoot();
             String story = Objects.toString(task.userStory(), "");
             long pid = workerLauncher.launchWorker(repoRoot, targetTaskId, story);
-            Instant pidStart = StateSocketService.resolvePidStartInstant(pid);
+            WorkerProcess workerProcess = WorkerProcess.of(pid);
             WorktreeState resumedState = socketService.readState(repoRoot, targetTaskId)
-                .map(existing -> existing.toBuilder().pid(pid).pidStartedAt(pidStart).updatedAt(Instant.now()).lastMessage("Resumed detached worker").build())
+                .map(existing -> existing.toBuilder().pid(workerProcess.pid()).pidStartedAt(workerProcess.startedAt()).updatedAt(Instant.now()).lastMessage("Resumed detached worker").build())
                 .orElseGet(() -> WorktreeState.builder()
                     .taskId(targetTaskId)
                     .projectId(task.projectId())
                     .status(task.status())
                     .phase(task.currentPhase())
-                    .pid(pid)
-                    .pidStartedAt(pidStart)
+                    .pid(workerProcess.pid())
+                    .pidStartedAt(workerProcess.startedAt())
                     .branch(task.branch())
                     .worktreePath(workspaceResolver.resolveWorktreeDir(targetTaskId).toString())
                     .startedAt(task.createdAt())

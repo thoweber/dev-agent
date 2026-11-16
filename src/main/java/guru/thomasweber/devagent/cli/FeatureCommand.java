@@ -6,6 +6,7 @@ import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
@@ -150,14 +151,14 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         String projectId = projectResolver.resolveForPath(repoRoot).idString();
         Instant now = Instant.now();
 
-        long currentPid = ProcessHandle.current().pid();
+        WorkerProcess currentProcess = WorkerProcess.current();
         WorktreeState initialState = WorktreeState.builder()
             .taskId(taskId)
             .projectId(projectId)
             .status(TaskStatus.PLANNING)
             .phase(TaskStatus.PLANNING.name())
-            .pid(currentPid)
-            .pidStartedAt(StateSocketService.resolvePidStartInstant(currentPid))
+            .pid(currentProcess.pid())
+            .pidStartedAt(currentProcess.startedAt())
             .branch(allocation.branch())
             .worktreePath(allocation.worktreePath().toString())
             .startedAt(now)
@@ -182,9 +183,10 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         WorktreeState initialState
     ) {
         long childPid = workerLauncher.launchWorker(repoRoot, allocation.taskId(), instruction);
+        WorkerProcess childProcess = WorkerProcess.of(childPid);
         WorktreeState detachedState = initialState.toBuilder()
-            .pid(childPid)
-            .pidStartedAt(StateSocketService.resolvePidStartInstant(childPid))
+            .pid(childProcess.pid())
+            .pidStartedAt(childProcess.startedAt())
             .updatedAt(Instant.now())
             .lastMessage("Detached worker started (PID " + childPid + ")")
             .build();

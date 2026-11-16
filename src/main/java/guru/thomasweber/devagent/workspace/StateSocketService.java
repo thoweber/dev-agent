@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import guru.thomasweber.devagent.model.TaskId;
+import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeState;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -15,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -35,7 +35,6 @@ import static java.util.Objects.nonNull;
 public class StateSocketService {
 
     private static final Logger LOG = Logger.getLogger(StateSocketService.class);
-    private static final long PID_START_TOLERANCE_SECONDS = 2L;
 
     private final ObjectMapper objectMapper;
     private final SecretRedactionFilter secretFilter;
@@ -131,35 +130,9 @@ public class StateSocketService {
     }
 
     public boolean isProcessAlive(WorktreeState state) {
-        if (isNull(state) || isNull(state.pid()) || state.pid() <= 0) {
-            return false;
-        }
-        return ProcessHandle.of(state.pid())
-            .filter(handle -> matchesPidStart(handle, state.pidStartedAt()))
-            .isPresent();
-    }
-
-    public static Instant resolvePidStartInstant(Long pid) {
-        if (isNull(pid) || pid <= 0) {
-            return null;
-        }
-        return ProcessHandle.of(pid)
-            .flatMap(handle -> handle.info().startInstant())
-            .orElse(null);
-    }
-
-    public static boolean matchesPidStart(ProcessHandle handle, Instant expectedStart) {
-        if (isNull(handle) || !handle.isAlive()) {
-            return false;
-        }
-        if (isNull(expectedStart)) {
-            return true;
-        }
-        Optional<Instant> actualStart = handle.info().startInstant();
-        if (actualStart.isEmpty()) {
-            return true;
-        }
-        return Duration.between(expectedStart, actualStart.get()).abs().toSeconds() <= PID_START_TOLERANCE_SECONDS;
+        return WorkerProcess.fromState(state)
+            .map(WorkerProcess::isAlive)
+            .orElse(false);
     }
 
     private Optional<WorktreeState> readStateFile(Path stateFile) {

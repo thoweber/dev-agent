@@ -4,6 +4,7 @@ import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.workspace.GitWorktreeService;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
@@ -17,12 +18,10 @@ import picocli.CommandLine.Option;
 
 import java.io.PrintWriter;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static java.util.Objects.isNull;
 
@@ -90,7 +89,8 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
         String branch = socketOpt.map(WorktreeState::branch)
             .orElseGet(() -> persistedOpt.map(TaskRun::branch).orElse(null));
 
-        terminateProcess(pid, expectedPidStart);
+        WorkerProcess.from(pid, expectedPidStart)
+            .ifPresent(process -> process.terminateGracefully(Duration.ofMillis(100)));
 
         if (socketOpt.isPresent()) {
             WorktreeState aborted = socketOpt.get().toBuilder()
@@ -106,27 +106,6 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
         worktreeService.removeWorktree(repoRoot, trimmedId, deleteBranch, branch);
 
         return 0;
-    }
-
-    private void terminateProcess(Long pid, Instant expectedStart) {
-        if (isNull(pid) || pid <= 0 || pid == ProcessHandle.current().pid()) {
-            return;
-        }
-        ProcessHandle.of(pid)
-            .filter(handle -> StateSocketService.matchesPidStart(handle, expectedStart))
-            .ifPresent(handle -> {
-                handle.destroy();
-                try {
-                    handle.onExit().get(100L, TimeUnit.MILLISECONDS);
-                } catch (InterruptedException _) {
-                    Thread.currentThread().interrupt();
-                } catch (ExecutionException | TimeoutException _) {
-                    // Process still alive after grace period; fall through to destroyForcibly
-                }
-                if (handle.isAlive()) {
-                    handle.destroyForcibly();
-                }
-            });
     }
 
     private Optional<TaskRun> findPersistedSafely(String projectId, String targetTaskId) {

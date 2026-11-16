@@ -5,6 +5,7 @@ import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
 import guru.thomasweber.devagent.workspace.BackendBuildService;
@@ -135,8 +136,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         Path worktreeDir = resolver.resolveWorktreeDir(taskId);
         Path executionRoot = resolveExecutionRoot(repoRoot, worktreeDir);
         String projectId = projectResolver.resolveForPath(repoRoot).idString();
-        long currentPid = ProcessHandle.current().pid();
-        Instant pidStart = StateSocketService.resolvePidStartInstant(currentPid);
+        WorkerProcess currentProcess = WorkerProcess.current();
         Instant now = Instant.now();
         DevAgentConfig config = configLoader.loadForWorkspace(repoRoot);
 
@@ -146,8 +146,8 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             .projectId(projectId)
             .status(TaskStatus.PLANNING)
             .phase(TaskStatus.PLANNING.name())
-            .pid(currentPid)
-            .pidStartedAt(pidStart)
+            .pid(currentProcess.pid())
+            .pidStartedAt(currentProcess.startedAt())
             .branch("feature/" + taskId)
             .worktreePath(executionRoot.toString())
             .startedAt(now)
@@ -158,14 +158,14 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         WorktreeState runningState = baseState.toBuilder()
             .status(TaskStatus.PLANNING)
             .phase(TaskStatus.PLANNING.name())
-            .pid(currentPid)
-            .pidStartedAt(pidStart)
+            .pid(currentProcess.pid())
+            .pidStartedAt(currentProcess.startedAt())
             .worktreePath(executionRoot.toString())
             .updatedAt(Instant.now())
             .lastMessage("Worker running in isolated worktree")
             .build();
         socketService.writeHeartbeat(repoRoot, runningState);
-        out.println("[dev-agent] Worker started for task " + taskId + " (PID " + currentPid + ")");
+        out.println("[dev-agent] Worker started for task " + taskId + " (PID " + currentProcess.pid() + ")");
 
         WorktreeState terminalState;
         try {
