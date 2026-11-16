@@ -45,9 +45,10 @@ public class GitExcludeManager {
                 throw new SecurityException("Symbolic link detected in Git exclude path: " + excludeFile);
             }
 
-            List<String> existingLines = Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)
-                ? Files.readAllLines(excludeFile)
-                : List.of();
+            List<String> existingLines = List.of();
+            if (Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
+                existingLines = Files.readAllLines(excludeFile);
+            }
             Set<String> present = new LinkedHashSet<>(existingLines);
             List<String> updated = new ArrayList<>(existingLines);
             boolean changed = false;
@@ -107,9 +108,10 @@ public class GitExcludeManager {
             if (Files.isSymbolicLink(commonDirFile)) {
                 throw new SecurityException("Symbolic link detected in Git commondir path: " + commonDirFile);
             }
-            Path commonGitDir = Files.isRegularFile(commonDirFile)
-                ? gitDir.resolve(Files.readString(commonDirFile).trim()).normalize()
-                : gitDir;
+            Path commonGitDir = gitDir;
+            if (Files.isRegularFile(commonDirFile)) {
+                commonGitDir = gitDir.resolve(Files.readString(commonDirFile).trim()).normalize();
+            }
             if (Files.isSymbolicLink(commonGitDir)) {
                 throw new SecurityException("Symbolic link detected in Git common dir path: " + commonGitDir);
             }
@@ -131,6 +133,9 @@ public class GitExcludeManager {
             return DEFAULT_TARGET_ENTRY;
         }
         String trimmed = targetDir.trim().replace('\\', '/');
-        return trimmed.endsWith("/") ? trimmed : trimmed + "/";
+        if (trimmed.endsWith("/")) {
+            return trimmed;
+        }
+        return trimmed + "/";
     }
 }

@@ -66,8 +66,8 @@ public class HierarchicalMemoryStore implements ChatMemory {
 
     public void pinTaskSpecification(String story, String planJson) {
         String content = String.format("### TASK SPECIFICATION%n%s%n%n### APPROVED IMPLEMENTATION PLAN%n%s",
-            story != null ? story : "No story specified",
-            planJson != null ? planJson : "{}");
+            Objects.requireNonNullElse(story, "No story specified"),
+            Objects.requireNonNullElse(planJson, "{}"));
         this.pinnedTaskSpec.set(new UserMessage(content));
     }
 

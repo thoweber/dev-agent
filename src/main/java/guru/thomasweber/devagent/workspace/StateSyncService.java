@@ -23,7 +23,11 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
+import java.util.Objects;
 import java.util.Optional;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Service that synchronizes database transitions to human-readable Markdown run journals.
@@ -91,18 +95,19 @@ public class StateSyncService {
 
     @Transactional
     public void onStateTransition(@Observes TaskStateChangeEvent event) {
-        SanitizedOutput sanitizedSummary = event.stepSummary() != null && !event.stepSummary().isBlank()
-            ? secretFilter.sanitize(event.stepSummary())
-            : null;
+        SanitizedOutput sanitizedSummary = null;
+        if (nonNull(event.stepSummary()) && !event.stepSummary().isBlank()) {
+            sanitizedSummary = secretFilter.sanitize(event.stepSummary());
+        }
 
         TaskRun taskRun = persistenceService.recordStateChange(event, sanitizedSummary);
-        if (taskRun != null) {
+        if (nonNull(taskRun)) {
             scheduleMarkdownProjection(taskRun);
         }
     }
 
     private void scheduleMarkdownProjection(TaskRun taskRun) {
-        if (registryInstance != null && registryInstance.isResolvable()) {
+        if (nonNull(registryInstance) && registryInstance.isResolvable()) {
             try {
                 TransactionSynchronizationRegistry registry = registryInstance.get();
                 if (registry.getTransactionStatus() == Status.STATUS_ACTIVE) {
@@ -135,6 +140,10 @@ public class StateSyncService {
     public void projectToMarkdown(TaskRun taskRun) {
         validateTaskId(taskRun.taskId());
 
+        String formattedUpdatedAt = "unknown";
+        if (nonNull(taskRun.updatedAt())) {
+            formattedUpdatedAt = DateTimeFormatter.ISO_INSTANT.format(taskRun.updatedAt());
+        }
         String markdown = String.format("""
             ---
             task_id: "%s"
@@ -166,15 +175,15 @@ public class StateSyncService {
             taskRun.projectId(),
             taskRun.status(),
             taskRun.currentPhase(),
-            safe(taskRun.branch(), "unassigned"),
-            safe(taskRun.baseCommit(), "HEAD"),
-            safe(taskRun.checkpointStash(), "none"),
-            taskRun.pid() != null ? taskRun.pid() : 0L,
+            Objects.requireNonNullElse(taskRun.branch(), "unassigned"),
+            Objects.requireNonNullElse(taskRun.baseCommit(), "HEAD"),
+            Objects.requireNonNullElse(taskRun.checkpointStash(), "none"),
+            Objects.requireNonNullElse(taskRun.pid(), 0L),
             taskRun.retryCount(),
-            taskRun.updatedAt() != null ? DateTimeFormatter.ISO_INSTANT.format(taskRun.updatedAt()) : "unknown",
+            formattedUpdatedAt,
             taskRun.taskId(),
-            safe(taskRun.userStory(), "None specified"),
-            safe(taskRun.approvedPlanJson(), "{}"),
+            Objects.requireNonNullElse(taskRun.userStory(), "None specified"),
+            Objects.requireNonNullElse(taskRun.approvedPlanJson(), "{}"),
             renderStepsHistory(taskRun)
         );
 
@@ -200,7 +209,7 @@ public class StateSyncService {
     }
 
     private void mirrorStateSocketIfWorktreeExists(Path repoRoot, TaskRun taskRun) {
-        if (stateSocketService == null) {
+        if (isNull(stateSocketService)) {
             return;
         }
         Path worktreeDir = repoRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskRun.taskId());
@@ -215,8 +224,8 @@ public class StateSyncService {
             .phase(taskRun.currentPhase())
             .tokens(existing.map(WorktreeState::tokens).orElse(0L))
             .cost(existing.map(WorktreeState::cost).orElse(null))
-            .pid(taskRun.pid() != null ? taskRun.pid() : existing.map(WorktreeState::pid).orElse(null))
-            .branch(taskRun.branch() != null ? taskRun.branch() : existing.map(WorktreeState::branch).orElse(null))
+            .pid(Objects.requireNonNullElseGet(taskRun.pid(), () -> existing.map(WorktreeState::pid).orElse(null)))
+            .branch(Objects.requireNonNullElseGet(taskRun.branch(), () -> existing.map(WorktreeState::branch).orElse(null)))
             .worktreePath(worktreeDir.toString())
             .startedAt(existing.map(WorktreeState::startedAt).orElse(taskRun.createdAt()))
             .updatedAt(taskRun.updatedAt())
@@ -250,16 +259,20 @@ public class StateSyncService {
     }
 
     private String renderStepsHistory(TaskRun taskRun) {
-        if (taskRun.steps() == null || taskRun.steps().isEmpty()) {
+        if (isNull(taskRun.steps()) || taskRun.steps().isEmpty()) {
             return "- No steps executed yet.";
         }
         StringBuilder sb = new StringBuilder();
         for (StepAudit step : taskRun.steps()) {
+            String marker = " ";
+            if (step.exitCode() == 0) {
+                marker = "x";
+            }
             sb.append(String.format("- [%s] **%s** (%dms): %s%n",
-                step.exitCode() == 0 ? "x" : " ",
+                marker,
                 step.toolName(),
                 step.durationMs(),
-                step.outputSummary() != null ? step.outputSummary() : ""
+                Objects.toString(step.outputSummary(), "")
             ));
         }
         return sb.toString();
@@ -267,9 +280,5 @@ public class StateSyncService {
 
     private void validateTaskId(String taskId) {
         StateSocketService.validateTaskId(taskId);
-    }
-
-    private String safe(String value, String fallback) {
-        return value != null ? value : fallback;
     }
 }

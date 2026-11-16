@@ -19,7 +19,10 @@ public final class WorktreeExecutionContext {
     }
 
     public static Optional<Path> currentWorktreeRoot() {
-        return ACTIVE_WORKTREE_ROOT.isBound() ? Optional.of(ACTIVE_WORKTREE_ROOT.get()) : Optional.empty();
+        if (ACTIVE_WORKTREE_ROOT.isBound()) {
+            return Optional.of(ACTIVE_WORKTREE_ROOT.get());
+        }
+        return Optional.empty();
     }
 
     public static <T> T runInWorktree(Path worktreeRoot, Callable<T> action) throws Exception {

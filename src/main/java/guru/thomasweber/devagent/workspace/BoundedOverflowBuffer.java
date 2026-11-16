@@ -137,7 +137,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     private Path createSecureTempFile() throws IOException {
-        Path parent = tempDirRoot != null ? tempDirRoot : Path.of(System.getProperty("java.io.tmpdir"));
+        Path parent = Objects.requireNonNullElseGet(tempDirRoot, () -> Path.of(System.getProperty("java.io.tmpdir")));
         try {
             FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
                 EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)

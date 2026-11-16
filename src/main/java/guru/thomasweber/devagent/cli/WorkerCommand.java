@@ -26,10 +26,11 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
-import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Hidden Picocli subcommand invoked by {@link guru.thomasweber.devagent.workspace.DetachedWorkerLauncher}
@@ -132,7 +133,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         socketService.resolveStateFile(repoRoot, taskId);
 
         Path worktreeDir = resolver.resolveWorktreeDir(taskId);
-        Path executionRoot = Files.isDirectory(worktreeDir) ? worktreeDir : repoRoot;
+        Path executionRoot = resolveExecutionRoot(repoRoot, worktreeDir);
         String projectId = projectResolver.resolveForPath(repoRoot).idString();
         long currentPid = ProcessHandle.current().pid();
         Instant pidStart = StateSocketService.resolvePidStartInstant(currentPid);
@@ -191,7 +192,10 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             worktreeService.removeWorktree(repoRoot, taskId, false, terminalState.branch());
         }
 
-        return terminalState.status() == TaskStatus.COMPLETED ? 0 : 1;
+        if (terminalState.status() == TaskStatus.COMPLETED) {
+            return 0;
+        }
+        return 1;
     }
 
     private WorktreeState executeVerificationPhase(
@@ -211,7 +215,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         if (BackendBuildService.hasBackendBuildMarker(executionRoot)) {
             String targetDir = config.build().backend().targetDir();
             SanitizedLog log = buildService.compile(executionRoot, null, targetDir);
-            if (!isNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
+            if (nonNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
                 return verifying.toBuilder()
                     .status(TaskStatus.FAILED)
                     .phase(TaskStatus.FAILED.name())
@@ -236,14 +240,20 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
                 terminalState.taskId()
             );
             TaskRun run = existingOpt
-                .map(existing -> existing.toBuilder()
-                    .status(terminalState.status())
-                    .currentPhase(terminalState.phase())
-                    .branch(!isNull(terminalState.branch()) ? terminalState.branch() : existing.branch())
-                    .pid(terminalState.pid())
-                    .updatedAt(terminalState.updatedAt())
-                    .userStory(!isNull(instruction) && !instruction.isBlank() ? instruction : existing.userStory())
-                    .build())
+                .map(existing -> {
+                    String resolvedStory = existing.userStory();
+                    if (nonNull(instruction) && !instruction.isBlank()) {
+                        resolvedStory = instruction;
+                    }
+                    return existing.toBuilder()
+                        .status(terminalState.status())
+                        .currentPhase(terminalState.phase())
+                        .branch(Objects.requireNonNullElse(terminalState.branch(), existing.branch()))
+                        .pid(terminalState.pid())
+                        .updatedAt(terminalState.updatedAt())
+                        .userStory(resolvedStory)
+                        .build();
+                })
                 .orElseGet(() -> TaskRun.builder()
                     .projectId(terminalState.projectId())
                     .taskId(terminalState.taskId())
@@ -256,12 +266,19 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
                     .userStory(instruction)
                     .build());
             TaskRun saved = persistenceService.saveTask(run);
-            if (!isNull(saved)) {
+            if (nonNull(saved)) {
                 stateSyncService.projectToMarkdown(saved);
             }
         } catch (RuntimeException _) {
             // Non-blocking fallback when persistence runtime is unavailable
         }
+    }
+
+    private Path resolveExecutionRoot(Path repoRoot, Path worktreeDir) {
+        if (Files.isDirectory(worktreeDir)) {
+            return worktreeDir;
+        }
+        return repoRoot;
     }
 
     public String getTaskId() {

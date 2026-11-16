@@ -19,6 +19,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Stateless factory creating per-CLI-invocation concurrency gates ({@link PermitGate})
@@ -133,7 +134,7 @@ public class LocalWorkerLimiter {
         }
 
         private void awaitQueuedPermit(Path repoRoot, WorktreeState candidateState) {
-            if (!isNull(repoRoot) && !isNull(candidateState)) {
+            if (nonNull(repoRoot) && nonNull(candidateState)) {
                 WorktreeState queuedState = candidateState.toBuilder()
                     .status(TaskStatus.QUEUED)
                     .phase(TaskStatus.QUEUED.name())

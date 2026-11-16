@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -168,7 +169,7 @@ public class AdrParser {
         List<TextSegment> segments = new ArrayList<>();
         for (DocumentSection section : parsed.sections()) {
             Map<String, Object> metadata = new HashMap<>();
-            metadata.put("path", filePath != null ? filePath.toString() : "");
+            metadata.put("path", Objects.toString(filePath, ""));
             metadata.put(METADATA_ID, docId);
             metadata.put(METADATA_TITLE, title);
             metadata.put("section", section.heading());

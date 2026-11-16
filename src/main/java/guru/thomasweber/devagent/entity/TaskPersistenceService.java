@@ -15,6 +15,7 @@ import guru.thomasweber.devagent.workspace.SanitizedOutput;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -129,7 +130,7 @@ public class TaskPersistenceService {
             entity = new TaskRunEntity();
             entity.projectId = taskRun.projectId();
             entity.taskId = taskRun.taskId();
-            entity.createdAt = taskRun.createdAt() != null ? taskRun.createdAt() : Instant.now();
+            entity.createdAt = Objects.requireNonNullElseGet(taskRun.createdAt(), Instant::now);
         }
         entity.status = taskRun.status();
         entity.currentPhase = taskRun.currentPhase();
@@ -138,7 +139,7 @@ public class TaskPersistenceService {
         entity.checkpointStash = taskRun.checkpointStash();
         entity.pid = taskRun.pid();
         entity.retryCount = taskRun.retryCount();
-        entity.updatedAt = taskRun.updatedAt() != null ? taskRun.updatedAt() : Instant.now();
+        entity.updatedAt = Objects.requireNonNullElseGet(taskRun.updatedAt(), Instant::now);
         entity.userStory = taskRun.userStory();
         entity.approvedPlanJson = taskRun.approvedPlanJson();
         persistEntity(entity);

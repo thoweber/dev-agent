@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.function.Function;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Cross-platform, zero-JNI desktop alert dispatcher using {@link SubprocessExecutor}
@@ -66,9 +67,10 @@ public class DesktopAlertService {
         }
 
         String title = "dev-agent: " + state.taskId() + " " + state.status().name();
-        String rawBody = (!isNull(state.lastMessage()) && !state.lastMessage().isBlank())
-            ? state.lastMessage()
-            : "Task finished with status " + state.status().name();
+        String rawBody = "Task finished with status " + state.status().name();
+        if (nonNull(state.lastMessage()) && !state.lastMessage().isBlank()) {
+            rawBody = state.lastMessage();
+        }
         String sanitizedTitle = secretFilter.sanitize(title).value();
         String sanitizedBody = secretFilter.sanitize(rawBody).value();
 
@@ -84,7 +86,10 @@ public class DesktopAlertService {
     }
 
     private boolean shouldNotifyStatus(TaskStatus status, DevAgentConfig.NotificationsConfig notifications) {
-        return status == TaskStatus.COMPLETED ? notifications.onSuccess() : notifications.onFailure();
+        if (status == TaskStatus.COMPLETED) {
+            return notifications.onSuccess();
+        }
+        return notifications.onFailure();
     }
 
     private List<String> buildPlatformCommand(TaskStatus status, String title, String body) {
@@ -110,7 +115,10 @@ public class DesktopAlertService {
             LOG.debug("Skipping desktop notification in headless Linux session");
             return List.of();
         }
-        String urgency = (status == TaskStatus.COMPLETED) ? "normal" : "critical";
+        String urgency = "critical";
+        if (status == TaskStatus.COMPLETED) {
+            urgency = "normal";
+        }
         return List.of("notify-send", "--app-name=dev-agent", "--urgency=" + urgency, title, body);
     }
 
@@ -120,7 +128,7 @@ public class DesktopAlertService {
 
     private boolean isSet(String envKey) {
         String value = envLookup.apply(envKey);
-        return !isNull(value) && !value.isBlank();
+        return nonNull(value) && !value.isBlank();
     }
 
     private String escapeAppleScript(String value) {

@@ -21,8 +21,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Dependent
 @Unremovable
@@ -94,7 +98,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
         PrintWriter out = getOut();
         PrintWriter err = getErr();
 
-        if (taskId == null || taskId.isBlank()) {
+        if (isNull(taskId) || taskId.isBlank()) {
             return handleAutoResume(out);
         }
         return handleExplicitResume(out, err, taskId.trim());
@@ -117,7 +121,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
     }
 
     private Integer promptSingleCandidate(PrintWriter out, TaskRun task) {
-        String phase = task.currentPhase() != null ? task.currentPhase() : task.status().name();
+        String phase = Objects.requireNonNullElseGet(task.currentPhase(), () -> task.status().name());
         out.println("[dev-agent] Found interrupted task " + task.taskId() + " in phase [" + phase + "].");
 
         if (!isInteractive()) {
@@ -129,7 +133,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
         out.flush();
         try {
             String line = getIn().readLine();
-            if (line != null && line.trim().equalsIgnoreCase("y")) {
+            if (nonNull(line) && line.trim().equalsIgnoreCase("y")) {
                 out.println(RESUMING_TASK_PREFIX + task.taskId());
                 return 0;
             }
@@ -160,7 +164,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
         out.flush();
         try {
             String line = getIn().readLine();
-            if (line != null && !line.trim().equalsIgnoreCase("q")) {
+            if (nonNull(line) && !line.trim().equalsIgnoreCase("q")) {
                 int idx = Integer.parseInt(line.trim()) - 1;
                 if (idx >= 0 && idx < candidates.size()) {
                     out.println(RESUMING_TASK_PREFIX + candidates.get(idx).taskId());
@@ -194,7 +198,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
 
         if (detach) {
             Path repoRoot = getWorkspaceRoot();
-            String story = task.userStory() != null ? task.userStory() : "";
+            String story = Objects.toString(task.userStory(), "");
             long pid = workerLauncher.launchWorker(repoRoot, targetTaskId, story);
             Instant pidStart = StateSocketService.resolvePidStartInstant(pid);
             WorktreeState resumedState = socketService.readState(repoRoot, targetTaskId)
@@ -223,15 +227,16 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
     }
 
     private String validateTaskEligibility(TaskRun task, String targetTaskId) {
-        if (task.status() != null && task.status().isTerminal()) {
+        if (nonNull(task.status()) && task.status().isTerminal()) {
             return "Task has already completed with status " + task.status();
         }
-        if (task.pid() != null && ProcessHandle.of(task.pid()).isPresent()) {
+        if (nonNull(task.pid()) && ProcessHandle.of(task.pid()).isPresent()) {
             return "Process (PID " + task.pid() + ") is still actively running.";
         }
         Path worktreeDir = workspaceResolver.resolveWorktreeDir(targetTaskId);
-        return Files.isDirectory(worktreeDir)
-            ? null
-            : "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.";
+        if (Files.isDirectory(worktreeDir)) {
+            return null;
+        }
+        return "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.";
     }
 }

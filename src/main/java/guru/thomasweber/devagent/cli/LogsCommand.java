@@ -21,6 +21,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Dependent
 @Unremovable
@@ -92,7 +93,7 @@ public class LogsCommand extends BaseTaskCommand {
         while (!Thread.currentThread().isInterrupted()) {
             Optional<WorktreeState> stateOpt = socketService.readState(repoRoot, taskId.trim());
             boolean done = stateOpt.isEmpty()
-                || (!isNull(stateOpt.get().status()) && stateOpt.get().status().isTerminal())
+                || (nonNull(stateOpt.get().status()) && stateOpt.get().status().isTerminal())
                 || !socketService.isProcessAlive(stateOpt.get());
 
             offset = readAndPrintChunk(out, workerLog, offset);
@@ -111,7 +112,10 @@ public class LogsCommand extends BaseTaskCommand {
     private long readAndPrintChunk(PrintWriter out, Path file, long offset) {
         try (SeekableByteChannel channel = Files.newByteChannel(file, StandardOpenOption.READ)) {
             long size = channel.size();
-            long effectiveOffset = size < offset ? 0L : offset;
+            long effectiveOffset = offset;
+            if (size < offset) {
+                effectiveOffset = 0L;
+            }
             if (size <= effectiveOffset) {
                 return effectiveOffset;
             }

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * Axis 1 SPI implementation for Maven backend build tooling execution, command synthesis,
@@ -34,7 +35,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
 
     @Inject
     public MavenBuildSystem(MavenOutputParser outputParser) {
-        this.outputParser = outputParser != null ? outputParser : new MavenOutputParser();
+        this.outputParser = Objects.requireNonNullElseGet(outputParser, MavenOutputParser::new);
     }
 
     public MavenBuildSystem() {

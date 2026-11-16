@@ -9,8 +9,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Launches detached background worker OS processes for asynchronous task execution,
@@ -36,13 +38,16 @@ public class DetachedWorkerLauncher {
         }
         Path logFile = socketService.resolveWorkerLogFile(repoRoot, taskId);
         Path worktreeDir = logFile.getParent();
-        Path workingDir = (!isNull(worktreeDir) && Files.isDirectory(worktreeDir)) ? worktreeDir : repoRoot;
+        Path workingDir = repoRoot;
+        if (nonNull(worktreeDir) && Files.isDirectory(worktreeDir)) {
+            workingDir = worktreeDir;
+        }
         List<String> command = buildWorkerCommand(repoRoot, taskId, instruction);
         return launchCommand(command, workingDir, logFile);
     }
 
     public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction) {
-        String effectiveInstruction = !isNull(instruction) ? instruction : "";
+        String effectiveInstruction = Objects.requireNonNullElse(instruction, "");
         List<String> command = new ArrayList<>();
         String currentExecutable = ProcessHandle.current().info().command().orElse("java");
         String exeName = Path.of(currentExecutable).getFileName().toString().toLowerCase();
@@ -76,14 +81,14 @@ public class DetachedWorkerLauncher {
             throw new IllegalArgumentException("command must not be empty");
         }
         try {
-            if (!isNull(logFile) && !isNull(logFile.getParent())) {
+            if (nonNull(logFile) && nonNull(logFile.getParent())) {
                 Files.createDirectories(logFile.getParent());
             }
             ProcessBuilder pb = new ProcessBuilder(command);
-            if (!isNull(workingDir)) {
+            if (nonNull(workingDir)) {
                 pb.directory(workingDir.toFile());
             }
-            if (!isNull(logFile)) {
+            if (nonNull(logFile)) {
                 pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
                 pb.redirectErrorStream(true);
             }

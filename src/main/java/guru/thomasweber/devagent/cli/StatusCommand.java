@@ -26,10 +26,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Dependent
 @Unremovable
@@ -60,7 +62,7 @@ public class StatusCommand extends BaseAgentCommand {
     ) {
         this.socketService = socketService;
         this.markdownParserService = markdownParserService;
-        this.objectMapper = !isNull(objectMapper) ? objectMapper : StateSocketService.createDefaultObjectMapper();
+        this.objectMapper = Objects.requireNonNullElseGet(objectMapper, StateSocketService::createDefaultObjectMapper);
     }
 
     public StatusCommand(StateSocketService socketService, MarkdownParserService markdownParserService) {
@@ -91,6 +93,10 @@ public class StatusCommand extends BaseAgentCommand {
 
         for (WorktreeState state : tasks) {
             String liveness = resolveLivenessLabel(state);
+            String formattedCost = "0";
+            if (nonNull(state.cost())) {
+                formattedCost = state.cost().toPlainString();
+            }
             out.printf(
                 "[dev-agent] %s | %s (%s) | phase=%s | tokens=%d | cost=$%s | branch=%s%n",
                 state.taskId(),
@@ -98,8 +104,8 @@ public class StatusCommand extends BaseAgentCommand {
                 liveness,
                 state.phase(),
                 state.tokens(),
-                state.cost() != null ? state.cost().toPlainString() : "0",
-                state.branch() != null ? state.branch() : "unassigned"
+                formattedCost,
+                Objects.requireNonNullElse(state.branch(), "unassigned")
             );
         }
     }
@@ -107,7 +113,7 @@ public class StatusCommand extends BaseAgentCommand {
     private List<WorktreeState> collectTasks(Path repoRoot) {
         Map<String, WorktreeState> byId = new LinkedHashMap<>();
         for (WorktreeState socketState : socketService.readAllStates(repoRoot)) {
-            if (!isNull(socketState.taskId())) {
+            if (nonNull(socketState.taskId())) {
                 byId.put(socketState.taskId(), socketState);
             }
         }
@@ -150,7 +156,7 @@ public class StatusCommand extends BaseAgentCommand {
                 .taskId(taskId)
                 .projectId(projectId)
                 .status(status)
-                .phase(phase != null ? phase : status.name())
+                .phase(Objects.requireNonNullElseGet(phase, status::name))
                 .cost(BigDecimal.ZERO)
                 .branch(branch)
                 .updatedAt(updatedAt)
@@ -162,7 +168,10 @@ public class StatusCommand extends BaseAgentCommand {
 
     private String firstMeta(Map<String, List<String>> meta, String key) {
         List<String> values = meta.get(key);
-        return (!isNull(values) && !values.isEmpty()) ? values.getFirst() : null;
+        if (nonNull(values) && !values.isEmpty()) {
+            return values.getFirst();
+        }
+        return null;
     }
 
     private TaskStatus parseStatus(String raw) {
@@ -191,10 +200,13 @@ public class StatusCommand extends BaseAgentCommand {
         if (state.status() == TaskStatus.QUEUED) {
             return "QUEUED";
         }
-        if (!isNull(state.status()) && state.status().isTerminal()) {
+        if (nonNull(state.status()) && state.status().isTerminal()) {
             return state.status().name();
         }
-        return socketService.isProcessAlive(state) ? "RUNNING pid=" + state.pid() : "STALE";
+        if (socketService.isProcessAlive(state)) {
+            return "RUNNING pid=" + state.pid();
+        }
+        return "STALE";
     }
 
     private void printJson(PrintWriter out, List<WorktreeState> tasks) {

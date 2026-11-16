@@ -11,6 +11,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Deterministic cache key generator for Architectural Gatekeeper evaluations (ADR-009).
@@ -55,8 +56,8 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
 
     private static String formatRecordItem(Object item) {
         if (item instanceof ArchitecturalRecord rec) {
-            String summary = rec.summary() != null ? rec.summary().strip() : "";
-            String content = rec.content() != null ? rec.content().strip() : "";
+            String summary = Objects.toString(rec.summary(), "").strip();
+            String content = Objects.toString(rec.content(), "").strip();
             return frame(String.valueOf(rec.id()))
                 + frame(String.valueOf(rec.title()))
                 + frame(String.valueOf(rec.status()))

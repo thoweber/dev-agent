@@ -33,6 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Dependent
 @Unremovable
@@ -218,7 +219,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
 
                 if (BackendBuildService.hasBackendBuildMarker(allocation.worktreePath())) {
                     SanitizedLog log = buildService.compile(allocation.worktreePath(), null, targetDir);
-                    if (!isNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
+                    if (nonNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
                         return verifying.toBuilder()
                             .status(TaskStatus.FAILED)
                             .phase(TaskStatus.FAILED.name())
@@ -250,7 +251,10 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
             worktreeService.removeWorktree(repoRoot, allocation.taskId(), false, allocation.branch());
         }
         out.println("[dev-agent] Task " + allocation.taskId() + " finished with status: " + terminalState.status());
-        return terminalState.status() == TaskStatus.COMPLETED ? 0 : 1;
+        if (terminalState.status() == TaskStatus.COMPLETED) {
+            return 0;
+        }
+        return 1;
     }
 
     private void saveTaskRunSafely(WorktreeState state, WorktreeAllocation allocation) {
@@ -269,7 +273,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
                 .userStory(instruction)
                 .build();
             TaskRun saved = persistenceService.saveTask(run);
-            if (!isNull(saved)) {
+            if (nonNull(saved)) {
                 stateSyncService.projectToMarkdown(saved);
             }
         } catch (RuntimeException _) {

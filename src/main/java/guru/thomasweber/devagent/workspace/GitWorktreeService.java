@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Manages dedicated Git worktrees under {@code .git/dev-agent-worktrees/<task-id>/},
@@ -67,13 +68,18 @@ public class GitWorktreeService {
         StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
 
         String baseCommit = resolveHeadCommit(canonicalRoot);
-        String template = !isNull(isolation) ? isolation.branchTemplate() : "feature/{task-id}-{story-slug}";
+        String template = "feature/{task-id}-{story-slug}";
+        if (nonNull(isolation)) {
+            template = isolation.branchTemplate();
+        }
         String branchName = renderBranchName(template, taskId, storySlug);
 
         createOrAttachWorktree(canonicalRoot, worktreeDir, branchName, baseCommit);
 
-        boolean autoStash = isNull(isolation) || isolation.autoStashUncommitted();
-        String checkpointStash = autoStash ? hydrateUncommittedChanges(canonicalRoot, worktreeDir) : null;
+        String checkpointStash = null;
+        if (isNull(isolation) || isolation.autoStashUncommitted()) {
+            checkpointStash = hydrateUncommittedChanges(canonicalRoot, worktreeDir);
+        }
 
         return WorktreeAllocation.builder()
             .taskId(taskId)
@@ -113,7 +119,10 @@ public class GitWorktreeService {
         if (!reset.isSuccess()) {
             throw new WorkspaceException("Failed to reset worktree to " + baseCommit + ": " + reset.stdErr());
         }
-        String effectiveTarget = (!isNull(targetDir) && !targetDir.isBlank()) ? targetDir.trim() : BackendBuildService.DEFAULT_TARGET_DIR;
+        String effectiveTarget = BackendBuildService.DEFAULT_TARGET_DIR;
+        if (nonNull(targetDir) && !targetDir.isBlank()) {
+            effectiveTarget = targetDir.trim();
+        }
         ProcessResult clean = subprocessExecutor.execute(
             List.of("git", "clean", "-fd", "-e", "state.json", "-e", "worker.log", "-e", effectiveTarget, "-e", ".cache-agent"),
             worktreePath,
@@ -140,7 +149,7 @@ public class GitWorktreeService {
         }
         subprocessExecutor.execute(List.of("git", "worktree", "prune"), canonicalRoot, GIT_TIMEOUT);
 
-        if (deleteBranch && !isNull(branchName) && !branchName.isBlank()) {
+        if (deleteBranch && nonNull(branchName) && !branchName.isBlank()) {
             ProcessResult branchDelete = subprocessExecutor.execute(
                 List.of("git", "branch", "-D", branchName),
                 canonicalRoot,
@@ -191,9 +200,12 @@ public class GitWorktreeService {
             GIT_TIMEOUT
         );
 
-        List<String> cmd = branchCheck.isSuccess()
-            ? List.of("git", "worktree", "add", worktreeDir.toString(), branchName)
-            : List.of("git", "worktree", "add", "-b", branchName, worktreeDir.toString(), baseCommit);
+        List<String> cmd;
+        if (branchCheck.isSuccess()) {
+            cmd = List.of("git", "worktree", "add", worktreeDir.toString(), branchName);
+        } else {
+            cmd = List.of("git", "worktree", "add", "-b", branchName, worktreeDir.toString(), baseCommit);
+        }
 
         ProcessResult addResult = subprocessExecutor.execute(cmd, repoRoot, GIT_TIMEOUT);
         if (!addResult.isSuccess()) {
@@ -247,7 +259,10 @@ public class GitWorktreeService {
     }
 
     private String renderBranchName(String template, String taskId, String storySlug) {
-        String effectiveTemplate = (!isNull(template) && !template.isBlank()) ? template : "feature/{task-id}-{story-slug}";
+        String effectiveTemplate = "feature/{task-id}-{story-slug}";
+        if (nonNull(template) && !template.isBlank()) {
+            effectiveTemplate = template;
+        }
         String sanitizedSlug = sanitizeSlug(storySlug);
         return effectiveTemplate
             .replace("{task-id}", taskId)
@@ -264,6 +279,9 @@ public class GitWorktreeService {
         if (normalized.isEmpty()) {
             return "task";
         }
-        return normalized.length() > MAX_SLUG_LENGTH ? normalized.substring(0, MAX_SLUG_LENGTH).replaceAll("-+$", "") : normalized;
+        if (normalized.length() > MAX_SLUG_LENGTH) {
+            return normalized.substring(0, MAX_SLUG_LENGTH).replaceAll("-+$", "");
+        }
+        return normalized;
     }
 }

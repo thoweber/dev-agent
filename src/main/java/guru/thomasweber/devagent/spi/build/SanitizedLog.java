@@ -3,6 +3,9 @@ package guru.thomasweber.devagent.spi.build;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.Builder;
 import java.util.List;
+import java.util.Objects;
+
+import static java.util.Objects.nonNull;
 
 /**
  * Encapsulates filtered build/test output stripped of extraneous downloader
@@ -18,9 +21,13 @@ public record SanitizedLog(
     String cleanStderr
 ) {
     public SanitizedLog {
-        errorLines = (errorLines != null) ? List.copyOf(errorLines) : List.of();
-        cleanStdout = (cleanStdout != null) ? cleanStdout : "";
-        cleanStderr = (cleanStderr != null) ? cleanStderr : "";
+        if (nonNull(errorLines)) {
+            errorLines = List.copyOf(errorLines);
+        } else {
+            errorLines = List.of();
+        }
+        cleanStdout = Objects.toString(cleanStdout, "");
+        cleanStderr = Objects.toString(cleanStderr, "");
     }
 
     public boolean hasErrors() {

@@ -12,6 +12,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Application service orchestrating backend build execution across dynamic build systems (Axis 1 SPI).
@@ -65,8 +69,11 @@ public class BackendBuildService {
      * @return SanitizedLog containing exit code, clean stdout/stderr, and isolated error lines
      */
     public SanitizedLog compile(Path projectRoot, String modulePath, String targetDir) {
-        Path effectiveRoot = (projectRoot != null) ? projectRoot : resolveActiveRoot();
-        String effectiveTarget = (targetDir != null && !targetDir.isBlank()) ? targetDir : DEFAULT_TARGET_DIR;
+        Path effectiveRoot = Objects.requireNonNullElseGet(projectRoot, this::resolveActiveRoot);
+        String effectiveTarget = DEFAULT_TARGET_DIR;
+        if (nonNull(targetDir) && !targetDir.isBlank()) {
+            effectiveTarget = targetDir;
+        }
         ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
@@ -96,8 +103,11 @@ public class BackendBuildService {
      * @return SanitizedLog containing exit code, clean stdout/stderr, and isolated error lines
      */
     public SanitizedLog test(Path projectRoot, String modulePath, String testPattern, String targetDir) {
-        Path effectiveRoot = (projectRoot != null) ? projectRoot : resolveActiveRoot();
-        String effectiveTarget = (targetDir != null && !targetDir.isBlank()) ? targetDir : DEFAULT_TARGET_DIR;
+        Path effectiveRoot = Objects.requireNonNullElseGet(projectRoot, this::resolveActiveRoot);
+        String effectiveTarget = DEFAULT_TARGET_DIR;
+        if (nonNull(targetDir) && !targetDir.isBlank()) {
+            effectiveTarget = targetDir;
+        }
         ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
@@ -107,29 +117,31 @@ public class BackendBuildService {
     }
 
     public static boolean hasBackendBuildMarker(Path projectRoot) {
-        return projectRoot != null
+        return nonNull(projectRoot)
             && (Files.isRegularFile(projectRoot.resolve("pom.xml"))
                 || Files.isRegularFile(projectRoot.resolve("build.gradle"))
                 || Files.isRegularFile(projectRoot.resolve("build.gradle.kts")));
     }
 
     private Path resolveActiveRoot() {
-        Path executionRoot = contextResolver.resolveExecutionRoot();
-        return executionRoot != null ? executionRoot : contextResolver.resolveRepoRoot();
+        return Objects.requireNonNullElseGet(contextResolver.resolveExecutionRoot(), contextResolver::resolveRepoRoot);
     }
 
     private String resolveConfiguredTargetDir() {
         Path configFile = contextResolver.resolveConfigFile();
-        if (configFile == null || !Files.isRegularFile(configFile)) {
+        if (isNull(configFile) || !Files.isRegularFile(configFile)) {
             return DEFAULT_TARGET_DIR;
         }
         String configured = configLoader.load(configFile).build().backend().targetDir();
-        return (configured != null && !configured.isBlank()) ? configured : DEFAULT_TARGET_DIR;
+        if (nonNull(configured) && !configured.isBlank()) {
+            return configured;
+        }
+        return DEFAULT_TARGET_DIR;
     }
 
     private void ensureExcludes(Path effectiveRoot, String targetDir) {
-        Path repoRoot = contextResolver.resolveRepoRoot();
-        gitExcludeManager.ensureExcluded(repoRoot != null ? repoRoot : effectiveRoot, targetDir);
+        Path repoRoot = Objects.requireNonNullElse(contextResolver.resolveRepoRoot(), effectiveRoot);
+        gitExcludeManager.ensureExcluded(repoRoot, targetDir);
     }
 
     private SanitizedLog executeAndSanitize(BackendBuildSystem buildSystem, List<String> command, Path workingDir) {
@@ -144,7 +156,10 @@ public class BackendBuildService {
             if (result.truncated()) {
                 errors.add("Build process output was truncated due to buffer limits");
             }
-            int effectiveExitCode = (result.timedOut() && sanitized.exitCode() == 0) ? 124 : sanitized.exitCode();
+            int effectiveExitCode = sanitized.exitCode();
+            if (result.timedOut() && effectiveExitCode == 0) {
+                effectiveExitCode = 124;
+            }
             return sanitized.toBuilder()
                 .exitCode(effectiveExitCode)
                 .errorCount(errors.size())

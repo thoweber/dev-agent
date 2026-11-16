@@ -18,11 +18,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Non-locking ephemeral state socket manager reading and atomically writing
@@ -49,9 +51,9 @@ public class StateSocketService {
         SecretRedactionFilter secretFilter,
         WorkspaceContextResolver workspaceResolver
     ) {
-        this.objectMapper = !isNull(objectMapper) ? objectMapper : createDefaultObjectMapper();
-        this.secretFilter = !isNull(secretFilter) ? secretFilter : new SecretRedactionFilter();
-        this.workspaceResolver = !isNull(workspaceResolver) ? workspaceResolver : new WorkspaceContextResolver();
+        this.objectMapper = Objects.requireNonNullElseGet(objectMapper, StateSocketService::createDefaultObjectMapper);
+        this.secretFilter = Objects.requireNonNullElseGet(secretFilter, SecretRedactionFilter::new);
+        this.workspaceResolver = Objects.requireNonNullElseGet(workspaceResolver, WorkspaceContextResolver::new);
     }
 
     public StateSocketService(SecretRedactionFilter secretFilter, WorkspaceContextResolver workspaceResolver) {
@@ -179,14 +181,14 @@ public class StateSocketService {
     public static void validateWorktreePathSymlinks(Path boundaryRoot, Path target) {
         Path normalizedBoundary = boundaryRoot.toAbsolutePath().normalize();
         Path current = target.toAbsolutePath().normalize();
-        while (!isNull(current) && !current.equals(normalizedBoundary)) {
+        while (nonNull(current) && !current.equals(normalizedBoundary)) {
             validateNoSymlink(current);
             current = current.getParent();
         }
     }
 
     private Path resolveEffectiveRoot(Path repoRoot) {
-        Path base = !isNull(repoRoot) ? repoRoot : workspaceResolver.resolveRepoRoot();
+        Path base = Objects.requireNonNullElseGet(repoRoot, workspaceResolver::resolveRepoRoot);
         try {
             return base.toRealPath();
         } catch (IOException _) {
@@ -195,13 +197,15 @@ public class StateSocketService {
     }
 
     private WorktreeState sanitizeState(WorktreeState state) {
-        String cleanMessage = (!isNull(state.lastMessage()) && !state.lastMessage().isBlank())
-            ? secretFilter.sanitize(state.lastMessage()).value()
-            : state.lastMessage();
-        String cleanBranch = (!isNull(state.branch()) && !state.branch().isBlank())
-            ? secretFilter.sanitize(state.branch()).value()
-            : state.branch();
-        Instant now = !isNull(state.updatedAt()) ? state.updatedAt() : Instant.now();
+        String cleanMessage = state.lastMessage();
+        if (nonNull(cleanMessage) && !cleanMessage.isBlank()) {
+            cleanMessage = secretFilter.sanitize(cleanMessage).value();
+        }
+        String cleanBranch = state.branch();
+        if (nonNull(cleanBranch) && !cleanBranch.isBlank()) {
+            cleanBranch = secretFilter.sanitize(cleanBranch).value();
+        }
+        Instant now = Objects.requireNonNullElseGet(state.updatedAt(), Instant::now);
         return state.toBuilder()
             .branch(cleanBranch)
             .lastMessage(cleanMessage)
