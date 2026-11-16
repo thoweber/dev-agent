@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -178,5 +179,19 @@ class LocalWorkerLimiterTest {
                 Thread.currentThread().interrupt();
             }
         }
+
+        // Checked non-WorkspaceException wrapped cleanly in both executeWithPermit and executeBatch
+        WorktreeState errWrapState = WorktreeStateMother.builder("TASK-WRAP").build();
+        assertThatThrownBy(() -> gate.executeWithPermit(null, errWrapState, () -> {
+            throw new IOException("checked permit failure");
+        })).isInstanceOf(WorkspaceException.class);
+
+        List<LocalWorkerLimiter.QueuedTask<String>> checkedBatch = List.of(
+            new LocalWorkerLimiter.QueuedTask<>(errWrapState, () -> {
+                throw new IOException("checked batch failure");
+            })
+        );
+        assertThatThrownBy(() -> gate.executeBatch(null, checkedBatch))
+            .isInstanceOf(WorkspaceException.class);
     }
 }

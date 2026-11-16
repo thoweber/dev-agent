@@ -37,8 +37,8 @@ Remote CI/CD runs are too slow for autonomous iteration. Execute these fast loca
   `./scripts/parse_jacoco.py --threshold 95.0`
 * **Audit & Ingest PR Review Threads & CodeRabbit ($< 2\text{ s}$):**  
   `./scripts/check_pr_reviews.py --check-status`
-* **Inspect SonarCloud Status via Script or Standard Tools ($< 1\text{ s}$):**  
-  `./scripts/check_sonarcloud.py --pr <PR_NUMBER>` or `curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=thoweber_dev-agent&pullRequest=<PR_NUMBER>" | jq .projectStatus.status`
+* **Inspect SonarCloud Status & Uncovered New Code ($< 1\text{ s}$):**  
+  `./scripts/check_sonarcloud.py --pr <PR_NUMBER> --uncovered` or `curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=thoweber_dev-agent&pullRequest=<PR_NUMBER>" | jq .projectStatus.status`
 * **Run Python Script Unit Tests ($< 2\text{ s}$):**  
   `python3 -m unittest discover -s tests/scripts`
 * **Verify Markdown Links & Relative Paths ($< 1\text{ s}$):**  

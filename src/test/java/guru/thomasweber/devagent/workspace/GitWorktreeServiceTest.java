@@ -326,6 +326,42 @@ class GitWorktreeServiceTest {
         Files.writeString(tempDir.resolve(".git/dev-agent-worktrees/not-a-dir.txt"), "x");
         assertThat(service.listWorktreeTaskIds(tempDir)).containsExactly("TASK-SUB");
         assertThat(wtDir).isDirectory();
+
+        // removeWorktree when worktreeDir physically exists with nested file deletes residuals cleanly
+        Files.writeString(wtDir.resolve("leftover.txt"), "residual");
+        service.removeWorktree(tempDir, "TASK-SUB", false, null);
+        assertThat(wtDir).doesNotExist();
+
+        // Existing branch attach + add failure + hydrate blank stash create + resolveHeadCommit blank/fail + file-as-worktreesRoot
+        when(mocked.execute(eq(List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/feature/TASK-FAIL-ADD-slug")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
+        when(mocked.execute(argThat(cmd -> nonNull(cmd) && cmd.size() >= 3 && "add".equals(cmd.get(2))), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.failure(1, "", "add error"));
+        assertThatThrownBy(() -> service.allocateWorktree(tempDir, "TASK-FAIL-ADD", "slug", null, "target-agent"))
+            .isInstanceOf(WorkspaceException.class);
+
+        when(mocked.execute(argThat(cmd -> nonNull(cmd) && cmd.size() >= 3 && "add".equals(cmd.get(2))), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
+        when(mocked.execute(eq(List.of("git", "stash", "create")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success("   "));
+        WorktreeAllocation blankStash = service.allocateWorktree(tempDir, "TASK-FAIL-ADD", "slug", null, "target-agent");
+        assertThat(blankStash.hydrated()).isFalse();
+
+        when(mocked.execute(eq(List.of("git", "rev-parse", "HEAD")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.failure(1, "", "no head"))
+            .thenReturn(ProcessResultMother.success("  "));
+        assertThatThrownBy(() -> service.allocateWorktree(tempDir, "TASK-NOHEAD", "slug", null, "target-agent"))
+            .isInstanceOf(WorkspaceException.class);
+        assertThatThrownBy(() -> service.allocateWorktree(tempDir, "TASK-BLANKHEAD", "slug", null, "target-agent"))
+            .isInstanceOf(WorkspaceException.class);
+
+        Path blockedRepo = Files.createDirectories(tempDir.resolve("blocked-wt-repo"));
+        Files.createDirectories(blockedRepo.resolve(".git"));
+        Files.writeString(blockedRepo.resolve(".git/dev-agent-worktrees"), "file blocking dir");
+        when(mocked.execute(eq(List.of("git", "rev-parse", "HEAD")), eq(blockedRepo.toRealPath()), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success("deadbeef"));
+        assertThatThrownBy(() -> service.allocateWorktree(blockedRepo, "TASK-BLK", "slug", null, "target-agent"))
+            .isInstanceOf(WorkspaceException.class);
     }
 
     private static void initGitRepo(SubprocessExecutor executor, Path dir) {

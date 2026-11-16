@@ -141,7 +141,7 @@ class StateSocketServiceTest {
 
     @Test
     @DisplayName("Given branch with secret and mismatched pidStartedAt - when writeHeartbeat or isProcessAlive called - then redacts branch and rejects recycled PID")
-    void givenSecretBranchAndStalePidStart_whenInvoked_thenSanitizesAndDetectsReuse() {
+    void givenSecretBranchAndStalePidStart_whenInvoked_thenSanitizesAndDetectsReuse() throws IOException {
         StateSocketService service = new StateSocketService();
         WorktreeState dirtyBranch = WorktreeStateMother.builder("TASK-REDACT-BR")
             .branch("feature/ghp_1234567890abcdef1234567890abcdef1234")
@@ -169,5 +169,16 @@ class StateSocketServiceTest {
             .build();
         assertThat(service.isProcessAlive(matchingPidState)).isTrue();
         assertThat(service.isProcessAlive(WorktreeStateMother.builder("TASK-ZERO").pid(0L).build())).isFalse();
+
+        // Non-directory .git pointer file blocks mkdirs -> WorkspaceException; regular file in dev-agent-worktrees skipped cleanly
+        Path blockedRepo = Files.createDirectories(tempDir.resolve("blocked-socket-repo"));
+        Files.writeString(blockedRepo.resolve(".git"), "regular-file-blocking-dir");
+        WorktreeState blockedState = WorktreeStateMother.queued("TASK-BLK-SOCK");
+        assertThatThrownBy(() -> service.writeHeartbeat(blockedRepo, blockedState))
+            .isInstanceOf(WorkspaceException.class);
+
+        Path worktreesParent = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees"));
+        Files.writeString(worktreesParent.resolve("stray-file.txt"), "ignore");
+        assertThat(service.readAllStates(tempDir)).isNotEmpty();
     }
 }

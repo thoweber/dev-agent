@@ -11,6 +11,7 @@ Usage:
     ./scripts/check_sonarcloud.py --issues
     ./scripts/check_sonarcloud.py --hotspots
     ./scripts/check_sonarcloud.py --details
+    ./scripts/check_sonarcloud.py --uncovered
     ./scripts/check_sonarcloud.py --pr 8
     ./scripts/check_sonarcloud.py --branch main
     ./scripts/check_sonarcloud.py --json
@@ -218,6 +219,70 @@ def fetch_hotspots(
     return all_hotspots
 
 
+def _extract_measure_int(measures: List[Dict[str, Any]], key: str) -> int:
+    for m in measures:
+        if m.get("metric") == key:
+            raw = None
+            periods = m.get("periods")
+            if isinstance(periods, list) and periods:
+                raw = periods[0].get("value")
+            if raw is None and isinstance(m.get("period"), dict):
+                raw = m.get("period", {}).get("value")
+            if raw is None:
+                raw = m.get("value", "0")
+            try:
+                return int(float(raw))
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+
+def fetch_uncovered_components(
+    project_key: str,
+    pr_num: Optional[int] = None,
+    branch: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch source files with uncovered new-code lines or branches."""
+    uncovered: List[Dict[str, Any]] = []
+    page = 1
+    page_size = 200
+    while True:
+        params: Dict[str, Any] = {
+            "component": project_key,
+            "metricKeys": "new_lines_to_cover,new_uncovered_lines,new_conditions_to_cover,new_uncovered_conditions",
+            "qualifiers": "FIL",
+            "ps": page_size,
+            "p": page,
+        }
+        if pr_num:
+            params["pullRequest"] = pr_num
+        elif branch:
+            params["branch"] = branch
+        data = make_sonarcloud_request("measures/component_tree", params)
+        components = data.get("components", [])
+        for comp in components:
+            measures = comp.get("measures", [])
+            missed_lines = _extract_measure_int(measures, "new_uncovered_lines")
+            missed_conds = _extract_measure_int(measures, "new_uncovered_conditions")
+            if missed_lines > 0 or missed_conds > 0:
+                uncovered.append(
+                    {
+                        "path": comp.get("path", comp.get("key", "")),
+                        "new_uncovered_lines": missed_lines,
+                        "new_lines_to_cover": _extract_measure_int(measures, "new_lines_to_cover"),
+                        "new_uncovered_conditions": missed_conds,
+                        "new_conditions_to_cover": _extract_measure_int(measures, "new_conditions_to_cover"),
+                    }
+                )
+        total = data.get("paging", {}).get("total", len(components))
+        if (page * page_size) >= total or not components or (page * page_size) >= MAX_SONARCLOUD_RESULTS:
+            break
+        page += 1
+
+    uncovered.sort(key=lambda item: (item["new_uncovered_lines"], item["new_uncovered_conditions"]), reverse=True)
+    return uncovered
+
+
 def format_condition(cond: Dict[str, Any]) -> str:
     """Format a single Quality Gate condition line."""
     metric = cond.get("metricKey", "")
@@ -307,6 +372,7 @@ def main() -> None:
     parser.add_argument("--issues", action="store_true", help="List open issues")
     parser.add_argument("--hotspots", action="store_true", help="List security hotspots")
     parser.add_argument("--details", action="store_true", help="Show full conditions, issues, and hotspots")
+    parser.add_argument("--uncovered", action="store_true", help="List files with uncovered new-code lines or branches")
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     parser.add_argument("--fail-on-error", action="store_true", help="Exit code 1 if status is ERROR, or open issues/hotspots exist")
 
@@ -326,6 +392,7 @@ def main() -> None:
 
     issues = fetch_issues(project_key, pr_num, branch) if should_fetch_issues else []
     hotspots = fetch_hotspots(project_key, pr_num, branch) if should_fetch_hotspots else []
+    uncovered = fetch_uncovered_components(project_key, pr_num, branch) if args.uncovered else []
 
     if args.json:
         result = {
@@ -336,8 +403,10 @@ def main() -> None:
             "issues": issues,
             "hotspots": hotspots,
         }
+        if args.uncovered:
+            result["uncovered"] = uncovered
         print(json.dumps(result, indent=2))
-    elif args.check_status and not (args.details or args.issues or args.hotspots):
+    elif args.check_status and not (args.details or args.issues or args.hotspots or args.uncovered):
         target = f"PR: #{pr_num}" if pr_num else (f"Branch: {branch}" if branch else "Main")
         print(f"Repository: {project_key} | {target} | Quality Gate: {status}")
     else:
@@ -350,6 +419,14 @@ def main() -> None:
             hotspots,
             show_details=args.details or args.issues or args.hotspots,
         )
+        if args.uncovered:
+            print(f"UNCOVERED NEW CODE FILES ({len(uncovered)}):")
+            for item in uncovered:
+                print(
+                    f"  - {item['path']} | lines_missed={item['new_uncovered_lines']}/{item['new_lines_to_cover']}"
+                    f" | branches_missed={item['new_uncovered_conditions']}/{item['new_conditions_to_cover']}"
+                )
+            print("-" * 80)
 
     if args.fail_on_error and (status == "ERROR" or failed_conditions or len(issues) > 0 or len(hotspots) > 0):
         sys.exit(1)

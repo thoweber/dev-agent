@@ -70,5 +70,19 @@ class WorkerProcessTest {
         } finally {
             sleeper.destroyForcibly();
         }
+
+        // Stubborn child ignoring SIGTERM forces destroyForcibly after grace timeout; non-existent PID has null startedAt
+        WorkerProcess nonexistent = WorkerProcess.of(999_999_999L);
+        assertThat(nonexistent.isAlive()).isFalse();
+
+        Process stubborn = new ProcessBuilder("sh", "-c", "trap '' TERM; sleep 30").start();
+        try {
+            WorkerProcess proc = WorkerProcess.of(stubborn.pid());
+            proc.terminateGracefully(Duration.ofMillis(25));
+            stubborn.waitFor();
+            assertThat(proc.isAlive()).isFalse();
+        } finally {
+            stubborn.destroyForcibly();
+        }
     }
 }

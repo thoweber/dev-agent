@@ -12,6 +12,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -327,5 +328,19 @@ class LogsCommandTest {
         assertThat(journalOut.toString())
             .contains("# Journal", "***REDACTED_CREDENTIAL***")
             .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234");
+
+        // Unreadable journal triggers IOException fallback message
+        Path unreadableJournal = runsDir.resolve("TASK-UNREADABLE.md");
+        Files.writeString(unreadableJournal, "secret");
+        try {
+            Files.setPosixFilePermissions(unreadableJournal, PosixFilePermissions.fromString("---------"));
+            StringWriter unreadOut = new StringWriter();
+            CommandLine unreadCmd = new CommandLine(new LogsCommand(socketService));
+            unreadCmd.setOut(new PrintWriter(unreadOut));
+            assertThat(unreadCmd.execute("--dir=" + tempDir, "TASK-UNREADABLE")).isZero();
+            assertThat(unreadOut.toString()).contains("Failed to read journal for task: TASK-UNREADABLE");
+        } finally {
+            Files.setPosixFilePermissions(unreadableJournal, PosixFilePermissions.fromString("rw-r--r--"));
+        }
     }
 }
