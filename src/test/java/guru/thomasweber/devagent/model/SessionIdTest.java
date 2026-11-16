@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.model;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -90,5 +91,18 @@ class SessionIdTest {
         assertThat(first)
             .isEqualTo(second)
             .hasSameHashCodeAs(second);
+    }
+
+    @Test
+    @DisplayName("Given SessionId - when serialized and deserialized with Jackson - then round-trips as plain string")
+    void testJsonRoundTrip() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        SessionId original = SessionId.of("session-xyz");
+
+        String json = mapper.writeValueAsString(original);
+        assertThat(json).isEqualTo("\"session-xyz\"");
+
+        SessionId restored = mapper.readValue(json, SessionId.class);
+        assertThat(restored).isEqualTo(original);
     }
 }

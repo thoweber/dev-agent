@@ -171,4 +171,20 @@ class GatekeeperCacheKeyGeneratorTest {
 
         assertThat(key1).isNotEqualTo(key2);
     }
+
+    @Test
+    @DisplayName("Given distinct overload methods or duplicate records in list - when generating cache key - then isolates overloads and deduplicates records")
+    void givenDistinctMethodsAndDuplicateRecords_whenGenerating_thenIsolatesAndDeduplicates() throws NoSuchMethodException {
+        Method stringOverload = ArchitectGatekeeper.class.getMethod("evaluate", String.class, String.class);
+        Method listOverload = ArchitectGatekeeper.class.getMethod("evaluate", String.class, List.class);
+
+        Object kStr = generator.generate(stringOverload, "diff", "");
+        Object kList = generator.generate(listOverload, "diff", List.of());
+        assertThat(kStr).isNotEqualTo(kList);
+
+        ArchitecturalRecord rec1 = ArchitecturalRecordMother.adr001();
+        Object kSingle = generator.generate(listOverload, "diff", List.of(rec1));
+        Object kDup = generator.generate(listOverload, "diff", List.of(rec1, rec1));
+        assertThat(kSingle).isEqualTo(kDup);
+    }
 }

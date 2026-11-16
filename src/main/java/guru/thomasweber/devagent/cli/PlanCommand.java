@@ -8,6 +8,8 @@ import picocli.CommandLine.Parameters;
 
 import java.io.PrintWriter;
 
+import static java.util.Objects.isNull;
+
 @Dependent
 @Unremovable
 @Command(
@@ -29,7 +31,7 @@ public class PlanCommand extends BaseAgentCommand {
     @Override
     public void run() {
         PrintWriter out = getOut();
-        if (story == null || story.isBlank()) {
+        if (isNull(story) || story.isBlank()) {
             out.println("[dev-agent] Please provide a requirement or story description to plan.");
             return;
         }

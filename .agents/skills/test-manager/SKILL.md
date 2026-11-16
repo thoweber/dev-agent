@@ -12,7 +12,7 @@ This skill governs test tiering, testing pyramid compliance, and Test-Driven Dev
 ## 1. Testing Pyramid & Tiering
 
 * **Level 1 (Unit & In-Memory):** Target fast unit tests ($<10\text{ s}$) using AssertJ and Mockito. Inner loop feedback for CLI commands, validators, and SPIs.
-* **Level 2 (Integration & ArchUnit):** Architecture verification via `AgentArchitectureTest`, filesystem sandbox tests via `WorkspaceJailValidatorTest`, and in-memory H2 repository tests.
+* **Level 2 (Integration & ArchUnit):** Architecture verification via `AgentArchitectureTest`, filesystem sandbox tests via `WorkspaceJailValidatorTest`, real Git worktree isolation via `GitWorktreeIntegrationIT`, detached CLI telemetry via `DetachedWorkerIT`, and in-memory H2 repository tests.
 * **Level 3 (Native Executable & CLI Sub-Process):** Verifies the compiled GraalVM native binary (`~/.local/bin/dev-agent`) against test projects. SLA: $<50\text{ ms}$ cold start.
 
 ---
@@ -29,5 +29,5 @@ This skill governs test tiering, testing pyramid compliance, and Test-Driven Dev
 
 * **Quality Gates:** Line Coverage $\ge 95.0\%$, Condition/Branch Coverage $\ge 90.0\%$, verified via `./scripts/parse_jacoco.py --fail-under-gates`.
 * **Zero-Reflection & Anti-Synthetic-Seams Policy:** Tests must verify observable behavior through public contracts; reflective tampering (`field.setAccessible(true)`), weakening private encapsulation, or creating artificial seams is strictly prohibited.
-* **Canonical Fixtures:** Shared test factories (`TaskRunMother`, `StepAuditMother`, `WorktreeTestFixture`) must be used for complex records instead of duplicate inline builder setups.
+* **Canonical Fixtures:** Shared test factories (`TaskRunMother`, `StepAuditMother`, `WorktreeStateMother`, `WorktreeTestFixture`) must be used for complex records instead of duplicate inline builder setups.
 * **Script Verification Parity:** Python guardrail scripts must have automated unit tests under `tests/scripts/`.

@@ -25,6 +25,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
+import static java.util.Objects.isNull;
+
 /**
  * Standard-library-backed file scanner implementing {@link WorkspaceFileScanner}.
  * Uses pure Java NIO {@link Files#walkFileTree} and {@link PathMatcher} while enforcing
@@ -56,11 +58,11 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         Predicate<Path> fileFilter
     ) {
         Objects.requireNonNull(root, "root must not be null");
-        if (patterns == null || patterns.isEmpty()) {
+        if (isNull(patterns) || patterns.isEmpty()) {
             return Collections.emptyList();
         }
 
-        Set<String> effectiveIgnores = (ignorePrefixes != null) ? ignorePrefixes : DEFAULT_IGNORED_PREFIXES;
+        Set<String> effectiveIgnores = Objects.requireNonNullElse(ignorePrefixes, DEFAULT_IGNORED_PREFIXES);
         Path rootPath = root.toPath();
         Map<Path, RepoPath> uniqueFiles = new LinkedHashMap<>();
 
@@ -73,7 +75,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
     }
 
     private void validatePattern(String pattern) {
-        if (pattern == null || pattern.isBlank()) {
+        if (isNull(pattern) || pattern.isBlank()) {
             throw new SecurityException("Jailbreak attempt: pattern cannot be null or blank");
         }
         String normalized = pattern.replace('\\', '/');
@@ -119,8 +121,10 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
     ) {
         int firstWildcard = findFirstWildcard(normalized);
         int lastSlashBeforeWildcard = normalized.lastIndexOf('/', firstWildcard);
-        String prefix = (lastSlashBeforeWildcard >= 0) ? normalized.substring(0, lastSlashBeforeWildcard) : "";
-        Path searchRoot = prefix.isEmpty() ? rootPath : rootPath.resolve(prefix);
+        Path searchRoot = rootPath;
+        if (lastSlashBeforeWildcard > 0) {
+            searchRoot = rootPath.resolve(normalized.substring(0, lastSlashBeforeWildcard));
+        }
         if (!Files.exists(searchRoot, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
@@ -133,7 +137,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         walkAndCollect(rootPath, searchRoot, matchers, ignorePrefixes, fileFilter, uniqueFiles);
     }
 
-    static List<String> expandZeroLevelDoubleStarPatterns(String pattern) {
+    private static List<String> expandZeroLevelDoubleStarPatterns(String pattern) {
         List<String> results = new ArrayList<>();
         results.add(pattern);
         int idx = pattern.indexOf("**/");
@@ -159,7 +163,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         RepoPath repoPath = RepoPath.of(path, rootPath);
         if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             walkAndCollect(rootPath, path, null, ignorePrefixes, fileFilter, uniqueFiles);
-        } else if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && (fileFilter == null || fileFilter.test(path))) {
+        } else if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && (isNull(fileFilter) || fileFilter.test(path))) {
             uniqueFiles.putIfAbsent(repoPath.toPath(), repoPath);
         }
     }
@@ -240,7 +244,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         }
 
         private boolean matchesPattern(Path file) {
-            if (matchers == null || matchers.isEmpty()) {
+            if (isNull(matchers) || matchers.isEmpty()) {
                 return true;
             }
             Path rel = rootPath.relativize(file);
@@ -249,7 +253,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         }
 
         private boolean isIncluded(Path file) {
-            return fileFilter == null || fileFilter.test(file);
+            return isNull(fileFilter) || fileFilter.test(file);
         }
     }
 
@@ -259,7 +263,10 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         if (star >= 0 && q >= 0) {
             return Math.min(star, q);
         }
-        return star >= 0 ? star : q;
+        if (star >= 0) {
+            return star;
+        }
+        return q;
     }
 
     private static boolean isIgnored(Path root, Path target, Set<String> ignorePrefixes) {

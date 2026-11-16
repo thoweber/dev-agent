@@ -8,14 +8,21 @@ This workflow defines the standardized 6-step loop for autonomous agents to inge
 
 Execute the following commands to inspect remote quality gate status and active findings:
 
-1. **SonarCloud Quality Gate Status:**
-   ```bash
-   curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=thoweber_dev-agent&pullRequest=<PR_ID>"
-   ```
-2. **SonarCloud Active Issues:**
-   ```bash
-   curl -s "https://sonarcloud.io/api/issues/search?projectKeys=thoweber_dev-agent&pullRequest=<PR_ID>&resolved=false"
-   ```
+1. **Query and audit SonarCloud Quality Gate status, open issues, and security hotspots:**  
+   `check_sonarcloud.py` fetches Quality Gate results, open issues, and unreviewed security hotspots for the repository, active Pull Request, or target branch from the SonarCloud Web API.  
+```bash
+  ./scripts/check_sonarcloud.py
+  ./scripts/check_sonarcloud.py --check-status
+  ./scripts/check_sonarcloud.py --issues
+  ./scripts/check_sonarcloud.py --hotspots
+  ./scripts/check_sonarcloud.py --details
+  ./scripts/check_sonarcloud.py --pr 8
+  ./scripts/check_sonarcloud.py --branch main
+  ./scripts/check_sonarcloud.py --json
+  ./scripts/check_sonarcloud.py --fail-on-error
+  ./scripts/check_sonarcloud.py --uncovered
+```
+
 3. **GitHub PR Review Threads & CodeRabbit Audit:**
    ```bash
    ./scripts/check_pr_reviews.py

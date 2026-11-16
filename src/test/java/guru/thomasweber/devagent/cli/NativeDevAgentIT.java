@@ -39,4 +39,24 @@ class NativeDevAgentIT extends DevAgentIT {
                 .isLessThanOrEqualTo(NATIVE_COLD_BOOT_SLA_MS);
         }
     }
+
+    @Test
+    @DisplayName("Given compiled native binary - when querying status --json - then completes under 50ms SLA with valid JSON")
+    void testNativeStatusJsonColdStartSla(QuarkusMainLauncher launcher) {
+        long startNanos = System.nanoTime();
+        LaunchResult result = launcher.launch("status", "--json");
+        long durationMs = (System.nanoTime() - startNanos) / 1_000_000L;
+
+        assertThat(result.exitCode()).isZero();
+        assertThat(result.getOutput()).contains("\"activeTasks\"");
+
+        String packageType = System.getProperty("quarkus.package.type", "");
+        boolean isNativeProfile = "native".equalsIgnoreCase(packageType)
+            || Boolean.getBoolean("quarkus.native");
+        if (isNativeProfile) {
+            assertThat(durationMs)
+                .as("Native binary status --json cold start must be under %d ms according to SLA", NATIVE_COLD_BOOT_SLA_MS)
+                .isLessThanOrEqualTo(NATIVE_COLD_BOOT_SLA_MS);
+        }
+    }
 }

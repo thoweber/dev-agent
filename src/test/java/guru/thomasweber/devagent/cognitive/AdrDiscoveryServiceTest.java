@@ -5,6 +5,7 @@ import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.workspace.NioWorkspaceFileScanner;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorktreeExecutionContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -617,5 +618,20 @@ class AdrDiscoveryServiceTest {
 
         List<ArchitecturalRecord> records = discoveryService.discoverRecords();
         assertThat(records).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given active WorktreeExecutionContext with new ADR in worktree - when discoverRecords called - then discovers from worktree execution root")
+    void givenWorktreeContext_whenDiscovering_thenScansWorktreeExecutionRoot() throws Exception {
+        Files.createDirectories(tempDir.resolve(".git"));
+        Path worktreeDir = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-ADR-1"));
+        Files.createDirectories(worktreeDir.resolve("docs/adr"));
+        Files.writeString(worktreeDir.resolve("docs/adr/ADR-999-worktree.md"), "# ADR-999: Worktree Rule\n* **Status:** Active\n");
+
+        List<ArchitecturalRecord> records = WorktreeExecutionContext.runInWorktree(
+            worktreeDir,
+            () -> discoveryService.discoverRecords()
+        );
+        assertThat(records).extracting(ArchitecturalRecord::id).contains("ADR-999");
     }
 }

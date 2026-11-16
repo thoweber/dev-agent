@@ -14,7 +14,7 @@ public interface WorkspaceFileScanner {
 
     Set<String> DEFAULT_IGNORED_PREFIXES = Set.of(
         ".git",
-        "target-agent",
+        TargetDir.DEFAULT_VALUE,
         "target",
         "node_modules"
     );

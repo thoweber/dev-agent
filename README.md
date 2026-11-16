@@ -72,17 +72,23 @@ dev-agent init
 # Analyze requirements and generate a phased implementation DAG
 dev-agent plan "Add OpenTelemetry metrics endpoint"
 
-# Execute full-stack TDD implementation in an isolated worktree
+# Execute full-stack TDD implementation in an isolated worktree (or detached worker)
 dev-agent feature "Implement user profile API"
+dev-agent feature --detach "Implement background reporting API"
 
 # View active task status via non-locking state.json sockets
 dev-agent status
+dev-agent status --json --all
 
 # Stream execution logs and audit traces
-dev-agent logs <task-id>
+dev-agent logs <task-id> --follow
 
 # Resume an interrupted task run
 dev-agent resume <task-id>
+
+# Abort a running background worker and clean up its worktree (preserves branch by default)
+dev-agent abort <task-id>
+dev-agent abort <task-id> --delete-branch
 ```
 
 ---
@@ -114,5 +120,5 @@ Fast feedback commands for autonomous agents and contributors:
 
 * [AGENTS.md](AGENTS.md) — Mandatory autonomous agent directives, TDD protocol, and local feedback loops.
 * [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — Master architecture context and implementation blueprint.
-* [docs/adr/](docs/adr/) — Architecture Decision Records register (ADR-001 through ADR-010).
+* [docs/adr/](docs/adr/) — Architecture Decision Records register (ADR-001 through ADR-013).
 * [.agents/](.agents/) — Declarative configuration, boundary rules, and specialized persona skills.

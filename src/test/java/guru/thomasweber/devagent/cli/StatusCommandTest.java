@@ -1,15 +1,28 @@
 package guru.thomasweber.devagent.cli;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import guru.thomasweber.devagent.cognitive.MarkdownParserService;
+import guru.thomasweber.devagent.model.StatusPayload;
+import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.testutil.WorktreeStateMother;
+import guru.thomasweber.devagent.workspace.StateSocketService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class StatusCommandTest {
 
@@ -24,7 +37,7 @@ class StatusCommandTest {
         StringWriter sw = new StringWriter();
         cmd.setOut(new PrintWriter(sw));
 
-        int exitCode = cmd.execute();
+        int exitCode = cmd.execute("--dir=" + tempDir);
 
         assertThat(exitCode).isZero();
         assertThat(sw.toString()).contains(
@@ -43,7 +56,7 @@ class StatusCommandTest {
         StringWriter sw = new StringWriter();
         cmd.setOut(new PrintWriter(sw));
 
-        int exitCode = cmd.execute("--json");
+        int exitCode = cmd.execute("--dir=" + tempDir, "--json");
 
         assertThat(exitCode).isZero();
         assertThat(sw.toString()).contains("{\"activeTasks\":[],\"message\":\"No active background tasks detected.\"}");
@@ -58,7 +71,7 @@ class StatusCommandTest {
         StringWriter sw = new StringWriter();
         cmd.setOut(new PrintWriter(sw));
 
-        int exitCode = cmd.execute("--all");
+        int exitCode = cmd.execute("--dir=" + tempDir, "--all");
 
         assertThat(exitCode).isZero();
         assertThat(command.isAll()).isTrue();
@@ -98,5 +111,182 @@ class StatusCommandTest {
         assertThat(command.isAll()).isTrue();
         assertThat(command.isJson()).isTrue();
         assertThat(command.getDir()).isEqualTo(tempDir.toString());
+    }
+
+    @Test
+    @DisplayName("Given active and stale state.json sockets - when status executed - then displays live telemetry and JSON payload without JDBC")
+    void testStatusReadsStateSocketsAndJson() {
+        StateSocketService socketService = new StateSocketService();
+        WorktreeState active = WorktreeStateMother.active("TASK-LIVE", ProcessHandle.current().pid());
+        WorktreeState stale = WorktreeStateMother.crashed("TASK-STALE");
+        socketService.writeHeartbeat(tempDir, active);
+        socketService.writeHeartbeat(tempDir, stale);
+
+        StatusCommand command = new StatusCommand(socketService, new MarkdownParserService());
+        CommandLine cmd = new CommandLine(command);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+
+        int exitCode = cmd.execute("--dir=" + tempDir);
+        assertThat(exitCode).isZero();
+        assertThat(out.toString())
+            .contains("TASK-LIVE", "RUNNING", "TASK-STALE", "STALE");
+
+        StringWriter jsonOut = new StringWriter();
+        cmd.setOut(new PrintWriter(jsonOut));
+        int jsonExit = cmd.execute("--dir=" + tempDir, "--json");
+        assertThat(jsonExit).isZero();
+        assertThat(jsonOut.toString())
+            .contains("\"activeTasks\"", "\"TASK-LIVE\"", "\"TASK-STALE\"");
+    }
+
+    @Test
+    @DisplayName("Given historical .agents/runs markdown journals - when status --all executed - then includes historical runs")
+    void testStatusAllIncludesMarkdownJournals() throws IOException {
+        Files.createDirectories(tempDir.resolve(".agents/runs"));
+        Files.writeString(tempDir.resolve(".agents/runs/TASK-HIST.md"), """
+            ---
+            task_id: "TASK-HIST"
+            project_id: "proj-1"
+            status: "COMPLETED"
+            current_phase: "COMPLETED"
+            branch: "feature/TASK-HIST-old"
+            pid: 0
+            updated_at: "2026-11-16T18:00:00Z"
+            ---
+            # Task Execution Journal: TASK-HIST
+            """);
+
+        StatusCommand command = new StatusCommand(new StateSocketService(), new MarkdownParserService());
+        CommandLine cmd = new CommandLine(command);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+
+        int exitCode = cmd.execute("--dir=" + tempDir, "--all");
+        assertThat(exitCode).isZero();
+        assertThat(out.toString()).contains("TASK-HIST", "COMPLETED");
+
+        Path outsideSecret = Files.writeString(tempDir.resolve("outside.md"), """
+            ---
+            task_id: "TASK-LEAK"
+            status: "COMPLETED"
+            ---
+            """);
+        Files.createSymbolicLink(tempDir.resolve(".agents/runs/TASK-LEAK.md"), outsideSecret);
+
+        StringWriter outAfterSymlink = new StringWriter();
+        cmd.setOut(new PrintWriter(outAfterSymlink));
+        assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
+        assertThat(outAfterSymlink.toString()).doesNotContain("TASK-LEAK");
+    }
+
+    @Test
+    @DisplayName("Given queued state socket and malformed journals - when status --all executed - then formats QUEUED and handles edge metadata")
+    void testStatusAllEdgeCasesAndJsonFailure() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.queued("TASK-Q1").toBuilder()
+            .cost(null)
+            .branch(null)
+            .build());
+        Files.createDirectories(tempDir.resolve(".agents/runs"));
+        Files.writeString(tempDir.resolve(".agents/runs/ignore-no-id.md"), """
+            ---
+            status: "COMPLETED"
+            ---
+            No task id
+            """);
+        Files.writeString(tempDir.resolve(".agents/runs/unknown-fields.md"), """
+            ---
+            task_id: "TASK-UNK"
+            status: "NOT_A_REAL_STATUS"
+            branch: "feature/ghp_1234567890abcdef1234567890abcdef1234"
+            updated_at: "unknown"
+            ---
+            Unknown values
+            """);
+
+        StatusCommand command = new StatusCommand(socketService, new MarkdownParserService(), null);
+        CommandLine cmd = new CommandLine(command);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+
+        int exitCode = cmd.execute("--dir=" + tempDir, "--all");
+
+        assertThat(exitCode).isZero();
+        assertThat(out.toString())
+            .contains("TASK-Q1", "QUEUED", "$0", "unassigned", "TASK-UNK", "COMPLETED", "***REDACTED_CREDENTIAL***")
+            .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234");
+
+        ObjectMapper failingMapper = mock(ObjectMapper.class);
+        when(failingMapper.writeValueAsString(any(StatusPayload.class)))
+            .thenThrow(new JsonProcessingException("mock \"quoted\"\nserialization boom") {});
+        StatusCommand failingCommand = new StatusCommand(socketService, new MarkdownParserService(), failingMapper);
+        CommandLine failingCmd = new CommandLine(failingCommand);
+        StringWriter errJsonOut = new StringWriter();
+        failingCmd.setOut(new PrintWriter(errJsonOut));
+
+        int jsonExit = failingCmd.execute("--dir=" + tempDir, "--json");
+        assertThat(jsonExit).isZero();
+        StatusPayload fallback = new ObjectMapper().readValue(errJsonOut.toString(), StatusPayload.class);
+        assertThat(fallback.message()).contains("Serialization error: mock \"quoted\"");
+    }
+
+    @Test
+    @DisplayName("Given symlinked .agents directory or non-md files - when status --all executed - then skips safely")
+    void testStatusSkipsSymlinkedAgentsDirAndNonMarkdownFiles() throws IOException {
+        Path externalDir = Files.createDirectories(tempDir.resolve("ext-agents"));
+        Path repoSym = Files.createDirectories(tempDir.resolve("repo-sym-agents"));
+        Files.createSymbolicLink(repoSym.resolve(".agents"), externalDir);
+
+        StatusCommand command = new StatusCommand();
+        CommandLine cmd = new CommandLine(command);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+        assertThat(cmd.execute("--dir=" + repoSym, "--all")).isZero();
+        assertThat(out.toString()).contains("No active background tasks detected.");
+
+        Path runsDir = Files.createDirectories(tempDir.resolve(".agents/runs"));
+        Files.createDirectories(runsDir.resolve("subdir.md"));
+        Files.writeString(runsDir.resolve("notes.txt"), "not markdown");
+        Files.writeString(runsDir.resolve("valid-date.md"), """
+            ---
+            task_id: "TASK-DATE-1"
+            status: ""
+            updated_at: "2026-11-16T10:00:00Z"
+            ---
+            Valid timestamp
+            """);
+        Files.writeString(runsDir.resolve("bad-date.md"), """
+            ---
+            task_id: "TASK-BAD-DATE"
+            updated_at: "not-an-instant"
+            ---
+            Invalid timestamp
+            """);
+        Files.writeString(runsDir.resolve("blank-id.md"), """
+            ---
+            task_id: "  "
+            ---
+            Blank id
+            """);
+        assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
+        assertThat(out.toString()).contains("TASK-DATE-1", "TASK-BAD-DATE");
+
+        // Empty workspace --json branch
+        Path emptyRepo = Files.createDirectories(tempDir.resolve("empty-json-repo"));
+        StringWriter emptyJsonOut = new StringWriter();
+        CommandLine emptyCmd = new CommandLine(new StatusCommand());
+        emptyCmd.setOut(new PrintWriter(emptyJsonOut));
+        assertThat(emptyCmd.execute("--dir=" + emptyRepo, "--json")).isZero();
+        assertThat(emptyJsonOut.toString()).contains("No active background tasks detected.");
+
+        // Unreadable .agents/runs directory falls back gracefully on status --all
+        Files.setPosixFilePermissions(runsDir, PosixFilePermissions.fromString("---------"));
+        AutoCloseable restoreRunsPerms = () -> Files.setPosixFilePermissions(runsDir, PosixFilePermissions.fromString("rwxr-xr-x"));
+        try (restoreRunsPerms) {
+            assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 }

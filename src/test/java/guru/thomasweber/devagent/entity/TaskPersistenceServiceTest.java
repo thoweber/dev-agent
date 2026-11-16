@@ -21,6 +21,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class TaskPersistenceServiceTest {
 
@@ -325,6 +326,31 @@ class TaskPersistenceServiceTest {
             TaskRun saved = service.saveTask(taskToSave);
             assertThat(saved).isNotNull();
             assertThat(saved.taskId()).isEqualTo("TASK-EX");
+        }
+    }
+
+    @Test
+    @DisplayName("Given active candidate entities - findActiveCandidates maps summary without initializing lazy steps collection")
+    void testFindActiveCandidatesSkipsLazySteps() {
+        TaskRunEntity candidate = new TaskRunEntity();
+        candidate.id = 42L;
+        candidate.projectId = "org/repo";
+        candidate.taskId = "TASK-LAZY-SAFE";
+        candidate.status = TaskStatus.GREEN_PATCH;
+        candidate.currentPhase = "GREEN_PATCH";
+        candidate.version = 3L;
+        candidate.steps = mock(List.class);
+
+        try (MockedStatic<TaskRunEntity> mockedTask = mockStatic(TaskRunEntity.class)) {
+            mockedTask.when(() -> TaskRunEntity.findActiveByProject("org/repo"))
+                .thenReturn(List.of(candidate));
+
+            List<TaskRun> results = service.findActiveCandidates("org/repo");
+            assertThat(results).singleElement().satisfies(run -> {
+                assertThat(run.taskId()).isEqualTo("TASK-LAZY-SAFE");
+                assertThat(run.steps()).isEmpty();
+            });
+            verifyNoInteractions(candidate.steps);
         }
     }
 }

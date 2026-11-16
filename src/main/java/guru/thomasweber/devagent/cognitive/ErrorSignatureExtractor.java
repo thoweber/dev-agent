@@ -1,12 +1,12 @@
 package guru.thomasweber.devagent.cognitive;
 
+import guru.thomasweber.devagent.workspace.DigestUtils;
 import jakarta.enterprise.context.ApplicationScoped;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Normalizes compiler and linter error traces by masking volatile environment variables,
@@ -31,14 +31,7 @@ public class ErrorSignatureExtractor {
     }
 
     public String extractSignature(String rawTrace) {
-        String normalized = extractNormalizedText(rawTrace);
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(normalized.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 message digest algorithm not available", e);
-        }
+        return DigestUtils.sha256Hex(extractNormalizedText(rawTrace));
     }
 
     @FunctionalInterface
@@ -59,13 +52,17 @@ public class ErrorSignatureExtractor {
         );
 
         public String normalize(String rawTrace) {
-            if (rawTrace == null || rawTrace.isBlank()) {
+            if (isNull(rawTrace) || rawTrace.isBlank()) {
                 return "";
             }
 
-            String input = (rawTrace.length() > MAX_INPUT_CHARS)
-                ? rawTrace.substring(0, MAX_INPUT_CHARS)
-                : rawTrace;
+            String input = rawTrace;
+            if (rawTrace.length() > MAX_INPUT_CHARS) {
+                int headLen = MAX_INPUT_CHARS / 4;
+                String marker = "\n...\n";
+                int tailStart = rawTrace.length() - (MAX_INPUT_CHARS - headLen - marker.length());
+                input = rawTrace.substring(0, headLen) + marker + rawTrace.substring(tailStart);
+            }
 
             StringBuilder sb = new StringBuilder(input.length());
             ScanCursor cursor = new ScanCursor(input, sb);
@@ -89,7 +86,7 @@ public class ErrorSignatureExtractor {
                     pendingSpace = false;
                 }
 
-                if (match != null) {
+                if (nonNull(match)) {
                     sb.append(match.replacement());
                     cursor.setOffset(match.endIndex());
                 } else {
@@ -104,7 +101,7 @@ public class ErrorSignatureExtractor {
         private Match matchFirstRule(ScanCursor cursor) {
             for (NormalizationRule rule : rules) {
                 Match match = rule.tryMatch(cursor);
-                if (match != null) {
+                if (nonNull(match)) {
                     return match;
                 }
             }
@@ -142,9 +139,13 @@ public class ErrorSignatureExtractor {
                 probe.skipDigits();
             }
             if (probe.consumeIf('Z')) {
-                // UTC Zulu
-            } else if (probe.consumeIf('+') || probe.consumeIf('-')) {
-                probe.skipWhileDigitsOrColon();
+                // UTC Zulu suffix consumed
+            } else {
+                var tzProbe = probe.fork();
+                if ((tzProbe.consumeIf('+') || tzProbe.consumeIf('-')) && tzProbe.isDigit()) {
+                    tzProbe.skipWhileDigitsOrColon();
+                    probe = tzProbe;
+                }
             }
             if (!probe.isAtTokenBoundary()) {
                 return null;
@@ -196,11 +197,11 @@ public class ErrorSignatureExtractor {
         @Override
         public Match tryMatch(ScanCursor cursor) {
             Match bracket = tryMatchBracket(cursor);
-            if (bracket != null) {
+            if (nonNull(bracket)) {
                 return bracket;
             }
             Match word = tryMatchWord(cursor);
-            if (word != null) {
+            if (nonNull(word)) {
                 return word;
             }
             return tryMatchColon(cursor);
@@ -277,7 +278,7 @@ public class ErrorSignatureExtractor {
         @Override
         public Match tryMatch(ScanCursor cursor) {
             Match winPath = tryMatchWindowsPath(cursor);
-            if (winPath != null) {
+            if (nonNull(winPath)) {
                 return winPath;
             }
             return tryMatchLinuxPath(cursor);
@@ -285,10 +286,11 @@ public class ErrorSignatureExtractor {
 
         private Match tryMatchWindowsPath(ScanCursor cursor) {
             var probe = cursor.fork();
-            if (!probe.consumeWindowsDrive()) {
+            char sep = probe.consumeWindowsDrive();
+            if (sep == 0) {
                 return null;
             }
-            if (!probe.consumePathWithExtension('\\')) {
+            if (!probe.consumePathWithExtension(sep)) {
                 return null;
             }
             return probe.match(PATH_REPLACEMENT);
@@ -481,21 +483,26 @@ public class ErrorSignatureExtractor {
             return true;
         }
 
-        public boolean consumeWindowsDrive() {
+        public char consumeWindowsDrive() {
             if (offset + 3 <= input.length()
                 && Character.isLetter(input.charAt(offset))
                 && input.charAt(offset + 1) == ':'
-                && input.charAt(offset + 2) == '\\') {
+                && (input.charAt(offset + 2) == '\\' || input.charAt(offset + 2) == '/')) {
+                char sep = input.charAt(offset + 2);
                 offset += 3;
-                return true;
+                return sep;
             }
-            return false;
+            return 0;
         }
 
         public boolean consumePathWithExtension(char separator) {
-            int lastSlash = (offset > 0 && input.charAt(offset - 1) == separator) ? offset - 1 : -1;
+            int lastSlash = -1;
+            int slashCount = 0;
+            if (offset > 0 && input.charAt(offset - 1) == separator) {
+                lastSlash = offset - 1;
+                slashCount = 1;
+            }
             int lastDot = -1;
-            int slashCount = (lastSlash >= 0) ? 1 : 0;
 
             while (offset < input.length() && !isPathTerminator()) {
                 char c = input.charAt(offset);

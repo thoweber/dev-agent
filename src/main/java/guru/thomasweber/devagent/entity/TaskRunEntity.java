@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -73,10 +74,23 @@ public class TaskRunEntity extends PanacheEntityBase {
     @Column(name = "updated_at", nullable = false)
     public Instant updatedAt;
 
+    @Version
+    public long version;
+
     @OneToMany(mappedBy = "taskRun", cascade = CascadeType.ALL, orphanRemoval = true)
     public List<StepAuditEntity> steps = new ArrayList<>();
 
     public static TaskRunEntity findByProjectAndTask(String projectId, String taskId) {
         return find("projectId = ?1 and taskId = ?2", projectId, taskId).firstResult();
+    }
+
+    public static List<TaskRunEntity> findActiveByProject(String projectId) {
+        return list(
+            "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
+            projectId,
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.ABORTED
+        );
     }
 }

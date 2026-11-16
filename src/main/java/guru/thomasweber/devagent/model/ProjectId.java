@@ -1,5 +1,7 @@
 package guru.thomasweber.devagent.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 import java.nio.charset.StandardCharsets;
@@ -33,6 +35,7 @@ public record ProjectId(UUID value) {
     /**
      * Parses an existing 36-character UUID string (e.g. from database persistence or CLI arguments).
      */
+    @JsonCreator
     public static ProjectId fromString(String uuidString) {
         Objects.requireNonNull(uuidString, "UUID string must not be null");
         return new ProjectId(UUID.fromString(uuidString.trim()));
@@ -48,6 +51,7 @@ public record ProjectId(UUID value) {
     /**
      * Returns the 36-character standard string representation of the project UUID.
      */
+    @JsonValue
     public String idString() {
         return value.toString();
     }

@@ -9,6 +9,7 @@ import os
 import sys
 import unittest
 import urllib.error
+from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
 import scripts.check_sonarcloud as sc
@@ -270,6 +271,72 @@ class TestCheckSonarcloud(unittest.TestCase):
             issues = sc.fetch_issues("my-proj", 6)
             self.assertEqual(len(issues), 200)
             self.assertEqual(mock_req.call_count, 2)
+
+    @patch("scripts.check_sonarcloud.make_sonarcloud_request")
+    def test_fetch_uncovered_files_filters_and_sorts(self, mock_req):
+        mock_req.return_value = {
+            "paging": {"total": 3},
+            "components": [
+                {
+                    "path": "src/main/java/A.java",
+                    "measures": [
+                        {"metric": "new_lines_to_cover", "period": {"value": "10"}},
+                        {"metric": "new_uncovered_lines", "period": {"value": "0"}},
+                        {"metric": "new_conditions_to_cover", "period": {"value": "4"}},
+                        {"metric": "new_uncovered_conditions", "period": {"value": "0"}},
+                    ],
+                },
+                {
+                    "path": "src/main/java/B.java",
+                    "measures": [
+                        {"metric": "new_lines_to_cover", "periods": [{"index": 1, "value": "40"}]},
+                        {"metric": "new_uncovered_lines", "periods": [{"index": 1, "value": "5"}]},
+                        {"metric": "new_conditions_to_cover", "periods": [{"index": 1, "value": "10"}]},
+                        {"metric": "new_uncovered_conditions", "periods": [{"index": 1, "value": "2"}]},
+                    ],
+                },
+                {
+                    "path": "src/main/java/C.java",
+                    "measures": [
+                        {"metric": "new_lines_to_cover", "value": "50"},
+                        {"metric": "new_uncovered_lines", "value": "12"},
+                        {"metric": "new_conditions_to_cover", "value": "8"},
+                        {"metric": "new_uncovered_conditions", "value": "1"},
+                    ],
+                },
+            ],
+        }
+        files = sc.fetch_uncovered_components("my-proj", 10)
+        self.assertEqual(len(files), 2)
+        self.assertEqual(files[0]["path"], "src/main/java/C.java")
+        self.assertEqual(files[0]["new_uncovered_lines"], 12)
+        self.assertEqual(files[1]["path"], "src/main/java/B.java")
+        self.assertEqual(files[1]["new_uncovered_conditions"], 2)
+
+    @patch("scripts.check_sonarcloud.fetch_uncovered_components")
+    @patch("scripts.check_sonarcloud.fetch_hotspots", return_value=[])
+    @patch("scripts.check_sonarcloud.fetch_issues", return_value=[])
+    @patch("scripts.check_sonarcloud.fetch_quality_gate")
+    def test_main_uncovered_flag_prints_files(self, mock_qg, _mock_issues, _mock_hotspots, mock_uncov):
+        mock_qg.return_value = {"projectStatus": {"status": "ERROR", "conditions": []}}
+        mock_uncov.return_value = [
+            {
+                "path": "src/main/java/Foo.java",
+                "new_uncovered_lines": 7,
+                "new_lines_to_cover": 70,
+                "new_uncovered_conditions": 2,
+                "new_conditions_to_cover": 20,
+            }
+        ]
+        buf = io.StringIO()
+        with patch("sys.argv", ["check_sonarcloud.py", "--pr", "10", "--uncovered"]), redirect_stdout(buf):
+            with self.assertRaises(SystemExit) as cm:
+                sc.main()
+            self.assertEqual(cm.exception.code, 0)
+        out = buf.getvalue()
+        self.assertIn("UNCOVERED NEW CODE FILES (1):", out)
+        self.assertIn("src/main/java/Foo.java", out)
+        self.assertIn("lines_missed=7/70", out)
 
 
 if __name__ == "__main__":

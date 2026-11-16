@@ -8,6 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Sandboxes all filesystem operations strictly within the active execution root.
  * Prevents directory traversal attacks, protects Git internal metadata and global settings,
@@ -31,7 +34,7 @@ public class WorkspaceJailValidator {
      * @throws SecurityException if the resolved path traverses outside activeWorkingRoot boundary
      */
     public Path validateAndResolve(String untrustedPath) {
-        if (untrustedPath == null || untrustedPath.isBlank()) {
+        if (isNull(untrustedPath) || untrustedPath.isBlank()) {
             throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
         }
 
@@ -52,7 +55,7 @@ public class WorkspaceJailValidator {
 
         // Check if target or any ancestor directory is a symbolic link
         Path curr = target;
-        while (curr != null && !curr.equals(normalizedRoot)) {
+        while (nonNull(curr) && !curr.equals(normalizedRoot)) {
             if (Files.exists(curr, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(curr)) {
                 throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + untrustedPath);
             }
@@ -83,7 +86,7 @@ public class WorkspaceJailValidator {
      * @return validated RepoPath
      */
     public RepoPath validateForWrite(String untrustedPath) {
-        if (untrustedPath == null || untrustedPath.isBlank()) {
+        if (isNull(untrustedPath) || untrustedPath.isBlank()) {
             throw new SecurityException("Jailbreak attempt: path cannot be null or blank");
         }
         Path rawPath = activeWorkingRoot.toAbsolutePath().normalize().resolve(untrustedPath);

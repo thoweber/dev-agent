@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MavenBuildSystemTest {
 
@@ -48,11 +49,12 @@ class MavenBuildSystemTest {
     }
 
     @Test
-    @DisplayName("Given directory with mvnw wrapper - when resolveExecutable called - then returns ./mvnw")
+    @DisplayName("Given directory with mvnw wrapper - when resolveExecutable called - then returns absolute wrapper path")
     void givenDirectoryWithMvnw_whenResolveExecutableCalled_thenReturnsWrapper(@TempDir Path tempDir) throws IOException {
-        Files.writeString(tempDir.resolve("mvnw"), "#!/bin/sh\n");
+        Path wrapper = tempDir.resolve("mvnw");
+        Files.writeString(wrapper, "#!/bin/sh\n");
         String executable = buildSystem.resolveExecutable(tempDir);
-        assertThat(executable).isIn("./mvnw", "mvnw.cmd", "mvnw");
+        assertThat(executable).isIn(wrapper.toAbsolutePath().toString(), tempDir.resolve("mvnw.cmd").toAbsolutePath().toString(), "mvn");
     }
 
     @Test
@@ -383,5 +385,37 @@ class MavenBuildSystemTest {
 
         assertThat(compileCmd).contains("-Dproject.build.directory=target-agent");
         assertThat(testCmd).contains("-Dproject.build.directory=target-agent");
+    }
+
+    @Test
+    @DisplayName("Given unsafe modulePath or testPattern - when build commands constructed - then throws SecurityException")
+    void givenUnsafeModulePathOrTestPattern_whenCommandsBuilt_thenThrowsSecurityException(@TempDir Path tempDir) {
+        assertThatThrownBy(() -> buildSystem.buildCompileCommand(tempDir, "../../outside", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildCompileCommand(tempDir, "-Dexec.executable=sh", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildCompileCommand(tempDir, "/etc/passwd", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildCompileCommand(tempDir, "core;rm -rf /", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, "sub/../escape", "*Test", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, null, "FooTest && id", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, null, "-Dexec=calc", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, null, "FooTest%PATH%", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, null, "${env.SECRET}", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, null, "$(id)", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> buildSystem.buildTestCommand(tempDir, null, "Foo..BarTest", "target-agent"))
+            .isInstanceOf(SecurityException.class);
+        assertThat(BackendBuildSystem.normalizeModulePath(null, "sub/mod/"))
+            .contains("sub/mod");
+        assertThatThrownBy(() -> BackendBuildSystem.normalizeModulePath(tempDir, "C:\\evil"))
+            .isInstanceOf(SecurityException.class);
     }
 }

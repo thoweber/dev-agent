@@ -6,7 +6,10 @@ import org.junit.jupiter.api.io.TempDir;
 import guru.thomasweber.devagent.model.ProjectId;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -125,11 +128,46 @@ class ProjectIdResolverTest {
 
     @Test
     @DisplayName("Given non-existent path - computeLocalFallback falls back to normalized absolute path")
-    void testComputeLocalFallbackNonExistent() {
+    void testComputeLocalFallbackNonExistent() throws IOException {
         ProjectIdResolver resolver = new ProjectIdResolver();
         Path nonExistent = tempDir.resolve("sub_dir_not_on_disk");
 
         String coordinate = resolver.resolveCoordinate(nonExistent);
         assertThat(coordinate).isEqualTo("local:" + nonExistent.toAbsolutePath().normalize());
+
+        // URL edge cases: password with '@', IPv6 host, uppercase .GIT, Windows path, null root
+        assertThat(resolver.normalizeRemote("https://user:p@ss@github.com/org/repo.git"))
+            .isEqualTo("github.com/org/repo");
+        assertThat(resolver.normalizeRemote("https://[::1]:8443/org/repo.GIT"))
+            .isEqualTo("[::1]/org/repo");
+        assertThat(resolver.normalizeRemote("C:\\repos\\myrepo"))
+            .doesNotStartWith("c/");
+        assertThat(resolver.resolveCoordinate(null)).isEqualTo("unknown");
+        assertThat(resolver.normalizeRemote("https://gitlab.example.com/team/service")).isEqualTo("gitlab.example.com/team/service");
+        assertThat(resolver.normalizeRemote("https://github.com:8443/org/repo.git")).isEqualTo("github.com/org/repo");
+        assertThat(resolver.normalizeRemote("D:/repos/myrepo")).isEqualTo("D:/repos/myrepo");
+
+        // Malformed URL / scheme / IPv6 / port / empty authority edge cases
+        assertThat(resolver.normalizeRemote("1bad://github.com/org/repo")).isEqualTo("1bad://github.com/org/repo");
+        assertThat(resolver.normalizeRemote("ht!tp://github.com/org/repo")).isEqualTo("ht!tp://github.com/org/repo");
+        assertThat(resolver.normalizeRemote("https:///org/repo")).isEqualTo("https:///org/repo");
+        assertThat(resolver.normalizeRemote("https://github.com/")).isEqualTo("https://github.com");
+        assertThat(resolver.normalizeRemote("https://[::1/org/repo")).isEqualTo("https://[::1/org/repo");
+        assertThat(resolver.normalizeRemote("https://[]/org/repo")).isEqualTo("https://[]/org/repo");
+        assertThat(resolver.normalizeRemote("https://[::1]extra/org/repo")).isEqualTo("https://[::1]extra/org/repo");
+        assertThat(resolver.normalizeRemote("https://[::1]:abc/org/repo")).isEqualTo("https://[::1]:abc/org/repo");
+        assertThat(resolver.normalizeRemote("https://:8080/org/repo")).isEqualTo("https://:8080/org/repo");
+        assertThat(resolver.normalizeRemote("https://github.com:/org/repo")).isEqualTo("https://github.com:/org/repo");
+        assertThat(resolver.normalizeRemote("https://github.com:abc/org/repo")).isEqualTo("https://github.com:abc/org/repo");
+        assertThat(resolver.normalizeRemote("https+ssh-1.0://[::1]/org/repo")).isEqualTo("[::1]/org/repo");
+        assertThat(resolver.normalizeRemote("https://[/org/repo")).isEqualTo("https://[/org/repo");
+        assertThat(resolver.normalizeRemote("ssh://")).isEqualTo("ssh:");
+
+        // Initialized git repo with remote origin exercises probeGitRemote success branch
+        SubprocessExecutor realExec = new SubprocessExecutor();
+        Path gitRepo = Files.createDirectories(tempDir.resolve("real-remote-repo"));
+        assertThat(realExec.execute(List.of("git", "init"), gitRepo, Duration.ofSeconds(5)).isSuccess()).isTrue();
+        assertThat(realExec.execute(List.of("git", "remote", "add", "origin", "https://gitlab.example.com/team/app.git"), gitRepo, Duration.ofSeconds(5)).isSuccess()).isTrue();
+        assertThat(resolver.resolveCoordinate(gitRepo)).isEqualTo("gitlab.example.com/team/app");
     }
 }

@@ -5,13 +5,13 @@ import dev.langchain4j.data.segment.TextSegment;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.DocumentSection;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.workspace.PathGuard;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,8 +19,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Dedicated parser for Architectural Decision Records (ADRs) and declarative rules.
@@ -35,7 +39,7 @@ public class AdrParser {
     private static final String METADATA_SUMMARY = "summary";
     private static final String METADATA_TAGS = "tags";
 
-    private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([a-z0-9_-]+)");
+    private static final Pattern STATUS_PATTERN = Pattern.compile("(?im)(?:^|[\\s*>\\-])(?:\\*\\s*)?(?:\\*\\*status:\\*\\*|\\*\\*status\\*\\*:|status:)\\s*([a-z0-9_-]+)");
     private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b([A-Z0-9]+-\\d+)\\b");
     private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^([A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
     private static final Pattern ADR_TAG_PATTERN = Pattern.compile("(?i)(?:^|/)adrs?(?:/|[-_.]|$)");
@@ -60,10 +64,7 @@ public class AdrParser {
      */
     public ArchitecturalRecord parseRecord(RepoPath repoPath) {
         try {
-            if (Files.isSymbolicLink(repoPath.toPath())) {
-                throw new SecurityException("Refusing to read through symbolic link: " + repoPath.toPath());
-            }
-            String content = Files.readString(repoPath.toPath());
+            String content = PathGuard.readRegularFileBounded(repoPath.toPath(), PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
             return parseRecord(repoPath, content);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read record at " + repoPath.toPath(), e);
@@ -79,7 +80,7 @@ public class AdrParser {
      */
     public ArchitecturalRecord parseRecord(RepoPath repoPath, String content) {
         String fileName = repoPath.toPath().getFileName().toString();
-        String nameWithoutExt = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
+        String nameWithoutExt = stripMarkdownExtension(fileName);
 
         ParsedMarkdown parsed = markdownParserService.parse(content);
 
@@ -102,23 +103,26 @@ public class AdrParser {
 
     private String deriveStatus(ParsedMarkdown parsed, String content) {
         String status = getFirstMetadata(parsed.metadata(), METADATA_STATUS);
-        if (status == null) {
+        if (isNull(status)) {
             Matcher statusMatcher = STATUS_PATTERN.matcher(content);
-            status = statusMatcher.find() ? statusMatcher.group(1).trim() : "Active";
+            if (statusMatcher.find()) {
+                return statusMatcher.group(1).trim();
+            }
+            return "Active";
         }
         return status;
     }
 
     private String deriveSummary(ParsedMarkdown parsed, String title) {
         String summary = getFirstMetadata(parsed.metadata(), METADATA_SUMMARY);
-        if (summary == null) {
+        if (isNull(summary)) {
             summary = parsed.sections().stream()
                 .filter(s -> "Summary".equalsIgnoreCase(s.heading()) || "Context".equalsIgnoreCase(s.heading()))
                 .map(DocumentSection::content)
                 .findFirst()
                 .orElse(null);
         }
-        if (summary == null || summary.isBlank()) {
+        if (isNull(summary) || summary.isBlank()) {
             summary = parsed.sections().stream()
                 .map(DocumentSection::content)
                 .flatMap(String::lines)
@@ -153,14 +157,17 @@ public class AdrParser {
      * @return list of segmented text chunks with metadata
      */
     public List<TextSegment> parseSegments(Path filePath, String rawContent) {
-        if (rawContent == null || rawContent.isBlank()) {
+        if (isNull(rawContent) || rawContent.isBlank()) {
             return Collections.emptyList();
         }
 
         ParsedMarkdown parsed = markdownParserService.parse(rawContent);
 
-        String fileName = (filePath != null && filePath.getFileName() != null) ? filePath.getFileName().toString() : "unknown.md";
-        String nameWithoutExt = fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
+        String fileName = "unknown.md";
+        if (nonNull(filePath) && nonNull(filePath.getFileName())) {
+            fileName = filePath.getFileName().toString();
+        }
+        String nameWithoutExt = stripMarkdownExtension(fileName);
 
         String title = deriveTitle(parsed, nameWithoutExt);
         String docId = deriveId(parsed, fileName, title, nameWithoutExt);
@@ -168,7 +175,7 @@ public class AdrParser {
         List<TextSegment> segments = new ArrayList<>();
         for (DocumentSection section : parsed.sections()) {
             Map<String, Object> metadata = new HashMap<>();
-            metadata.put("path", filePath != null ? filePath.toString() : "");
+            metadata.put("path", Objects.toString(filePath, ""));
             metadata.put(METADATA_ID, docId);
             metadata.put(METADATA_TITLE, title);
             metadata.put("section", section.heading());
@@ -179,9 +186,16 @@ public class AdrParser {
         return segments;
     }
 
+    private static String stripMarkdownExtension(String fileName) {
+        if (fileName.endsWith(".md")) {
+            return fileName.substring(0, fileName.length() - 3);
+        }
+        return fileName;
+    }
+
     private String deriveTitle(ParsedMarkdown parsed, String fallback) {
         String title = getFirstMetadata(parsed.metadata(), METADATA_TITLE);
-        if (title == null) {
+        if (isNull(title)) {
             title = parsed.sections().stream()
                 .map(DocumentSection::heading)
                 .filter(h -> !"Preamble".equalsIgnoreCase(h))
@@ -193,7 +207,7 @@ public class AdrParser {
 
     private String deriveId(ParsedMarkdown parsed, String fileName, String title, String nameWithoutExt) {
         String id = getFirstMetadata(parsed.metadata(), METADATA_ID);
-        if (id == null) {
+        if (isNull(id)) {
             Matcher fileIdMatcher = ADR_ID_FILE_PATTERN.matcher(fileName);
             if (fileIdMatcher.find()) {
                 id = fileIdMatcher.group(1);
@@ -211,9 +225,9 @@ public class AdrParser {
 
     private static String getFirstMetadata(Map<String, List<String>> metadata, String key) {
         List<String> values = metadata.get(key);
-        if (values != null && !values.isEmpty()) {
+        if (nonNull(values) && !values.isEmpty()) {
             String first = values.getFirst();
-            if (first != null && !first.isBlank()) {
+            if (nonNull(first) && !first.isBlank()) {
                 return first.trim();
             }
         }

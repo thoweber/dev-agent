@@ -11,6 +11,8 @@ import jakarta.inject.Inject;
 
 import java.util.function.Supplier;
 
+import static java.util.Objects.nonNull;
+
 /**
  * Dynamic ChatModel supplier for UniversalArchitectGatekeeperAiService.
  * Resolves active ChatModel CDI bean when configured, or provides an offline
@@ -32,7 +34,7 @@ public class GatekeeperChatModelSupplier implements Supplier<ChatModel> {
 
     @Override
     public ChatModel get() {
-        if (chatModelInstance != null && chatModelInstance.isResolvable()) {
+        if (nonNull(chatModelInstance) && chatModelInstance.isResolvable()) {
             return chatModelInstance.get();
         }
         return createFallbackChatModel(LaunchMode.current());
@@ -42,13 +44,13 @@ public class GatekeeperChatModelSupplier implements Supplier<ChatModel> {
         return new ChatModel() {
             @Override
             public ChatResponse doChat(ChatRequest request) {
-                if (launchMode == LaunchMode.NORMAL) {
+                if (launchMode == LaunchMode.TEST) {
                     return ChatResponse.builder()
-                        .aiMessage(AiMessage.from("{\"approved\":false,\"summary\":\"Architectural evaluation failed: No ChatModel bean registered in production runtime.\",\"violations\":[\"No ChatModel bean registered\"],\"recommendations\":[\"Configure an LLM provider such as Ollama, OpenAI, or Anthropic\"]}"))
+                        .aiMessage(AiMessage.from("{\"approved\":true,\"summary\":\"Invariants verified (offline test stub)\",\"violations\":[],\"recommendations\":[]}"))
                         .build();
                 }
                 return ChatResponse.builder()
-                    .aiMessage(AiMessage.from("{\"approved\":true,\"summary\":\"Invariants verified (offline test stub)\",\"violations\":[],\"recommendations\":[]}"))
+                    .aiMessage(AiMessage.from("{\"approved\":false,\"summary\":\"Architectural evaluation failed: No ChatModel bean registered in production runtime.\",\"violations\":[\"No ChatModel bean registered\"],\"recommendations\":[\"Configure an LLM provider such as Ollama, OpenAI, or Anthropic\"]}"))
                     .build();
             }
         };

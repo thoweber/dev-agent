@@ -2,11 +2,17 @@ package guru.thomasweber.devagent.cognitive;
 
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
 import guru.thomasweber.devagent.model.GateVerdict;
+import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 import io.quarkus.cache.CacheResult;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Cached Gatekeeper service memoizing deterministic invariant evaluations backed by Caffeine (ADR-009).
@@ -14,36 +20,58 @@ import java.util.List;
 @ApplicationScoped
 public class ArchitectGatekeeper {
 
+    private static final Pattern DELIMITER_TAG_PATTERN = Pattern.compile("(?i)</?(target_content|evaluation_data)>");
+
     private final UniversalArchitectGatekeeperAiService gatekeeperAiService;
+    private final SecretRedactionFilter secretFilter;
 
     @Inject
-    public ArchitectGatekeeper(UniversalArchitectGatekeeperAiService gatekeeperAiService) {
+    public ArchitectGatekeeper(
+        UniversalArchitectGatekeeperAiService gatekeeperAiService,
+        SecretRedactionFilter secretFilter
+    ) {
         this.gatekeeperAiService = gatekeeperAiService;
+        this.secretFilter = Objects.requireNonNullElseGet(secretFilter, SecretRedactionFilter::new);
+    }
+
+    public ArchitectGatekeeper(UniversalArchitectGatekeeperAiService gatekeeperAiService) {
+        this(gatekeeperAiService, new SecretRedactionFilter());
     }
 
     @CacheResult(cacheName = "architect-verdicts", keyGenerator = GatekeeperCacheKeyGenerator.class)
     public GateVerdict evaluate(String targetContent, String retrievedAdrs) {
-        return gatekeeperAiService.evaluate(targetContent, retrievedAdrs);
+        String safeTarget = sanitizePromptData(targetContent);
+        String safeAdrs = sanitizePromptData(retrievedAdrs);
+        return gatekeeperAiService.evaluate(safeTarget, safeAdrs);
     }
 
     @CacheResult(cacheName = "architect-verdicts", keyGenerator = GatekeeperCacheKeyGenerator.class)
     public GateVerdict evaluate(String targetContent, List<ArchitecturalRecord> records) {
-        String promptAdrs = formatRecords(records);
-        return gatekeeperAiService.evaluate(targetContent, promptAdrs);
+        String safeTarget = sanitizePromptData(targetContent);
+        String safeAdrs = sanitizePromptData(formatRecords(records));
+        return gatekeeperAiService.evaluate(safeTarget, safeAdrs);
+    }
+
+    private String sanitizePromptData(String raw) {
+        if (isNull(raw) || raw.isEmpty()) {
+            return Objects.toString(raw, "");
+        }
+        String scrubbed = secretFilter.sanitize(raw).value();
+        return DELIMITER_TAG_PATTERN.matcher(scrubbed).replaceAll(match -> "&lt;" + match.group().substring(1));
     }
 
     private static String formatRecords(List<ArchitecturalRecord> records) {
-        if (records == null || records.isEmpty()) {
+        if (isNull(records) || records.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("### RETRIEVED ARCHITECTURAL DECISIONS & RULES:%n"));
         for (ArchitecturalRecord rec : records) {
             sb.append(String.format("- [%s] %s (Status: %s)%n", rec.id(), rec.title(), rec.status()));
-            if (rec.summary() != null && !rec.summary().isBlank()) {
+            if (nonNull(rec.summary()) && !rec.summary().isBlank()) {
                 sb.append(String.format("  Summary: %s%n", rec.summary().strip()));
             }
-            if (rec.content() != null && !rec.content().isBlank()) {
+            if (nonNull(rec.content()) && !rec.content().isBlank()) {
                 sb.append(String.format("  Content: %s%n", rec.content().strip()));
             }
         }

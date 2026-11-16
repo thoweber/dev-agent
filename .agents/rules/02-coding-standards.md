@@ -11,6 +11,7 @@
 ## 2. Strongly-Typed Value Objects & Complex Record Builder Standard
 * **Complex Record Builder Standard:** Any `record` or Value Object containing 4 or more fields (e.g., `GateVerdict`, `AgentState`, `StepAuditEntity`) MUST be annotated with `@Builder(toBuilder = true)`. Positional `new Record(...)` calls for complex records are forbidden — instantiation MUST use `Record.builder()...build()` or `record.toBuilder()`.
 * **Manual Null Checks:** Use `isNull(val)` or `nonNull(val)` with static imports (`import static java.util.Objects.isNull; import static java.util.Objects.nonNull;`).
+* **Null Coalescing & No Ternaries:** Use `Objects.requireNonNullElse(...)`, `Objects.requireNonNullElseGet(...)`, `Objects.toString(...)`, and explicit `if`/`else` or `switch` statements instead of ternary expressions (`? :`). Nested ternaries are strictly forbidden.
 * **Optional Return Types:** Use `Optional<T>` for query methods that may not produce a value.
 * **Empty Collections:** Never return `null` for collection return types — always return an immutable empty collection (`List.of()`, `Set.of()`, `Map.of()`).
 

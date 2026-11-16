@@ -1,5 +1,7 @@
 package guru.thomasweber.devagent.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 import java.util.Objects;
@@ -19,6 +21,7 @@ public record SessionId(String value) {
         value = stripped;
     }
 
+    @JsonCreator
     public static SessionId of(String value) {
         return new SessionId(value);
     }
@@ -31,6 +34,7 @@ public record SessionId(String value) {
         return new SessionId(identifier.toString());
     }
 
+    @JsonValue
     public String idString() {
         return value;
     }

@@ -20,7 +20,7 @@ This skill governs the high-level architecture, Hexagonal boundaries, Two-Axis S
    * **Axis 2 (Framework Idioms):** `BackendFrameworkConvention` and `FrontendFrameworkConvention` SPIs decouple framework rules (Quarkus, Angular, Spring Boot, React).
 3. **Canonical Path Sandboxing:** All filesystem operations must pass through `WorkspaceJailValidator.validateAndResolve()`. Directory traversal outside `activeWorkingRoot` throws `SecurityException`.
 4. **Zero-JNI Native Safety:** Semantic discovery relies on pure-Java lexical BM25 indexing. Avoid C++ native library JNI bindings that break GraalVM native binary portability.
-5. **Non-Locking State Sockets:** Background tasks emit atomic `state.json` heartbeats in their worktree to prevent H2 file lock deadlocks.
+5. **Non-Locking State Sockets & Single-Invocation Concurrency:** Background tasks emit atomic `state.json` heartbeats (`StateSocketService`) in their worktree to prevent H2 file lock deadlocks; `StatusCommand`/`LogsCommand` never touch JPA/JDBC, and `LocalWorkerLimiter` bounds worker concurrency per CLI invocation (`agent.max-concurrent-workers`, default `2`).
 6. **3-Tier Testing Pyramid Governance:** L1 fast unit tests ($<10\text{ s}$), L2 programmatic integration & ArchUnit ($<15\text{ s}$), L3 Mandrel native binary verification ($<50\text{ ms}$ cold start).
 
 ---
@@ -33,3 +33,4 @@ Every architectural modification must satisfy the following ArchUnit rules:
 3. **Complex Record Builder Standard:** Records with 4 or more fields must be annotated with `@Builder(toBuilder = true)`.
 4. **Entity Encapsulation:** Panache entities (`@Entity`) must strictly reside in `guru.thomasweber.devagent.entity` and never be accessed outside.
 5. **Programmatic Test Transaction Scope:** Test and lifecycle methods (`@Test`, `@BeforeEach`, `@AfterEach`) must not be annotated with `@Transactional`. Integration tests use `QuarkusTransaction.requiringNew()`.
+6. **Non-Locking Read Separation:** `StatusCommand` and `LogsCommand` must not depend on `..entity..`, `jakarta.persistence..`, or `javax.sql..` (`statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).

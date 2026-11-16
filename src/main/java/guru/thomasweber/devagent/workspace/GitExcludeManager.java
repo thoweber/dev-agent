@@ -1,0 +1,127 @@
+package guru.thomasweber.devagent.workspace;
+
+import jakarta.enterprise.context.ApplicationScoped;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+import static java.util.Objects.isNull;
+
+/**
+ * Idempotently manages {@code .git/info/exclude} entries so sliced agent build directories,
+ * caches, state sockets, and worker logs never pollute {@code git status}.
+ */
+@ApplicationScoped
+public class GitExcludeManager {
+
+    private static final List<String> STANDARD_AGENT_EXCLUDES = List.of(".cache-agent/", "state.json", "worker.log");
+    private static final Object EXCLUDE_WRITE_LOCK = new Object();
+
+    public void ensureExcluded(Path repoRoot, String targetDir) {
+        if (isNull(repoRoot)) {
+            return;
+        }
+        Optional<Path> excludeFileOpt = resolveExcludeFile(repoRoot);
+        if (excludeFileOpt.isEmpty()) {
+            return;
+        }
+        Path excludeFile = excludeFileOpt.get();
+        List<String> requiredEntries = buildRequiredEntries(targetDir);
+
+        synchronized (EXCLUDE_WRITE_LOCK) {
+            try {
+                Path infoDir = excludeFile.getParent();
+                if (Files.isSymbolicLink(infoDir) || Files.isSymbolicLink(excludeFile)) {
+                    throw new SecurityException("Symbolic link detected in Git exclude path: " + excludeFile);
+                }
+                if (!Files.exists(infoDir, LinkOption.NOFOLLOW_LINKS)) {
+                    Files.createDirectories(infoDir);
+                }
+                if (Files.isSymbolicLink(infoDir) || Files.isSymbolicLink(excludeFile)) {
+                    throw new SecurityException("Symbolic link detected in Git exclude path: " + excludeFile);
+                }
+
+                List<String> existingLines = List.of();
+                if (Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
+                    existingLines = Files.readAllLines(excludeFile);
+                }
+                Set<String> present = new LinkedHashSet<>(existingLines);
+                List<String> updated = new ArrayList<>(existingLines);
+                boolean changed = false;
+
+                for (String entry : requiredEntries) {
+                    if (!present.contains(entry)) {
+                        updated.add(entry);
+                        present.add(entry);
+                        changed = true;
+                    }
+                }
+
+                if (changed || !Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
+                    String content = String.join(System.lineSeparator(), updated) + System.lineSeparator();
+                    PathGuard.writeOwnerOnlyAtomically(excludeFile, content);
+                }
+            } catch (IOException e) {
+                throw new WorkspaceException("Failed to update .git/info/exclude: " + excludeFile, e);
+            }
+        }
+    }
+
+    private Optional<Path> resolveExcludeFile(Path repoRoot) {
+        Path dotGit = repoRoot.resolve(".git");
+        if (Files.isSymbolicLink(dotGit)) {
+            throw new SecurityException("Symbolic link detected for .git path: " + dotGit);
+        }
+        if (Files.isDirectory(dotGit, LinkOption.NOFOLLOW_LINKS)) {
+            return Optional.of(dotGit.resolve("info").resolve("exclude"));
+        }
+        if (Files.isRegularFile(dotGit, LinkOption.NOFOLLOW_LINKS)) {
+            return resolveWorktreeCommonExclude(dotGit);
+        }
+        return Optional.empty();
+    }
+
+    private Optional<Path> resolveWorktreeCommonExclude(Path dotGitFile) {
+        try {
+            String content = Files.readString(dotGitFile).trim();
+            if (!content.startsWith("gitdir:")) {
+                return Optional.empty();
+            }
+            Path gitDir = Path.of(content.substring("gitdir:".length()).trim());
+            if (!gitDir.isAbsolute()) {
+                gitDir = dotGitFile.getParent().resolve(gitDir).normalize();
+            }
+            if (Files.isSymbolicLink(gitDir)) {
+                throw new SecurityException("Symbolic link detected in Git worktree metadata path: " + gitDir);
+            }
+            Path commonDirFile = gitDir.resolve("commondir");
+            if (Files.isSymbolicLink(commonDirFile)) {
+                throw new SecurityException("Symbolic link detected in Git commondir path: " + commonDirFile);
+            }
+            Path commonGitDir = gitDir;
+            if (Files.isRegularFile(commonDirFile)) {
+                commonGitDir = gitDir.resolve(Files.readString(commonDirFile).trim()).normalize();
+            }
+            if (Files.isSymbolicLink(commonGitDir)) {
+                throw new SecurityException("Symbolic link detected in Git common dir path: " + commonGitDir);
+            }
+            return Optional.of(commonGitDir.resolve("info").resolve("exclude"));
+        } catch (IOException e) {
+            throw new WorkspaceException("Failed to resolve Git worktree exclude file", e);
+        }
+    }
+
+    private List<String> buildRequiredEntries(String targetDir) {
+        List<String> entries = new ArrayList<>();
+        entries.add(TargetDir.of(targetDir).excludeEntry());
+        entries.addAll(STANDARD_AGENT_EXCLUDES);
+        return entries;
+    }
+}

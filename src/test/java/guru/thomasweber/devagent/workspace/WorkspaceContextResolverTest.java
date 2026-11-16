@@ -280,4 +280,24 @@ class WorkspaceContextResolverTest {
         WorkspaceContextResolver resolver = new WorkspaceContextResolver(tempDir);
         assertThat(resolver.resolveFrontendRoot()).contains(frontendDir);
     }
+
+    @Test
+    @DisplayName("Given workingDir inside git worktree - when resolveRepoRoot and resolveExecutionRoot called - then separates primary repo root from bound worktree root")
+    void testResolveRepoRootAndExecutionRootInsideWorktree() throws Exception {
+        Files.createDirectories(tempDir.resolve(".git"));
+        Path worktreeDir = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-420"));
+        Files.writeString(worktreeDir.resolve(".git"), "gitdir: ../../worktrees/TASK-420\n");
+
+        WorkspaceContextResolver resolver = new WorkspaceContextResolver(worktreeDir);
+        assertThat(resolver.resolveRepoRoot()).isEqualTo(tempDir.toAbsolutePath().normalize());
+        assertThat(resolver.resolveWorktreesRoot()).isEqualTo(tempDir.toAbsolutePath().normalize().resolve(".git/dev-agent-worktrees"));
+        assertThat(resolver.resolveExecutionRoot()).isEqualTo(tempDir.toAbsolutePath().normalize());
+
+        WorktreeExecutionContext.runInWorktree(worktreeDir, () -> {
+            assertThat(resolver.resolveExecutionRoot()).isEqualTo(worktreeDir);
+            assertThat(resolver.resolveAgentCacheDir()).isEqualTo(worktreeDir.resolve(".cache-agent"));
+            assertThat(resolver.getJailValidator().getActiveWorkingRoot()).isEqualTo(worktreeDir);
+            return null;
+        });
+    }
 }

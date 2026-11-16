@@ -4,8 +4,10 @@ import guru.thomasweber.devagent.cognitive.MarkdownParserService;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.StepAudit;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStateChangeEvent;
+import guru.thomasweber.devagent.model.WorktreeState;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.enterprise.inject.Instance;
@@ -20,9 +22,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
+import java.util.Objects;
 import java.util.Optional;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Service that synchronizes database transitions to human-readable Markdown run journals.
@@ -38,6 +43,7 @@ public class StateSyncService {
     private final TaskPersistenceService persistenceService;
     private final MarkdownParserService markdownParserService;
     private final Instance<TransactionSynchronizationRegistry> registryInstance;
+    private final StateSocketService stateSocketService;
 
     @Inject
     public StateSyncService(
@@ -45,13 +51,25 @@ public class StateSyncService {
         SecretRedactionFilter secretFilter,
         TaskPersistenceService persistenceService,
         MarkdownParserService markdownParserService,
-        Instance<TransactionSynchronizationRegistry> registryInstance
+        Instance<TransactionSynchronizationRegistry> registryInstance,
+        StateSocketService stateSocketService
     ) {
         this.workspaceResolver = workspaceResolver;
         this.secretFilter = secretFilter;
         this.persistenceService = persistenceService;
         this.markdownParserService = markdownParserService;
         this.registryInstance = registryInstance;
+        this.stateSocketService = stateSocketService;
+    }
+
+    public StateSyncService(
+        WorkspaceContextResolver workspaceResolver,
+        SecretRedactionFilter secretFilter,
+        TaskPersistenceService persistenceService,
+        MarkdownParserService markdownParserService,
+        Instance<TransactionSynchronizationRegistry> registryInstance
+    ) {
+        this(workspaceResolver, secretFilter, persistenceService, markdownParserService, registryInstance, new StateSocketService(secretFilter, workspaceResolver));
     }
 
     public StateSyncService(
@@ -60,7 +78,7 @@ public class StateSyncService {
         TaskPersistenceService persistenceService,
         Instance<TransactionSynchronizationRegistry> registryInstance
     ) {
-        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), registryInstance);
+        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), registryInstance, new StateSocketService(secretFilter, workspaceResolver));
     }
 
     public StateSyncService(
@@ -68,27 +86,28 @@ public class StateSyncService {
         SecretRedactionFilter secretFilter,
         TaskPersistenceService persistenceService
     ) {
-        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), null);
+        this(workspaceResolver, secretFilter, persistenceService, new MarkdownParserService(), null, new StateSocketService(secretFilter, workspaceResolver));
     }
 
     public StateSyncService() {
-        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), new MarkdownParserService(), null);
+        this(new WorkspaceContextResolver(), new SecretRedactionFilter(), new TaskPersistenceService(), new MarkdownParserService(), null, new StateSocketService());
     }
 
     @Transactional
     public void onStateTransition(@Observes TaskStateChangeEvent event) {
-        SanitizedOutput sanitizedSummary = event.stepSummary() != null && !event.stepSummary().isBlank()
-            ? secretFilter.sanitize(event.stepSummary())
-            : null;
+        SanitizedOutput sanitizedSummary = null;
+        if (nonNull(event.stepSummary()) && !event.stepSummary().isBlank()) {
+            sanitizedSummary = secretFilter.sanitize(event.stepSummary());
+        }
 
         TaskRun taskRun = persistenceService.recordStateChange(event, sanitizedSummary);
-        if (taskRun != null) {
+        if (nonNull(taskRun)) {
             scheduleMarkdownProjection(taskRun);
         }
     }
 
     private void scheduleMarkdownProjection(TaskRun taskRun) {
-        if (registryInstance != null && registryInstance.isResolvable()) {
+        if (nonNull(registryInstance) && registryInstance.isResolvable()) {
             try {
                 TransactionSynchronizationRegistry registry = registryInstance.get();
                 if (registry.getTransactionStatus() == Status.STATUS_ACTIVE) {
@@ -119,8 +138,16 @@ public class StateSyncService {
     }
 
     public void projectToMarkdown(TaskRun taskRun) {
-        validateTaskId(taskRun.taskId());
+        projectToMarkdown(workspaceResolver.resolveRepoRoot(), taskRun);
+    }
 
+    public void projectToMarkdown(Path targetRepoRoot, TaskRun taskRun) {
+        TaskId safeTaskId = TaskId.of(taskRun.taskId());
+
+        String formattedUpdatedAt = "unknown";
+        if (nonNull(taskRun.updatedAt())) {
+            formattedUpdatedAt = DateTimeFormatter.ISO_INSTANT.format(taskRun.updatedAt());
+        }
         String markdown = String.format("""
             ---
             task_id: "%s"
@@ -149,39 +176,61 @@ public class StateSyncService {
             %s
             """,
             taskRun.taskId(),
-            taskRun.projectId(),
+            escapeYamlQuoted(taskRun.projectId()),
             taskRun.status(),
-            taskRun.currentPhase(),
-            safe(taskRun.branch(), "unassigned"),
-            safe(taskRun.baseCommit(), "HEAD"),
-            safe(taskRun.checkpointStash(), "none"),
-            taskRun.pid() != null ? taskRun.pid() : 0L,
+            escapeYamlQuoted(String.valueOf(taskRun.currentPhase())),
+            escapeYamlQuoted(Objects.requireNonNullElse(taskRun.branch(), "unassigned")),
+            escapeYamlQuoted(Objects.requireNonNullElse(taskRun.baseCommit(), "HEAD")),
+            escapeYamlQuoted(Objects.requireNonNullElse(taskRun.checkpointStash(), "none")),
+            Objects.requireNonNullElse(taskRun.pid(), 0L),
             taskRun.retryCount(),
-            taskRun.updatedAt() != null ? DateTimeFormatter.ISO_INSTANT.format(taskRun.updatedAt()) : "unknown",
+            formattedUpdatedAt,
             taskRun.taskId(),
-            safe(taskRun.userStory(), "None specified"),
-            safe(taskRun.approvedPlanJson(), "{}"),
+            Objects.requireNonNullElse(taskRun.userStory(), "None specified"),
+            Objects.requireNonNullElse(taskRun.approvedPlanJson(), "{}"),
             renderStepsHistory(taskRun)
         );
 
         try {
-            Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
+            Path resolvedRoot = Objects.requireNonNullElseGet(targetRepoRoot, workspaceResolver::resolveRepoRoot);
+            Path repoRoot = resolvedRoot.toRealPath();
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
             Files.createDirectories(runsDir.toPath());
-            RepoPath journalFile = runsDir.resolve(taskRun.taskId() + ".md");
+            RepoPath journalFile = runsDir.resolve(safeTaskId.value() + ".md");
 
-            Files.writeString(
-                journalFile.toPath(),
-                secretFilter.sanitize(markdown).value(),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE,
-                LinkOption.NOFOLLOW_LINKS
-            );
+            PathGuard.writeOwnerOnlyAtomically(journalFile.toPath(), secretFilter.sanitize(markdown).value());
+            mirrorStateSocketIfWorktreeExists(repoRoot, taskRun);
         } catch (IOException e) {
             LOG.warnf(e, "Failed to project Markdown state journal: %s", e.getMessage());
         }
+    }
+
+    private void mirrorStateSocketIfWorktreeExists(Path repoRoot, TaskRun taskRun) {
+        if (isNull(stateSocketService)) {
+            return;
+        }
+        TaskId taskId = TaskId.of(taskRun.taskId());
+        Path worktreeDir = WorktreeLayout.forRoot(repoRoot).worktreeDir(taskId);
+        if (!Files.isDirectory(worktreeDir, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        Optional<WorktreeState> existing = stateSocketService.readState(repoRoot, taskId);
+        WorktreeState updated = WorktreeState.builder()
+            .taskId(taskId.value())
+            .projectId(taskRun.projectId())
+            .status(taskRun.status())
+            .phase(taskRun.currentPhase())
+            .tokens(existing.map(WorktreeState::tokens).orElse(0L))
+            .cost(existing.map(WorktreeState::cost).orElse(null))
+            .pid(Objects.requireNonNullElseGet(taskRun.pid(), () -> existing.map(WorktreeState::pid).orElse(null)))
+            .branch(Objects.requireNonNullElseGet(taskRun.branch(), () -> existing.map(WorktreeState::branch).orElse(null)))
+            .worktreePath(worktreeDir.toString())
+            .startedAt(existing.map(WorktreeState::startedAt).orElse(taskRun.createdAt()))
+            .updatedAt(taskRun.updatedAt())
+            .lastMessage(existing.map(WorktreeState::lastMessage).orElse(taskRun.currentPhase()))
+            .build();
+        stateSocketService.writeHeartbeat(repoRoot, updated);
     }
 
     /**
@@ -191,16 +240,16 @@ public class StateSyncService {
      * @return parsed markdown containing YAML frontmatter and structural sections, or empty if not found
      */
     public Optional<ParsedMarkdown> readTaskJournal(String taskId) {
-        validateTaskId(taskId);
+        TaskId safeTaskId = TaskId.of(taskId);
         try {
             Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
-            RepoPath journalFile = runsDir.resolve(taskId + ".md");
-            if (!Files.isRegularFile(journalFile.toPath())) {
+            RepoPath journalFile = runsDir.resolve(safeTaskId.value() + ".md");
+            if (!Files.isRegularFile(journalFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 return Optional.empty();
             }
-            String content = Files.readString(journalFile.toPath());
+            String content = PathGuard.readRegularFileBounded(journalFile.toPath(), PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
             return Optional.of(markdownParserService.parse(content));
         } catch (IOException e) {
             LOG.warnf(e, "Failed to read Markdown state journal for taskId=%s: %s", taskId, e.getMessage());
@@ -208,29 +257,34 @@ public class StateSyncService {
         }
     }
 
+    private static String escapeYamlQuoted(String value) {
+        if (isNull(value)) {
+            return "";
+        }
+        return value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", " ")
+            .replace("\n", " ");
+    }
+
     private String renderStepsHistory(TaskRun taskRun) {
-        if (taskRun.steps() == null || taskRun.steps().isEmpty()) {
+        if (isNull(taskRun.steps()) || taskRun.steps().isEmpty()) {
             return "- No steps executed yet.";
         }
         StringBuilder sb = new StringBuilder();
         for (StepAudit step : taskRun.steps()) {
+            String marker = " ";
+            if (step.exitCode() == 0) {
+                marker = "x";
+            }
             sb.append(String.format("- [%s] **%s** (%dms): %s%n",
-                step.exitCode() == 0 ? "x" : " ",
+                marker,
                 step.toolName(),
                 step.durationMs(),
-                step.outputSummary() != null ? step.outputSummary() : ""
+                Objects.toString(step.outputSummary(), "")
             ));
         }
         return sb.toString();
-    }
-
-    private void validateTaskId(String taskId) {
-        if (taskId == null || taskId.contains("..") || taskId.contains("/") || taskId.contains("\\")) {
-            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + taskId);
-        }
-    }
-
-    private String safe(String value, String fallback) {
-        return value != null ? value : fallback;
     }
 }

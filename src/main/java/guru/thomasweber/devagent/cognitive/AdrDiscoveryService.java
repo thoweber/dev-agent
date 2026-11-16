@@ -16,6 +16,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Dynamically discovers architectural decision records (ADRs) and declarative rules
@@ -70,23 +71,26 @@ public class AdrDiscoveryService {
     }
 
     public List<ArchitecturalRecord> discoverRecords() {
-        return discoverRecords(contextResolver.resolveRepoRoot());
+        return discoverRecords(contextResolver.resolveExecutionRoot());
     }
 
     public List<ArchitecturalRecord> discoverRecords(Path root) {
-        if (root == null || !Files.exists(root)) {
+        if (Objects.isNull(root) || !Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return Collections.emptyList();
         }
 
         List<String> configuredPaths = readConfiguredRulesPaths(root);
-        List<String> pathsToScan = configuredPaths.isEmpty() ? DEFAULT_CONVENTION_PATHS : configuredPaths;
+        List<String> pathsToScan = DEFAULT_CONVENTION_PATHS;
+        if (!configuredPaths.isEmpty()) {
+            pathsToScan = configuredPaths;
+        }
 
         RepoPath repoRoot = RepoPath.of(root, root);
         List<RepoPath> markdownFiles = fileScanner.findFiles(
             repoRoot,
             pathsToScan,
             WorkspaceFileScanner.DEFAULT_IGNORED_PREFIXES,
-            p -> p.getFileName() != null && p.getFileName().toString().endsWith(".md")
+            p -> Objects.nonNull(p.getFileName()) && p.getFileName().toString().endsWith(".md")
         );
 
         return markdownFiles.stream()

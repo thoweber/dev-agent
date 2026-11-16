@@ -4,18 +4,21 @@ import guru.thomasweber.devagent.model.CircuitBreakerState;
 import guru.thomasweber.devagent.model.LoopAction;
 import guru.thomasweber.devagent.workspace.ProcessResult;
 import guru.thomasweber.devagent.workspace.SubprocessExecutor;
+import guru.thomasweber.devagent.workspace.WorktreeLayout;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Normalized loop circuit breaker governing the TDD coder loop (ADR-009).
@@ -30,16 +33,15 @@ public class LoopCircuitBreaker {
     public static final int MAX_HISTORY_SIZE = 50;
     public static final Duration ROLLBACK_TIMEOUT = Duration.ofSeconds(10);
     private static final String DEFAULT_TASK_ID = "default";
-    private static final String GIT_DIR_NAME = ".git";
-    private static final String WORKTREE_DIR_NAME = "dev-agent-worktrees";
 
     private final ErrorSignatureExtractor signatureExtractor;
     private final SubprocessExecutor subprocessExecutor;
 
     private static class TaskBreakerState {
         CircuitBreakerState state = CircuitBreakerState.NORMAL;
-        final LinkedList<String> history = new LinkedList<>();
+        final List<String> history = new ArrayList<>();
         int postPivotFailures = 0;
+        int consecutiveRepeatCount = 0;
     }
 
     private final ConcurrentMap<String, TaskBreakerState> taskStates = new ConcurrentHashMap<>();
@@ -60,52 +62,83 @@ public class LoopCircuitBreaker {
     }
 
     public LoopAction recordFailure(String taskId, String rawOutput, Path workingDir) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
+        String effectiveTaskId = normalizeTaskId(taskId);
         TaskBreakerState taskState = taskStates.computeIfAbsent(effectiveTaskId, _ -> new TaskBreakerState());
         String sig = signatureExtractor.extractSignature(rawOutput);
 
+        LockDecision decision;
         synchronized (taskState) {
-            if (taskState.state == CircuitBreakerState.TRIPPED) {
+            decision = evaluateFailureUnderLock(taskState, sig);
+        }
+        switch (decision) {
+            case TRIP_AND_HALT -> {
                 return LoopAction.TRIP_AND_HALT;
             }
-
-            if (taskState.state == CircuitBreakerState.PIVOT_ACTIVE) {
-                taskState.postPivotFailures++;
-                if (taskState.postPivotFailures >= MAX_POST_PIVOT_FAILURES) {
-                    taskState.state = CircuitBreakerState.TRIPPED;
-                    // Preserve diagnostic error state on trip; do not rollback!
-                    return LoopAction.TRIP_AND_HALT;
-                }
-                appendHistory(taskState, sig);
+            case INJECT_WARNING -> {
+                return LoopAction.INJECT_WARNING;
+            }
+            case CONTINUE -> {
                 return LoopAction.CONTINUE;
             }
-
-            if (!taskState.history.isEmpty()) {
-                String lastSig = taskState.history.getLast();
-                if (Objects.equals(lastSig, sig)) {
-                    taskState.state = CircuitBreakerState.WARNING;
-                    appendHistory(taskState, sig);
-                    return LoopAction.INJECT_WARNING;
-                }
-
-                if (isOscillatingSequence(taskState.history, sig)) {
-                    appendHistory(taskState, sig);
-                    boolean rolledBack = rollback(workingDir);
-                    if (rolledBack) {
-                        taskState.state = CircuitBreakerState.PIVOT_ACTIVE;
-                        taskState.postPivotFailures = 0;
-                        return LoopAction.ROLLBACK_AND_PIVOT;
-                    } else {
-                        taskState.state = CircuitBreakerState.TRIPPED;
-                        return LoopAction.TRIP_AND_HALT;
-                    }
-                }
+            case NEEDS_ROLLBACK -> {
+                // Proceed outside the synchronized monitor before invoking subprocess rollback
             }
-
-            taskState.state = CircuitBreakerState.NORMAL;
-            appendHistory(taskState, sig);
-            return LoopAction.CONTINUE;
         }
+
+        boolean rolledBack = rollback(workingDir);
+        synchronized (taskState) {
+            if (rolledBack) {
+                taskState.state = CircuitBreakerState.PIVOT_ACTIVE;
+                taskState.postPivotFailures = 0;
+                taskState.consecutiveRepeatCount = 0;
+                return LoopAction.ROLLBACK_AND_PIVOT;
+            }
+            taskState.state = CircuitBreakerState.TRIPPED;
+            return LoopAction.TRIP_AND_HALT;
+        }
+    }
+
+    private enum LockDecision {
+        CONTINUE,
+        INJECT_WARNING,
+        NEEDS_ROLLBACK,
+        TRIP_AND_HALT
+    }
+
+    private LockDecision evaluateFailureUnderLock(TaskBreakerState taskState, String sig) {
+        if (taskState.state == CircuitBreakerState.TRIPPED) {
+            return LockDecision.TRIP_AND_HALT;
+        }
+        if (taskState.state == CircuitBreakerState.PIVOT_ACTIVE) {
+            return evaluatePostPivotUnderLock(taskState, sig);
+        }
+        if (!taskState.history.isEmpty() && Objects.equals(taskState.history.getLast(), sig)) {
+            taskState.consecutiveRepeatCount++;
+            appendHistory(taskState, sig);
+            if (taskState.consecutiveRepeatCount < 2) {
+                taskState.state = CircuitBreakerState.WARNING;
+                return LockDecision.INJECT_WARNING;
+            }
+            return LockDecision.NEEDS_ROLLBACK;
+        }
+        taskState.consecutiveRepeatCount = 0;
+        boolean oscillating = !taskState.history.isEmpty() && isOscillatingSequence(taskState.history, sig);
+        appendHistory(taskState, sig);
+        if (oscillating) {
+            return LockDecision.NEEDS_ROLLBACK;
+        }
+        taskState.state = CircuitBreakerState.NORMAL;
+        return LockDecision.CONTINUE;
+    }
+
+    private LockDecision evaluatePostPivotUnderLock(TaskBreakerState taskState, String sig) {
+        taskState.postPivotFailures++;
+        if (taskState.postPivotFailures >= MAX_POST_PIVOT_FAILURES) {
+            taskState.state = CircuitBreakerState.TRIPPED;
+            return LockDecision.TRIP_AND_HALT;
+        }
+        appendHistory(taskState, sig);
+        return LockDecision.CONTINUE;
     }
 
     private boolean isOscillatingSequence(List<String> history, String currentSig) {
@@ -132,15 +165,7 @@ public class LoopCircuitBreaker {
     }
 
     public void recordSuccess(String taskId) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
-        TaskBreakerState taskState = taskStates.get(effectiveTaskId);
-        if (taskState != null) {
-            synchronized (taskState) {
-                taskState.state = CircuitBreakerState.NORMAL;
-                taskState.history.clear();
-                taskState.postPivotFailures = 0;
-            }
-        }
+        taskStates.remove(normalizeTaskId(taskId));
     }
 
     public void reset() {
@@ -156,9 +181,8 @@ public class LoopCircuitBreaker {
     }
 
     public CircuitBreakerState getState(String taskId) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
-        TaskBreakerState taskState = taskStates.get(effectiveTaskId);
-        if (taskState != null) {
+        TaskBreakerState taskState = taskStates.get(normalizeTaskId(taskId));
+        if (nonNull(taskState)) {
             synchronized (taskState) {
                 return taskState.state;
             }
@@ -171,9 +195,8 @@ public class LoopCircuitBreaker {
     }
 
     public int getPostPivotFailures(String taskId) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
-        TaskBreakerState taskState = taskStates.get(effectiveTaskId);
-        if (taskState != null) {
+        TaskBreakerState taskState = taskStates.get(normalizeTaskId(taskId));
+        if (nonNull(taskState)) {
             synchronized (taskState) {
                 return taskState.postPivotFailures;
             }
@@ -181,11 +204,18 @@ public class LoopCircuitBreaker {
         return 0;
     }
 
+    private static String normalizeTaskId(String taskId) {
+        if (nonNull(taskId) && !taskId.isBlank()) {
+            return taskId;
+        }
+        return DEFAULT_TASK_ID;
+    }
+
     private boolean rollback(Path workingDir) {
-        if (workingDir == null) {
+        if (isNull(workingDir)) {
             return false;
         }
-        Path worktreeRoot = findWorktreeRoot(workingDir)
+        Path worktreeRoot = WorktreeLayout.detectWorktreeRoot(workingDir)
                 .orElseThrow(() -> new SecurityException("Refusing to rollback outside dedicated git worktree: " + workingDir));
         ProcessResult resetResult = subprocessExecutor.execute(List.of("git", "reset", "--hard"), worktreeRoot, ROLLBACK_TIMEOUT);
         if (!resetResult.isSuccess()) {
@@ -200,35 +230,7 @@ public class LoopCircuitBreaker {
     }
 
     private Optional<String> findWorktreeTaskId(Path workingDir) {
-        return findWorktreeRoot(workingDir)
+        return WorktreeLayout.detectWorktreeRoot(workingDir)
                 .map(root -> root.getFileName().toString());
-    }
-
-    private Optional<Path> findWorktreeRoot(Path workingDir) {
-        if (workingDir == null) {
-            return Optional.empty();
-        }
-        Path normalized = workingDir.toAbsolutePath().normalize();
-        for (int i = 0; i < normalized.getNameCount() - 2; i++) {
-            if (GIT_DIR_NAME.equals(normalized.getName(i).toString())
-                    && WORKTREE_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
-                Path root = normalized.getRoot();
-                Path subpath = normalized.subpath(0, i + 3);
-                Path worktreeRoot = root != null ? root.resolve(subpath) : subpath;
-                validateNoSymbolicLinks(worktreeRoot);
-                return Optional.of(worktreeRoot);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private void validateNoSymbolicLinks(Path path) {
-        Path curr = path;
-        while (curr != null) {
-            if (Files.isSymbolicLink(curr)) {
-                throw new SecurityException("Forbidden symbolic link in worktree path: " + path);
-            }
-            curr = curr.getParent();
-        }
     }
 }

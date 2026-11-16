@@ -38,20 +38,20 @@ sequenceDiagram
     actor Dev as Developer
     participant CLI as dev-agent CLI
     participant WT as GitWorktreeService
-    participant Coder as FullStackCodeSynthesizer
-    participant Gate as ArchitectGatekeeper
+    participant Lim as LocalWorkerLimiter
+    participant Sock as StateSocketService
+    participant Wk as DetachedWorkerLauncher
+    participant Alert as DesktopAlertService
 
-    Dev->>CLI: dev-agent feature "Implement Feature"
+    Dev->>CLI: dev-agent feature --detach "Implement Feature"
     CLI->>WT: allocateWorktree(taskId)
     WT-->>CLI: worktreePath (.git/dev-agent-worktrees/<id>)
-    loop TDD Red-Green Loop
-        CLI->>Coder: executeImplementationStep(instruction)
-        Coder->>Coder: write failing test & patch production code
-        Coder->>Gate: evaluate(diff)
-        Gate-->>Coder: GateVerdict(approved=true)
-    end
-    CLI->>WT: commitAndSync()
-    CLI-->>Dev: Feature Completed
+    CLI->>Sock: writeHeartbeat(PLANNING)
+    CLI->>Lim: openGate(maxConcurrentWorkers)
+    Lim->>Wk: launchWorker(taskId, instruction)
+    Wk-->>Sock: writeHeartbeat(pid) & redirect worker.log
+    Wk->>Alert: notifyTaskOutcome(COMPLETED/FAILED)
+    CLI-->>Dev: Detached worker started (use status / logs)
 ```
 
 ## 3. State Machine (`stateDiagram-v2`)

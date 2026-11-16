@@ -21,3 +21,6 @@ Build `dev-agent` as an independent CLI on **Quarkus 3.40.x**, **Picocli** (`qua
 ## Non-Negotiable Invariants
 * All model records, entities, and DTOs must register `@RegisterForReflection`.
 * CLI startup time must not exceed 50ms in native mode.
+
+## Cycle 6 Hardening Notes
+* `application.properties` currently enables H2 `AUTO_SERVER=TRUE` for `%prod`, which causes `ClassNotFoundException: org.h2.server.TcpServer` under AOT native compilation and eagerly initializes Hibernate/Agroal on CLI startup. Removing `AUTO_SERVER=TRUE` and deferring datasource initialization for lock-free read commands (`status`, `logs`) is tracked in Cycle 6.

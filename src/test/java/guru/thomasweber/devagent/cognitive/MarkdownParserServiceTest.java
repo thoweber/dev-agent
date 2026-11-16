@@ -173,4 +173,31 @@ class MarkdownParserServiceTest {
         assertThat(parsed.sections().getFirst().content())
             .containsSubsequence("First line", "\n", "Second line");
     }
+
+    @Test
+    @DisplayName("Given markdown table, indented code, and inline code before period - when parsing - then preserves content without extra punctuation space")
+    void givenTablesIndentedCodeAndPunctuation_whenParsing_thenPreservesCleanTextAndMetadataOrder() {
+        String markdown = """
+            ---
+            first_key: "one"
+            second_key: "two"
+            ---
+            # Details
+            See `WorkspaceJailValidator`.
+
+            | ColA | ColB |
+            | --- | --- |
+            | Val1 | Val2 |
+
+                int indented = 42;
+            """;
+
+        MarkdownParserService.ParsedMarkdown parsed = parserService.parse(markdown);
+        assertThat(parsed.metadata().keySet()).containsExactly("first_key", "second_key");
+        String body = parsed.sections().getFirst().content();
+        assertThat(body)
+            .contains("WorkspaceJailValidator.")
+            .doesNotContain("WorkspaceJailValidator .")
+            .contains("Val1", "Val2", "int indented = 42;");
+    }
 }

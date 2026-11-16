@@ -1,15 +1,35 @@
 package guru.thomasweber.devagent.cli;
 
+import guru.thomasweber.devagent.entity.TaskPersistenceService;
+import guru.thomasweber.devagent.model.TaskRun;
+import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.testutil.TaskRunMother;
+import guru.thomasweber.devagent.testutil.WorktreeStateMother;
+import guru.thomasweber.devagent.workspace.GitWorktreeService;
+import guru.thomasweber.devagent.workspace.ProjectIdResolver;
+import guru.thomasweber.devagent.workspace.StateSocketService;
+import guru.thomasweber.devagent.workspace.StateSyncService;
+import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AbortCommandTest {
 
@@ -24,7 +44,7 @@ class AbortCommandTest {
         StringWriter sw = new StringWriter();
         cmd.setOut(new PrintWriter(sw));
 
-        int exitCode = cmd.execute("TASK-101");
+        int exitCode = cmd.execute("--dir=" + tempDir, "TASK-101");
 
         assertThat(exitCode).isZero();
         assertThat(sw.toString()).contains("[dev-agent] Aborting background task: TASK-101");
@@ -88,5 +108,171 @@ class AbortCommandTest {
         assertThat(exitCode).isZero();
         assertThat(command.getTaskId()).isEqualTo("TASK-202");
         assertThat(command.getDir()).isEqualTo(tempDir.toString());
+    }
+
+    @Test
+    @DisplayName("Given active background process and state socket - when abort executed - then terminates process, removes worktree, and preserves branch by default")
+    void testAbortTerminatesLiveProcessAndPreservesBranchByDefault() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        Process sleeper = new ProcessBuilder("sleep", "30").start();
+        StringWriter out = new StringWriter();
+        AutoCloseable destroySleeper = sleeper::destroyForcibly;
+        try (destroySleeper; PrintWriter outWriter = new PrintWriter(out)) {
+            WorktreeState active = WorktreeStateMother.active("TASK-KILL-1", sleeper.pid())
+                .toBuilder()
+                .branch("feature/TASK-KILL-1-demo")
+                .build();
+            socketService.writeHeartbeat(tempDir, active);
+
+            GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+            TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+            when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-KILL-1"))).thenReturn(Optional.empty());
+            when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            AbortCommand command = new AbortCommand(
+                socketService,
+                worktreeService,
+                persistenceService,
+                new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+                new StateSyncService()
+            );
+            CommandLine cmd = new CommandLine(command);
+            cmd.setOut(outWriter);
+
+            int exitCode = cmd.execute("--dir=" + tempDir, "TASK-KILL-1");
+
+            assertThat(exitCode).isZero();
+            assertThat(command.isDeleteBranch()).isFalse();
+            assertThat(sleeper.isAlive()).isFalse();
+            verify(worktreeService).removeWorktree(tempDir.toRealPath(), "TASK-KILL-1", false, "feature/TASK-KILL-1-demo");
+            assertThat(socketService.readState(tempDir, "TASK-KILL-1"))
+                .isPresent()
+                .get()
+                .extracting(WorktreeState::status)
+                .isEqualTo(TaskStatus.ABORTED);
+            assertThat(Files.readString(tempDir.resolve(".agents/runs/TASK-KILL-1.md")))
+                .contains("ABORTED");
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
+
+    @Test
+    @DisplayName("Given --delete-branch flag - when abort executed - then requests branch deletion from GitWorktreeService")
+    void testAbortWithDeleteBranchFlag() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.crashed("TASK-DEL-1").toBuilder()
+            .branch("feature/TASK-DEL-1-old")
+            .build());
+        GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+        TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+        when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-DEL-1"))).thenReturn(Optional.empty());
+
+        AbortCommand command = new AbortCommand(
+            socketService,
+            worktreeService,
+            persistenceService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService()
+        );
+        CommandLine cmd = new CommandLine(command);
+        int exitCode = cmd.execute("--dir=" + tempDir, "--delete-branch", "TASK-DEL-1");
+
+        assertThat(exitCode).isZero();
+        assertThat(command.isDeleteBranch()).isTrue();
+        verify(worktreeService).removeWorktree(tempDir.toRealPath(), "TASK-DEL-1", true, "feature/TASK-DEL-1-old");
+    }
+
+    @Test
+    @DisplayName("Given recycled PID whose start instant disagrees with pidStartedAt - when abort executed - then does not kill unrelated process")
+    void testAbortSkipsRecycledPidMismatch() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        Process sleeper = new ProcessBuilder("sleep", "30").start();
+        try {
+            WorktreeState recycled = WorktreeStateMother.active("TASK-RECYCLED", sleeper.pid())
+                .toBuilder()
+                .pidStartedAt(Instant.now().minusSeconds(3600))
+                .branch("feature/TASK-RECYCLED-demo")
+                .build();
+            socketService.writeHeartbeat(tempDir, recycled);
+
+            GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+            TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+            when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-RECYCLED"))).thenReturn(Optional.empty());
+
+            AbortCommand command = new AbortCommand(
+                socketService,
+                worktreeService,
+                persistenceService,
+                new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+                new StateSyncService()
+            );
+            CommandLine cmd = new CommandLine(command);
+            int exitCode = cmd.execute("--dir=" + tempDir, "TASK-RECYCLED");
+
+            assertThat(exitCode).isZero();
+            assertThat(sleeper.isAlive()).isTrue();
+        } finally {
+            sleeper.destroyForcibly();
+        }
+    }
+
+    @Test
+    @DisplayName("Given persisted task without socket - when abort executed - then persists ABORTED state and writes Markdown journal")
+    void testAbortPersistedTaskWithoutSocketWritesJournal() throws IOException {
+        TaskRun persisted = TaskRunMother.builder("TASK-PERSIST-ONLY")
+            .status(TaskStatus.GREEN_PATCH)
+            .branch("feature/TASK-PERSIST-ONLY-demo")
+            .pid(null)
+            .build();
+        GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+        TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+        when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-PERSIST-ONLY")))
+            .thenReturn(Optional.of(persisted));
+        when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AbortCommand command = new AbortCommand(
+            new StateSocketService(),
+            worktreeService,
+            persistenceService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService()
+        );
+        int exitCode = new CommandLine(command).execute("--dir=" + tempDir, "TASK-PERSIST-ONLY");
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.readString(tempDir.resolve(".agents/runs/TASK-PERSIST-ONLY.md")))
+            .contains("ABORTED");
+
+        // Fallback when persistence throws on find/save and stateSyncService throws
+        when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-ERR-FALLBACK")))
+            .thenThrow(new IllegalStateException("db down"));
+        AbortCommand throwingSyncAbort = new AbortCommand(
+            new StateSocketService(),
+            worktreeService,
+            persistenceService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService() {
+                @Override
+                public void projectToMarkdown(Path repoRoot, TaskRun taskRun) {
+                    throw new IllegalStateException("sync down");
+                }
+            }
+        );
+        assertThat(new CommandLine(throwingSyncAbort).execute("--dir=" + tempDir, "TASK-ERR-FALLBACK")).isZero();
+
+        TaskPersistenceService throwingSavePersistence = mock(TaskPersistenceService.class);
+        when(throwingSavePersistence.findByProjectAndTask(any(String.class), eq("TASK-SAVE-ERR")))
+            .thenReturn(Optional.of(persisted));
+        when(throwingSavePersistence.saveTask(any(TaskRun.class)))
+            .thenThrow(new IllegalStateException("save failed"));
+        AbortCommand saveFailAbort = new AbortCommand(
+            new StateSocketService(),
+            worktreeService,
+            throwingSavePersistence,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService()
+        );
+        assertThat(new CommandLine(saveFailAbort).execute("--dir=" + tempDir, "TASK-SAVE-ERR")).isZero();
     }
 }

@@ -2,7 +2,9 @@ package guru.thomasweber.devagent.model;
 
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.Builder;
+
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Standard verdict emitted by the Architectural Invariant Gatekeeper.
@@ -16,7 +18,7 @@ public record GateVerdict(
     List<String> recommendations
 ) {
     public GateVerdict {
-        violations = (violations != null) ? List.copyOf(violations) : List.of();
-        recommendations = (recommendations != null) ? List.copyOf(recommendations) : List.of();
+        violations = List.copyOf(Objects.requireNonNullElse(violations, List.of()));
+        recommendations = List.copyOf(Objects.requireNonNullElse(recommendations, List.of()));
     }
 }

@@ -37,6 +37,7 @@ class DevAgentIT {
             .containsAnsiFree("resume")
             .containsAnsiFree("abort")
             .containsAnsiFree("metrics");
+        assertThat(result.getOutput()).doesNotContain("  worker ");
     }
 
     @Test

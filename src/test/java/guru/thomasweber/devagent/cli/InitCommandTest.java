@@ -36,6 +36,7 @@ class InitCommandTest {
         assertThat(tempDir.resolve(".agents")).isDirectory();
         assertThat(tempDir.resolve(".agents/dev-agent.yaml")).isRegularFile();
         assertThat(tempDir.resolve(".agents/rules")).isDirectory();
+        assertThat(tempDir.resolve(".agents/dev-agent.yaml")).content().contains("max-concurrent-workers: 2");
         assertThat(command.getDir()).isEqualTo(tempDir.toString());
     }
 
@@ -259,5 +260,18 @@ class InitCommandTest {
         assertThat(exit2).isZero();
         assertThat(tempDir.resolve(".agents/rules/01-modulith-package-boundaries.md")).exists();
         assertThat(tempDir.resolve(".agents/rules/01-angular-standalone-signals.md")).doesNotExist();
+    }
+
+    @Test
+    @DisplayName("Given init command - when executed - then scaffolds notifications and isolation defaults in dev-agent.yaml")
+    void testInitScaffoldsNotificationsAndIsolation() throws IOException {
+        InitCommand command = new InitCommand();
+        CommandLine cmd = new CommandLine(command);
+
+        int exitCode = cmd.execute("--dir=" + tempDir);
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.readString(tempDir.resolve(".agents/dev-agent.yaml")))
+            .contains("notifications:", "desktop-enabled: true", "on-success: true", "on-failure: true", "max-concurrent-workers: 2");
     }
 }

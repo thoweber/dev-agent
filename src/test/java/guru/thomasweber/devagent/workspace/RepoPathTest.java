@@ -87,6 +87,27 @@ class RepoPathTest {
     }
 
     @Test
+    @DisplayName("Given symlinked user.home ancestor - when candidate resolves into ~/.config/dev-agent - then still throws SecurityException")
+    void testRejectsUserGlobalConfigThroughSymlinkedHome() throws IOException {
+        Path realHome = Files.createDirectories(tempDir.resolve("real-home"));
+        Path configDir = Files.createDirectories(realHome.resolve(".config/dev-agent"));
+        Path dbFile = configDir.resolve("agent.mv.db");
+        Path symlinkHome = Files.createSymbolicLink(tempDir.resolve("home-link"), realHome);
+
+        String originalHome = System.getProperty("user.home");
+        try {
+            System.setProperty("user.home", symlinkHome.toAbsolutePath().toString());
+            assertThatThrownBy(() -> RepoPath.of(dbFile, realHome))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("user global configuration is forbidden");
+        } finally {
+            if (originalHome != null) {
+                System.setProperty("user.home", originalHome);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("Given candidate targets ~/.local/bin/dev-agent binary - when RepoPath.of called - throws SecurityException")
     void testRejectsCliBinary() throws IOException {
         Path binDir = tempDir.resolve(".local/bin");

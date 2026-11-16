@@ -7,10 +7,14 @@ import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
+import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.testutil.TaskRunMother;
+import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import guru.thomasweber.devagent.testutil.WorktreeTestFixture;
 import guru.thomasweber.devagent.workspace.CrashRecoveryDetector;
+import guru.thomasweber.devagent.workspace.DetachedWorkerLauncher;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
+import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import picocli.CommandLine;
 
@@ -19,11 +23,18 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 import static guru.thomasweber.devagent.testutil.CliOutputAssert.assertThatCli;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ResumeCommandTest {
 
@@ -386,5 +397,108 @@ class ResumeCommandTest {
 
         // Verify run() method delegates cleanly to call()
         cmd.run();
+    }
+
+    @Test
+    @DisplayName("Given explicit task ID with --detach - when resume executed - then launches detached worker and updates PID in state.json")
+    void testExplicitTaskDetachedResumeLaunchesWorker() throws IOException {
+        WorkspaceContextResolver workspace = new WorkspaceContextResolver(tempDir);
+        WorktreeTestFixture.createWorktree(tempDir, "TASK-DET-RES");
+        TaskRun validTask = TaskRunMother.crashed("TASK-DET-RES", TaskStatus.RED_TEST);
+
+        TaskPersistenceService mockPersistence = mock(TaskPersistenceService.class);
+        when(mockPersistence.findByProjectAndTask(any(ProjectId.class), eq("TASK-DET-RES")))
+            .thenReturn(Optional.of(validTask));
+        when(mockPersistence.saveTask(any(TaskRun.class)))
+            .thenAnswer(inv -> inv.getArgument(0));
+
+        DetachedWorkerLauncher launcher = mock(DetachedWorkerLauncher.class);
+        when(launcher.launchWorker(tempDir.toAbsolutePath().normalize(), "TASK-DET-RES", ""))
+            .thenReturn(88888L);
+
+        StateSocketService socketService = new StateSocketService();
+        ResumeCommand cmd = new ResumeCommand(
+            new CrashRecoveryDetector(),
+            new ProjectIdResolver(workspace),
+            mockPersistence,
+            workspace,
+            launcher,
+            socketService
+        );
+
+        StringWriter out = new StringWriter();
+        CommandLine cl = new CommandLine(cmd);
+        cl.setOut(new PrintWriter(out));
+
+        int exitCode = cl.execute("--dir=" + tempDir, "--detach", "TASK-DET-RES");
+
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("[dev-agent] Resuming task: TASK-DET-RES", "PID 88888");
+        assertThat(socketService.readState(tempDir, "TASK-DET-RES"))
+            .isPresent()
+            .get()
+            .extracting(WorktreeState::pid)
+            .isEqualTo(88888L);
+    }
+
+    @Test
+    @DisplayName("Given recycled PID whose pidStartedAt mismatches socket - when resume --detach executed with --dir - then allows resume in target --dir repo")
+    void testRecycledPidMismatchAndDirOverrideAllowed() throws IOException {
+        Path otherRepo = Files.createDirectories(tempDir.resolve("other-repo"));
+        WorktreeTestFixture.createWorktree(otherRepo, "TASK-REC-RES");
+
+        long currentPid = ProcessHandle.current().pid();
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(otherRepo, WorktreeStateMother.active("TASK-REC-RES", currentPid).toBuilder()
+            .pidStartedAt(Instant.now().minusSeconds(7200))
+            .build());
+
+        TaskRun staleRun = TaskRunMother.builder("TASK-REC-RES")
+            .status(TaskStatus.GREEN_PATCH)
+            .pid(currentPid)
+            .build();
+        TaskPersistenceService mockPersistence = mock(TaskPersistenceService.class);
+        when(mockPersistence.findByProjectAndTask(any(ProjectId.class), eq("TASK-REC-RES")))
+            .thenReturn(Optional.of(staleRun));
+        when(mockPersistence.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DetachedWorkerLauncher launcher = mock(DetachedWorkerLauncher.class);
+        when(launcher.launchWorker(otherRepo.toAbsolutePath().normalize(), "TASK-REC-RES", ""))
+            .thenReturn(77778L);
+
+        // Injected resolver points to tempDir, but CLI specifies --dir=otherRepo
+        WorkspaceContextResolver injectedResolver = new WorkspaceContextResolver(tempDir);
+        ResumeCommand cmd = new ResumeCommand(
+            new CrashRecoveryDetector(),
+            new ProjectIdResolver(injectedResolver),
+            mockPersistence,
+            injectedResolver,
+            launcher,
+            socketService
+        );
+        StringWriter out = new StringWriter();
+        CommandLine cl = new CommandLine(cmd);
+        cl.setOut(new PrintWriter(out));
+
+        int exitCode = cl.execute("--dir=" + otherRepo, "--detach", "TASK-REC-RES");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("PID 77778");
+        assertThat(cl.execute("--dir=" + otherRepo)).isZero();
+
+        // Live PID without pidStartedAt in state.json must block resume
+        Files.deleteIfExists(socketService.resolveStateFile(otherRepo, "TASK-REC-RES"));
+        int liveNoTsExit = cl.execute("--dir=" + otherRepo, "TASK-REC-RES");
+        assertThat(liveNoTsExit).isEqualTo(1);
+
+        // Fallback WorktreeState when socket file does not exist yet on --detach with dead/null PID
+        WorktreeTestFixture.createWorktree(otherRepo, "TASK-NO-SOCK");
+        when(mockPersistence.findByProjectAndTask(any(ProjectId.class), eq("TASK-NO-SOCK")))
+            .thenReturn(Optional.of(TaskRunMother.builder("TASK-NO-SOCK").status(TaskStatus.GREEN_PATCH).pid(null).build()));
+        when(launcher.launchWorker(otherRepo.toAbsolutePath().normalize(), "TASK-NO-SOCK", ""))
+            .thenReturn(77779L);
+        int fallbackExit = cl.execute("--dir=" + otherRepo, "--detach", "TASK-NO-SOCK");
+        assertThatCli(fallbackExit, out.toString()).isSuccess().containsAnsiFree("PID 77779");
     }
 }

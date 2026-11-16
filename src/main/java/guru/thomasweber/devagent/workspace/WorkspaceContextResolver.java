@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.spi.build.BackendBuildSystem;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -10,6 +11,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
 import java.util.Optional;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Auto-detects workspace boundaries, repository root, build systems, and frontend subsystems.
@@ -49,10 +53,10 @@ public class WorkspaceContextResolver {
      * @return canonical Path to the effective workspace root
      */
     public static Path resolveEffectiveRoot(String cliDir, String parentDir) {
-        if (cliDir != null && !cliDir.equals(".") && !cliDir.isBlank()) {
+        if (nonNull(cliDir) && !cliDir.equals(".") && !cliDir.isBlank()) {
             return Paths.get(cliDir).toAbsolutePath().normalize();
         }
-        if (parentDir != null && !parentDir.equals(".") && !parentDir.isBlank()) {
+        if (nonNull(parentDir) && !parentDir.equals(".") && !parentDir.isBlank()) {
             return Paths.get(parentDir).toAbsolutePath().normalize();
         }
         return Path.of(System.getProperty(USER_DIR)).toAbsolutePath().normalize();
@@ -67,11 +71,15 @@ public class WorkspaceContextResolver {
     public Path resolveRepoRoot() {
         Path current = workingDir.toAbsolutePath().normalize();
         Path highestBuildRoot = null;
-        Path gitRoot = null;
+        Path gitDirRoot = null;
+        Path gitFileRoot = null;
 
-        while (current != null) {
-            if (gitRoot == null && Files.exists(current.resolve(".git"))) {
-                gitRoot = current;
+        while (nonNull(current)) {
+            Path dotGit = current.resolve(".git");
+            if (isNull(gitDirRoot) && Files.isDirectory(dotGit)) {
+                gitDirRoot = current;
+            } else if (isNull(gitFileRoot) && Files.exists(dotGit)) {
+                gitFileRoot = current;
             }
             if (Files.exists(current.resolve("pom.xml")) ||
                 Files.exists(current.resolve("build.gradle")) ||
@@ -81,13 +89,23 @@ public class WorkspaceContextResolver {
             current = current.getParent();
         }
 
-        if (gitRoot != null) {
-            return gitRoot;
+        if (nonNull(gitDirRoot)) {
+            return gitDirRoot;
         }
-        if (highestBuildRoot != null) {
+        if (nonNull(gitFileRoot)) {
+            return gitFileRoot;
+        }
+        if (nonNull(highestBuildRoot)) {
             return highestBuildRoot;
         }
         return workingDir.toAbsolutePath().normalize();
+    }
+
+    /**
+     * Resolves the active execution root, preferring a bound isolated worktree over the primary repository root.
+     */
+    public Path resolveExecutionRoot() {
+        return WorktreeExecutionContext.currentWorktreeRoot().orElseGet(this::resolveRepoRoot);
     }
 
     /**
@@ -113,8 +131,12 @@ public class WorkspaceContextResolver {
      * @param projectRoot the repository or project root path
      * @return Optional containing the matching BackendBuildSystem, or empty if none applicable
      */
+    public boolean hasRegisteredBackendBuildSystems() {
+        return nonNull(backendBuildSystems) && !backendBuildSystems.isUnsatisfied();
+    }
+
     public Optional<BackendBuildSystem> resolveBackendBuildSystem(Path projectRoot) {
-        if (backendBuildSystems == null || backendBuildSystems.isUnsatisfied() || projectRoot == null) {
+        if (!hasRegisteredBackendBuildSystems() || isNull(projectRoot)) {
             return Optional.empty();
         }
         return backendBuildSystems.stream()
@@ -135,14 +157,28 @@ public class WorkspaceContextResolver {
      * Resolves the target directory for sliced agent builds.
      */
     public Path resolveAgentTargetDir() {
-        return resolveRepoRoot().resolve("target-agent");
+        return resolveExecutionRoot().resolve(TargetDir.DEFAULT_VALUE);
+    }
+
+    /**
+     * Resolves the cache directory for sliced agent build and test caches.
+     */
+    public Path resolveAgentCacheDir() {
+        return resolveExecutionRoot().resolve(".cache-agent");
+    }
+
+    /**
+     * Resolves the root directory containing dedicated task worktrees.
+     */
+    public Path resolveWorktreesRoot() {
+        return WorktreeLayout.forRoot(resolveRepoRoot()).worktreesRoot();
     }
 
     /**
      * Resolves the dedicated worktree directory for a specific task.
      */
     public Path resolveWorktreeDir(String taskId) {
-        return resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
+        return WorktreeLayout.forRoot(resolveRepoRoot()).worktreeDir(TaskId.of(taskId));
     }
 
     /**
@@ -167,10 +203,10 @@ public class WorkspaceContextResolver {
     }
 
     /**
-     * Creates a jail validator anchored to this workspace's repository root.
+     * Creates a jail validator anchored to the active execution root.
      */
     public WorkspaceJailValidator getJailValidator() {
-        return new WorkspaceJailValidator(resolveRepoRoot());
+        return new WorkspaceJailValidator(resolveExecutionRoot());
     }
 
     public Path getWorkingDir() {

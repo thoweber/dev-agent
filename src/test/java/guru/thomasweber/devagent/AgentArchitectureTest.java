@@ -12,13 +12,25 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import dev.langchain4j.agent.tool.Tool;
+import guru.thomasweber.devagent.cli.LogsCommand;
+import guru.thomasweber.devagent.cli.MetricsCommand;
+import guru.thomasweber.devagent.cli.StatusCommand;
+import guru.thomasweber.devagent.workspace.DetachedWorkerLauncher;
+import guru.thomasweber.devagent.workspace.SubprocessExecutor;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.Entity;
 import jakarta.transaction.Transactional;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+
+import java.lang.reflect.Method;
+import java.util.List;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
@@ -57,8 +69,12 @@ public class AgentArchitectureTest {
     public static final ArchRule testMethodsMustNotBeAnnotatedWithTransactional =
         methods()
             .that().areAnnotatedWith(Test.class)
+            .or().areAnnotatedWith(ParameterizedTest.class)
+            .or().areAnnotatedWith(RepeatedTest.class)
             .or().areAnnotatedWith(BeforeEach.class)
             .or().areAnnotatedWith(AfterEach.class)
+            .or().areAnnotatedWith(BeforeAll.class)
+            .or().areAnnotatedWith(AfterAll.class)
             .should().notBeAnnotatedWith(Transactional.class);
 
     private static final DescribedPredicate<JavaClass> CONTAIN_TEST_OR_LIFECYCLE_METHODS =
@@ -67,8 +83,12 @@ public class AgentArchitectureTest {
             public boolean test(JavaClass javaClass) {
                 return javaClass.getMethods().stream().anyMatch(m ->
                     m.isAnnotatedWith(Test.class)
+                        || m.isAnnotatedWith(ParameterizedTest.class)
+                        || m.isAnnotatedWith(RepeatedTest.class)
                         || m.isAnnotatedWith(BeforeEach.class)
                         || m.isAnnotatedWith(AfterEach.class)
+                        || m.isAnnotatedWith(BeforeAll.class)
+                        || m.isAnnotatedWith(AfterAll.class)
                 ) || javaClass.getSimpleName().endsWith("Test") || javaClass.getSimpleName().endsWith("IT");
             }
         };
@@ -84,16 +104,20 @@ public class AgentArchitectureTest {
         noClasses()
             .that().haveSimpleNameEndingWith("Test")
             .or().haveSimpleNameEndingWith("IT")
+            .or().resideInAPackage("..testutil..")
             .should().callMethodWhere(JavaCall.Predicates.target(
                 HasName.Predicates.name("setAccessible")
+                    .or(HasName.Predicates.name("getDeclaredField"))
+                    .or(HasName.Predicates.name("getDeclaredMethod"))
+                    .or(HasName.Predicates.name("getDeclaredConstructor"))
             ))
-            .as("Test classes must practice black-box behavioral verification and not use setAccessible(true)");
+            .orShould().callMethod(Method.class, "invoke", Object.class, Object[].class)
+            .as("Test classes must practice black-box behavioral verification without reflection bypasses");
 
     @ArchTest
     public static final ArchRule recordsWithFourOrMoreFieldsMustProvideBuilder =
         classes()
             .that().areRecords()
-            .and().areTopLevelClasses()
             .and().resideInAPackage("guru.thomasweber.devagent..")
             .and(new DescribedPredicate<>("have 4 or more record components") {
                 @Override
@@ -104,16 +128,45 @@ public class AgentArchitectureTest {
                     return componentFields >= 4;
                 }
             })
-            .should(new ArchCondition<>("provide a builder() method") {
+            .should(new ArchCondition<>("provide builder() and toBuilder() methods") {
                 @Override
                 public void check(JavaClass javaClass, ConditionEvents events) {
                     boolean hasBuilder = javaClass.getMethods().stream()
                         .anyMatch(m -> m.getName().equals("builder") && m.getRawParameterTypes().isEmpty());
-                    if (!hasBuilder) {
-                        String message = String.format("Record %s has 4+ components but lacks a builder() method", javaClass.getName());
+                    boolean hasToBuilder = javaClass.getMethods().stream()
+                        .anyMatch(m -> m.getName().equals("toBuilder") && m.getRawParameterTypes().isEmpty());
+                    if (!hasBuilder || !hasToBuilder) {
+                        String message = String.format("Record %s has 4+ components but lacks builder() / toBuilder()", javaClass.getName());
                         events.add(SimpleConditionEvent.violated(javaClass, message));
                     }
                 }
             })
-            .as("Records with 4 or more fields must provide a fluent builder");
+            .as("Records with 4 or more fields must provide @Builder(toBuilder = true)");
+
+    @ArchTest
+    public static final ArchRule statusAndLogsCommandsMustNotAccessPersistenceOrJpa =
+        noClasses()
+            .that().areAssignableTo(StatusCommand.class)
+            .or().areAssignableTo(LogsCommand.class)
+            .or().areAssignableTo(MetricsCommand.class)
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "guru.thomasweber.devagent.entity..",
+                "jakarta.persistence..",
+                "javax.sql.."
+            )
+            .as("Read-only telemetry CLI commands must read state.json without opening JDBC/JPA connections (ADR-006)");
+
+    @ArchTest
+    public static final ArchRule productionProcessLaunchesMustBeEncapsulated =
+        noClasses()
+            .that().resideInAPackage("guru.thomasweber.devagent..")
+            .and().haveSimpleNameNotEndingWith("Test")
+            .and().haveSimpleNameNotEndingWith("IT")
+            .and().doNotHaveFullyQualifiedName(SubprocessExecutor.class.getName())
+            .and().doNotHaveFullyQualifiedName(DetachedWorkerLauncher.class.getName())
+            .should().callConstructor(ProcessBuilder.class, String[].class)
+            .orShould().callConstructor(ProcessBuilder.class, List.class)
+            .orShould().callMethod(Runtime.class, "exec", String[].class)
+            .orShould().callMethod(Runtime.class, "exec", String.class)
+            .as("Only SubprocessExecutor and DetachedWorkerLauncher may launch external OS processes");
 }

@@ -13,6 +13,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 
+import static java.util.Objects.nonNull;
+
 /**
  * Base command providing inherited options and terminal I/O helpers.
  */
@@ -35,7 +37,7 @@ public abstract class BaseAgentCommand implements Runnable {
 
     @SuppressWarnings("java:S8450")
     protected BufferedReader getIn() {
-        if (in != null) {
+        if (nonNull(in)) {
             return in;
         }
         return new BufferedReader(new InputStreamReader(System.in));
@@ -43,21 +45,31 @@ public abstract class BaseAgentCommand implements Runnable {
 
     protected boolean isInteractive() {
         Console console = System.console();
-        return in != null || (console != null && console.isTerminal());
+        return nonNull(in) || (nonNull(console) && console.isTerminal());
     }
 
     @SuppressWarnings("java:S106")
     protected PrintWriter getOut() {
-        return spec != null ? spec.commandLine().getOut() : new PrintWriter(System.out, true);
+        if (nonNull(spec)) {
+            return spec.commandLine().getOut();
+        }
+        return new PrintWriter(System.out, true);
     }
 
     @SuppressWarnings("java:S106")
     protected PrintWriter getErr() {
-        return spec != null ? spec.commandLine().getErr() : new PrintWriter(System.err, true);
+        if (nonNull(spec)) {
+            return spec.commandLine().getErr();
+        }
+        return new PrintWriter(System.err, true);
     }
 
     public Path getWorkspaceRoot() {
-        return WorkspaceContextResolver.resolveEffectiveRoot(dir, parentCommand != null ? parentCommand.getDir() : null);
+        String parentDir = null;
+        if (nonNull(parentCommand)) {
+            parentDir = parentCommand.getDir();
+        }
+        return WorkspaceContextResolver.resolveEffectiveRoot(dir, parentDir);
     }
 
     public String getDir() {

@@ -39,7 +39,7 @@ public class MetricLogEntity extends PanacheEntityBase {
     @Column(name = "completion_tokens")
     public int completionTokens;
 
-    @Column(name = "cost_usd")
+    @Column(name = "cost_usd", precision = 19, scale = 6)
     public BigDecimal costUsd;
 
     @Column(name = "cache_hit")

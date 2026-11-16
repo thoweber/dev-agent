@@ -26,14 +26,14 @@ To enforce strict boundary isolation and native GraalVM compatibility, the codeb
 dev-agent/
 └── src/main/java/guru/thomasweber/devagent/
     ├── DevAgentCommand.java           # TopCommand Picocli Entrypoint
-    ├── cli/                           # Picocli Subcommands (Init, Plan, Feature, Status, Logs, Resume)
+    ├── cli/                           # Picocli Subcommands (Init, Plan, Feature, Status, Logs, Resume, Abort, Metrics, hidden Worker)
     ├── entity/                        # Panache Persistence Entities & TaskPersistenceService (Encapsulated)
     ├── spi/
     │   ├── build/                     # Axis 1: BackendBuildSystem, FrontendBuildSystem, SanitizedLog
     │   └── framework/                 # Axis 2: BackendFrameworkConvention, FrontendFrameworkConvention
-    ├── workspace/                     # WorkspaceContextResolver, WorkspaceJailValidator, GitWorktreeService, SubprocessExecutor
+    ├── workspace/                     # WorkspaceContextResolver, WorkspaceJailValidator, GitWorktreeService, GitExcludeManager, StateSocketService, LocalWorkerLimiter, DetachedWorkerLauncher, DesktopAlertService, WorktreeExecutionContext, SubprocessExecutor
     ├── cognitive/                     # AiServices, HierarchicalMemoryStore, BM25 Inverted Index RAG, Caffeine Decision Cache
-    ├── model/                         # Reflection-Registered Immutable Records (ProjectId, TaskRun, StepAudit, GateVerdict)
+    ├── model/                         # Reflection-Registered Immutable Records (ProjectId, TaskRun, StepAudit, GateVerdict, WorktreeState, WorktreeAllocation, StatusPayload)
     ├── remote/                        # Declarative GitHub, SonarCloud, and CodeRabbit API Clients
     └── gui/                           # Embedded Vert.x HTTP Review Server (:9999)
 ```
@@ -54,6 +54,7 @@ dev-agent/
 10. **Tool Annotation Scoping:** All `@Tool`-annotated methods MUST be declared inside `@ApplicationScoped` classes.
 11. **Native Reflection Registration:** All classes and records residing in `..model..`, `..entity..`, `..remote..`, or `..gui..` MUST be annotated with `@RegisterForReflection`.
 12. **Standard Tool Chaining & Script Governance (Directive 21):** For operational tasks, agents MUST prefer standard tool chaining (e.g. `gh` with `jq`, `curl | jq`, `git`) over ad-hoc inline Python scripts (`python3 -c`). Permanent automation scripts must reside in `scripts/`, have unit tests in `tests/scripts/`, and be documented in `AGENTS.md` and skills.
+13. **Non-Locking Socket Read Path & Single-Invocation Concurrency:** `StatusCommand` and `LogsCommand` must NEVER depend on `..entity..`, `jakarta.persistence..`, or `javax.sql..` (ArchUnit-enforced). `LocalWorkerLimiter` bounds concurrency per CLI invocation via an in-memory `Semaphore` (`agent.max-concurrent-workers`, default 2), and `WorktreeExecutionContext` propagates the active worktree root via Java 25 `ScopedValue`.
 
 ---
 
