@@ -4,6 +4,7 @@ import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorktreeLayout;
 import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
@@ -75,7 +76,7 @@ public class LogsCommand extends BaseTaskCommand {
         }
 
         Path journalFile = repoRoot.resolve(".agents").resolve("runs").resolve(taskId.trim() + ".md");
-        StateSocketService.validateWorktreePathSymlinks(repoRoot, journalFile);
+        WorktreeLayout.validateNoSymlinks(repoRoot, journalFile);
         if (Files.isRegularFile(journalFile)) {
             printFileOnce(out, journalFile);
             return;

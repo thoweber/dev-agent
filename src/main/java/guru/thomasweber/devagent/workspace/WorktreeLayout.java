@@ -1,0 +1,118 @@
+package guru.thomasweber.devagent.workspace;
+
+import guru.thomasweber.devagent.model.TaskId;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Objects;
+import java.util.Optional;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
+/**
+ * Authoritative filesystem layout and symlink validator for isolated Git worktrees under
+ * {@code <repoRoot>/.git/dev-agent-worktrees/<taskId>/}.
+ */
+public record WorktreeLayout(Path repoRoot) {
+
+    public static final String GIT_DIR_NAME = ".git";
+    public static final String WORKTREES_DIR_NAME = "dev-agent-worktrees";
+    public static final String STATE_FILE_NAME = "state.json";
+    public static final String STATE_TMP_FILE_NAME = "state.json.tmp";
+    public static final String WORKER_LOG_FILE_NAME = "worker.log";
+
+    public WorktreeLayout {
+        if (isNull(repoRoot)) {
+            throw new IllegalArgumentException("repoRoot must not be null");
+        }
+        repoRoot = canonicalizeRoot(repoRoot);
+    }
+
+    public static WorktreeLayout forRoot(Path repoRoot) {
+        return new WorktreeLayout(repoRoot);
+    }
+
+    private static Path canonicalizeRoot(Path root) {
+        if (isNull(root)) {
+            throw new IllegalArgumentException("repoRoot must not be null");
+        }
+        try {
+            return root.toRealPath();
+        } catch (IOException _) {
+            return root.toAbsolutePath().normalize();
+        }
+    }
+
+    public Path worktreesRoot() {
+        return repoRoot.resolve(GIT_DIR_NAME).resolve(WORKTREES_DIR_NAME);
+    }
+
+    public Path worktreeDir(TaskId taskId) {
+        Objects.requireNonNull(taskId, "taskId must not be null");
+        Path dir = worktreesRoot().resolve(taskId.value());
+        validateNoSymlinks(repoRoot, dir);
+        return dir;
+    }
+
+    public Path stateFile(TaskId taskId) {
+        Path file = worktreeDir(taskId).resolve(STATE_FILE_NAME);
+        validateSingleNoSymlink(file);
+        return file;
+    }
+
+    public Path stateTempFile(TaskId taskId) {
+        Path file = worktreeDir(taskId).resolve(STATE_TMP_FILE_NAME);
+        validateSingleNoSymlink(file);
+        return file;
+    }
+
+    public Path workerLogFile(TaskId taskId) {
+        Path file = worktreeDir(taskId).resolve(WORKER_LOG_FILE_NAME);
+        validateSingleNoSymlink(file);
+        return file;
+    }
+
+    public static void validateNoSymlinks(Path boundaryRoot, Path target) {
+        if (isNull(target)) {
+            return;
+        }
+        Path normalizedBoundary = null;
+        if (nonNull(boundaryRoot)) {
+            normalizedBoundary = boundaryRoot.toAbsolutePath().normalize();
+        }
+        Path current = target.toAbsolutePath().normalize();
+        while (nonNull(current) && !current.equals(normalizedBoundary)) {
+            validateSingleNoSymlink(current);
+            current = current.getParent();
+        }
+    }
+
+    public static Optional<Path> detectWorktreeRoot(Path workingDir) {
+        if (isNull(workingDir)) {
+            return Optional.empty();
+        }
+        Path normalized = workingDir.toAbsolutePath().normalize();
+        for (int i = 0; i < normalized.getNameCount() - 2; i++) {
+            if (GIT_DIR_NAME.equals(normalized.getName(i).toString())
+                && WORKTREES_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
+                Path root = normalized.getRoot();
+                Path subpath = normalized.subpath(0, i + 3);
+                Path worktreeRoot = subpath;
+                if (nonNull(root)) {
+                    worktreeRoot = root.resolve(subpath);
+                }
+                validateNoSymlinks(null, worktreeRoot);
+                return Optional.of(worktreeRoot);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static void validateSingleNoSymlink(Path path) {
+        if (Files.isSymbolicLink(path)) {
+            throw new SecurityException("Forbidden symbolic link in worktree path: " + path);
+        }
+    }
+}

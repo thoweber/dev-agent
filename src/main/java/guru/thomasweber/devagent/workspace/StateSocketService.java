@@ -35,9 +35,6 @@ import static java.util.Objects.nonNull;
 public class StateSocketService {
 
     private static final Logger LOG = Logger.getLogger(StateSocketService.class);
-    private static final String STATE_FILE_NAME = "state.json";
-    private static final String STATE_TMP_FILE_NAME = "state.json.tmp";
-    private static final String WORKER_LOG_FILE_NAME = "worker.log";
     private static final long PID_START_TOLERANCE_SECONDS = 2L;
 
     private final ObjectMapper objectMapper;
@@ -65,7 +62,7 @@ public class StateSocketService {
 
     public Path resolveStateFile(Path repoRoot, TaskId taskId) {
         Objects.requireNonNull(taskId, "taskId must not be null");
-        return resolveWorktreeFile(repoRoot, taskId.value(), STATE_FILE_NAME);
+        return layoutFor(repoRoot).stateFile(taskId);
     }
 
     public Path resolveStateFile(Path repoRoot, String taskId) {
@@ -74,7 +71,7 @@ public class StateSocketService {
 
     public Path resolveWorkerLogFile(Path repoRoot, TaskId taskId) {
         Objects.requireNonNull(taskId, "taskId must not be null");
-        return resolveWorktreeFile(repoRoot, taskId.value(), WORKER_LOG_FILE_NAME);
+        return layoutFor(repoRoot).workerLogFile(taskId);
     }
 
     public Path resolveWorkerLogFile(Path repoRoot, String taskId) {
@@ -85,14 +82,16 @@ public class StateSocketService {
         if (isNull(state)) {
             throw new IllegalArgumentException("WorktreeState must not be null");
         }
-        Path stateFile = resolveStateFile(repoRoot, state.taskId());
+        TaskId safeTaskId = TaskId.of(state.taskId());
+        WorktreeLayout layout = layoutFor(repoRoot);
+        Path stateFile = layout.stateFile(safeTaskId);
         Path worktreeDir = stateFile.getParent();
-        Path tempFile = worktreeDir.resolve(STATE_TMP_FILE_NAME);
+        Path tempFile = layout.stateTempFile(safeTaskId);
 
         WorktreeState sanitizedState = sanitizeState(state);
         try {
             Files.createDirectories(worktreeDir);
-            validateNoSymlink(tempFile);
+            WorktreeLayout.validateNoSymlinks(layout.repoRoot(), tempFile);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), sanitizedState);
             moveAtomically(tempFile, stateFile);
         } catch (IOException e) {
@@ -110,15 +109,14 @@ public class StateSocketService {
     }
 
     public List<WorktreeState> readAllStates(Path repoRoot) {
-        Path effectiveRoot = resolveEffectiveRoot(repoRoot);
-        Path worktreesRoot = effectiveRoot.resolve(".git").resolve("dev-agent-worktrees");
+        Path worktreesRoot = layoutFor(repoRoot).worktreesRoot();
         if (!Files.isDirectory(worktreesRoot, LinkOption.NOFOLLOW_LINKS)) {
             return List.of();
         }
         try (Stream<Path> dirs = Files.list(worktreesRoot)) {
             return dirs
                 .filter(dir -> Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS))
-                .map(dir -> dir.resolve(STATE_FILE_NAME))
+                .map(dir -> dir.resolve(WorktreeLayout.STATE_FILE_NAME))
                 .map(this::readStateFile)
                 .flatMap(Optional::stream)
                 .sorted(Comparator.comparing(
@@ -168,7 +166,7 @@ public class StateSocketService {
         if (!Files.exists(stateFile, LinkOption.NOFOLLOW_LINKS)) {
             return Optional.empty();
         }
-        validateNoSymlink(stateFile);
+        WorktreeLayout.validateNoSymlinks(stateFile.getParent(), stateFile);
         if (!Files.isRegularFile(stateFile, LinkOption.NOFOLLOW_LINKS)) {
             return Optional.empty();
         }
@@ -180,33 +178,9 @@ public class StateSocketService {
         }
     }
 
-    private Path resolveWorktreeFile(Path repoRoot, String taskId, String fileName) {
-        String safeTaskId = validateTaskId(taskId);
-        Path effectiveRoot = resolveEffectiveRoot(repoRoot);
-        Path worktreesRoot = effectiveRoot.resolve(".git").resolve("dev-agent-worktrees");
-        Path worktreeDir = worktreesRoot.resolve(safeTaskId);
-        Path targetFile = worktreeDir.resolve(fileName);
-
-        validateWorktreePathSymlinks(effectiveRoot, targetFile);
-        return targetFile;
-    }
-
-    public static void validateWorktreePathSymlinks(Path boundaryRoot, Path target) {
-        Path normalizedBoundary = boundaryRoot.toAbsolutePath().normalize();
-        Path current = target.toAbsolutePath().normalize();
-        while (nonNull(current) && !current.equals(normalizedBoundary)) {
-            validateNoSymlink(current);
-            current = current.getParent();
-        }
-    }
-
-    private Path resolveEffectiveRoot(Path repoRoot) {
+    private WorktreeLayout layoutFor(Path repoRoot) {
         Path base = Objects.requireNonNullElseGet(repoRoot, workspaceResolver::resolveRepoRoot);
-        try {
-            return base.toRealPath();
-        } catch (IOException _) {
-            return base.toAbsolutePath().normalize();
-        }
+        return WorktreeLayout.forRoot(base);
     }
 
     private WorktreeState sanitizeState(WorktreeState state) {
@@ -236,12 +210,6 @@ public class StateSocketService {
 
     public static String validateTaskId(String taskId) {
         return TaskId.of(taskId).value();
-    }
-
-    private static void validateNoSymlink(Path path) {
-        if (Files.isSymbolicLink(path)) {
-            throw new SecurityException("Jailbreak attempt: symbolic links are forbidden in state sockets: " + path);
-        }
     }
 
     public static ObjectMapper createDefaultObjectMapper() {

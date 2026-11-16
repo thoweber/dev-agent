@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.spi.build.BackendBuildSystem;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -163,14 +164,14 @@ public class WorkspaceContextResolver {
      * Resolves the root directory containing dedicated task worktrees.
      */
     public Path resolveWorktreesRoot() {
-        return resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees");
+        return WorktreeLayout.forRoot(resolveRepoRoot()).worktreesRoot();
     }
 
     /**
      * Resolves the dedicated worktree directory for a specific task.
      */
     public Path resolveWorktreeDir(String taskId) {
-        return resolveWorktreesRoot().resolve(taskId);
+        return WorktreeLayout.forRoot(resolveRepoRoot()).worktreeDir(TaskId.of(taskId));
     }
 
     /**

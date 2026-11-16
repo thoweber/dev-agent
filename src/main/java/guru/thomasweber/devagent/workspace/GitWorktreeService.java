@@ -70,20 +70,18 @@ public class GitWorktreeService {
         DevAgentConfig.IsolationConfig isolation,
         String targetDir
     ) {
-        String safeTaskId = taskId.value();
-        Path canonicalRoot = resolveCanonicalRoot(repoRoot);
+        WorktreeLayout layout = WorktreeLayout.forRoot(repoRoot);
+        Path canonicalRoot = layout.repoRoot();
         gitExcludeManager.ensureExcluded(canonicalRoot, targetDir);
 
-        Path worktreesRoot = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees");
-        Path worktreeDir = worktreesRoot.resolve(safeTaskId);
-        StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
+        Path worktreeDir = layout.worktreeDir(taskId);
 
         String baseCommit = resolveHeadCommit(canonicalRoot);
         String template = "feature/{task-id}-{story-slug}";
         if (nonNull(isolation)) {
             template = isolation.branchTemplate();
         }
-        String branchName = renderBranchName(template, safeTaskId, storySlug);
+        String branchName = renderBranchName(template, taskId.value(), storySlug);
 
         createOrAttachWorktree(canonicalRoot, worktreeDir, branchName, baseCommit);
 
@@ -93,7 +91,7 @@ public class GitWorktreeService {
         }
 
         return WorktreeAllocation.builder()
-            .taskId(safeTaskId)
+            .taskId(taskId.value())
             .branch(branchName)
             .worktreePath(worktreeDir)
             .baseCommit(baseCommit)
@@ -149,9 +147,9 @@ public class GitWorktreeService {
     }
 
     public void removeWorktree(Path repoRoot, TaskId taskId, boolean deleteBranch, String branchName) {
-        Path canonicalRoot = resolveCanonicalRoot(repoRoot);
-        Path worktreeDir = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskId.value());
-        StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
+        WorktreeLayout layout = WorktreeLayout.forRoot(repoRoot);
+        Path canonicalRoot = layout.repoRoot();
+        Path worktreeDir = layout.worktreeDir(taskId);
 
         if (Files.exists(worktreeDir)) {
             subprocessExecutor.execute(
@@ -176,7 +174,7 @@ public class GitWorktreeService {
     }
 
     public List<String> listWorktreeTaskIds(Path repoRoot) {
-        Path worktreesRoot = resolveCanonicalRoot(repoRoot).resolve(".git").resolve("dev-agent-worktrees");
+        Path worktreesRoot = WorktreeLayout.forRoot(repoRoot).worktreesRoot();
         if (!Files.isDirectory(worktreesRoot)) {
             return List.of();
         }
@@ -254,17 +252,6 @@ public class GitWorktreeService {
             }
         } catch (IOException e) {
             throw new WorkspaceException("Failed to remove residual worktree directory: " + dir, e);
-        }
-    }
-
-    private Path resolveCanonicalRoot(Path repoRoot) {
-        if (isNull(repoRoot)) {
-            throw new IllegalArgumentException("repoRoot must not be null");
-        }
-        try {
-            return repoRoot.toRealPath();
-        } catch (IOException _) {
-            return repoRoot.toAbsolutePath().normalize();
         }
     }
 

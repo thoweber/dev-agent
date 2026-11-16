@@ -4,10 +4,10 @@ import guru.thomasweber.devagent.model.CircuitBreakerState;
 import guru.thomasweber.devagent.model.LoopAction;
 import guru.thomasweber.devagent.workspace.ProcessResult;
 import guru.thomasweber.devagent.workspace.SubprocessExecutor;
+import guru.thomasweber.devagent.workspace.WorktreeLayout;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedList;
@@ -30,8 +30,6 @@ public class LoopCircuitBreaker {
     public static final int MAX_HISTORY_SIZE = 50;
     public static final Duration ROLLBACK_TIMEOUT = Duration.ofSeconds(10);
     private static final String DEFAULT_TASK_ID = "default";
-    private static final String GIT_DIR_NAME = ".git";
-    private static final String WORKTREE_DIR_NAME = "dev-agent-worktrees";
 
     private final ErrorSignatureExtractor signatureExtractor;
     private final SubprocessExecutor subprocessExecutor;
@@ -185,7 +183,7 @@ public class LoopCircuitBreaker {
         if (workingDir == null) {
             return false;
         }
-        Path worktreeRoot = findWorktreeRoot(workingDir)
+        Path worktreeRoot = WorktreeLayout.detectWorktreeRoot(workingDir)
                 .orElseThrow(() -> new SecurityException("Refusing to rollback outside dedicated git worktree: " + workingDir));
         ProcessResult resetResult = subprocessExecutor.execute(List.of("git", "reset", "--hard"), worktreeRoot, ROLLBACK_TIMEOUT);
         if (!resetResult.isSuccess()) {
@@ -200,35 +198,7 @@ public class LoopCircuitBreaker {
     }
 
     private Optional<String> findWorktreeTaskId(Path workingDir) {
-        return findWorktreeRoot(workingDir)
+        return WorktreeLayout.detectWorktreeRoot(workingDir)
                 .map(root -> root.getFileName().toString());
-    }
-
-    private Optional<Path> findWorktreeRoot(Path workingDir) {
-        if (workingDir == null) {
-            return Optional.empty();
-        }
-        Path normalized = workingDir.toAbsolutePath().normalize();
-        for (int i = 0; i < normalized.getNameCount() - 2; i++) {
-            if (GIT_DIR_NAME.equals(normalized.getName(i).toString())
-                    && WORKTREE_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
-                Path root = normalized.getRoot();
-                Path subpath = normalized.subpath(0, i + 3);
-                Path worktreeRoot = root != null ? root.resolve(subpath) : subpath;
-                validateNoSymbolicLinks(worktreeRoot);
-                return Optional.of(worktreeRoot);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private void validateNoSymbolicLinks(Path path) {
-        Path curr = path;
-        while (curr != null) {
-            if (Files.isSymbolicLink(curr)) {
-                throw new SecurityException("Forbidden symbolic link in worktree path: " + path);
-            }
-            curr = curr.getParent();
-        }
     }
 }

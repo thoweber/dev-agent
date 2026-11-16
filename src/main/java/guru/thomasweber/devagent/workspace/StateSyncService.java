@@ -213,13 +213,14 @@ public class StateSyncService {
         if (isNull(stateSocketService)) {
             return;
         }
-        Path worktreeDir = repoRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskRun.taskId());
+        TaskId taskId = TaskId.of(taskRun.taskId());
+        Path worktreeDir = WorktreeLayout.forRoot(repoRoot).worktreeDir(taskId);
         if (!Files.isDirectory(worktreeDir, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
-        Optional<WorktreeState> existing = stateSocketService.readState(repoRoot, taskRun.taskId());
+        Optional<WorktreeState> existing = stateSocketService.readState(repoRoot, taskId);
         WorktreeState updated = WorktreeState.builder()
-            .taskId(taskRun.taskId())
+            .taskId(taskId.value())
             .projectId(taskRun.projectId())
             .status(taskRun.status())
             .phase(taskRun.currentPhase())
