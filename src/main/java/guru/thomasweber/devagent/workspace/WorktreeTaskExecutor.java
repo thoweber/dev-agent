@@ -133,7 +133,7 @@ public class WorktreeTaskExecutor {
             .build();
         socketService.writeHeartbeat(repoRoot, verifying);
 
-        if (BackendBuildService.hasBackendBuildMarker(executionRoot)) {
+        if (buildService.hasApplicableBuildSystem(executionRoot)) {
             SanitizedLog log = buildService.compile(executionRoot, null, targetDir.value());
             if (nonNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
                 return verifying.toBuilder()

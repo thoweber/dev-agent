@@ -8,6 +8,9 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Multi-tenant {@link ChatMemoryProvider} managing session-tied {@link HierarchicalMemoryStore} instances.
  * Automatically discovered by Quarkus-LangChain4j via {@code BeanChatMemoryProviderSupplier}.
@@ -29,17 +32,17 @@ public class HierarchicalChatMemoryProvider implements ChatMemoryProvider {
     }
 
     public boolean evict(Object memoryId) {
-        if (memoryId == null) {
+        if (isNull(memoryId)) {
             return false;
         }
         return evict(SessionId.from(memoryId));
     }
 
     public boolean evict(SessionId sessionId) {
-        if (sessionId == null) {
+        if (isNull(sessionId)) {
             return false;
         }
-        return stores.remove(sessionId) != null;
+        return nonNull(stores.remove(sessionId));
     }
 
     public int activeSessionsCount() {

@@ -5,6 +5,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.Builder;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Immutable representation of an architectural decision record or declarative rule document.
@@ -21,6 +22,6 @@ public record ArchitecturalRecord(
     String content
 ) {
     public ArchitecturalRecord {
-        tags = (tags != null) ? List.copyOf(tags) : List.of();
+        tags = List.copyOf(Objects.requireNonNullElse(tags, List.of()));
     }
 }

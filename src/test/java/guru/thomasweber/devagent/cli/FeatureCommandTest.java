@@ -264,6 +264,7 @@ class FeatureCommandTest {
                 .baseCommit("abc123")
                 .hydrated(false)
                 .build());
+        when(buildService.hasApplicableBuildSystem(wtOk)).thenReturn(true);
         when(buildService.compile(eq(wtOk), eq(null), eq("target-agent")))
             .thenReturn(SanitizedLog.builder().exitCode(0).errorCount(0).build())
             .thenReturn(SanitizedLog.builder().exitCode(1).errorCount(2).build())

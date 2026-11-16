@@ -85,6 +85,7 @@ class WorkerCommandTest {
         BackendBuildService buildService = mock(BackendBuildService.class);
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
         when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
         when(buildService.compile(eq(worktreeDir), eq(null), eq("target-agent")))
             .thenReturn(SanitizedLog.builder().exitCode(1).errorCount(1).build());
 
@@ -161,6 +162,7 @@ class WorkerCommandTest {
         StateSyncService syncService = mock(StateSyncService.class);
         BackendBuildService buildService = mock(BackendBuildService.class);
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+        when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
         when(buildService.compile(eq(worktreeDir), eq(null), eq("target-agent")))
             .thenThrow(new IllegalStateException("build crash"));
 

@@ -1,8 +1,13 @@
 package guru.thomasweber.devagent.cognitive;
 
+import io.quarkus.runtime.annotations.RegisterForReflection;
+import lombok.Builder;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import static java.util.Objects.isNull;
 
 /**
  * Declarative rule for matching and stemming suffix variations on words.
@@ -40,7 +45,7 @@ public interface StemmableSuffix {
      * If matched, returns the stemmed word; otherwise returns {@link Optional#empty()}.
      */
     default Optional<String> stem(String word) {
-        if (word == null || word.isEmpty() || (minWordSize() > 0 && word.length() < minWordSize())) {
+        if (isNull(word) || word.isEmpty() || (minWordSize() > 0 && word.length() < minWordSize())) {
             return Optional.empty();
         }
         for (String variation : variations()) {
@@ -56,24 +61,46 @@ public interface StemmableSuffix {
     }
 
     static StemmableSuffix strip(int minWordSize, String... variations) {
-        return new SuffixRule(List.of(variations), minWordSize, "", false);
+        return SuffixRule.builder()
+            .variations(List.of(variations))
+            .minWordSize(minWordSize)
+            .replacement("")
+            .preservesWord(false)
+            .build();
     }
 
     static StemmableSuffix replace(String suffix, String replacement) {
-        return new SuffixRule(List.of(suffix), -1, replacement, false);
+        return SuffixRule.builder()
+            .variations(List.of(suffix))
+            .minWordSize(-1)
+            .replacement(replacement)
+            .preservesWord(false)
+            .build();
     }
 
     static StemmableSuffix replace(int minWordSize, String replacement, String... variations) {
-        return new SuffixRule(List.of(variations), minWordSize, replacement, false);
+        return SuffixRule.builder()
+            .variations(List.of(variations))
+            .minWordSize(minWordSize)
+            .replacement(replacement)
+            .preservesWord(false)
+            .build();
     }
 
     static StemmableSuffix preserve(String... variations) {
-        return new SuffixRule(List.of(variations), -1, "", true);
+        return SuffixRule.builder()
+            .variations(List.of(variations))
+            .minWordSize(-1)
+            .replacement("")
+            .preservesWord(true)
+            .build();
     }
 
     /**
      * Immutable record implementing {@link StemmableSuffix}.
      */
+    @RegisterForReflection
+    @Builder(toBuilder = true)
     record SuffixRule(
             List<String> variations,
             int minWordSize,
@@ -82,7 +109,7 @@ public interface StemmableSuffix {
     ) implements StemmableSuffix {
         public SuffixRule {
             variations = List.copyOf(Objects.requireNonNull(variations, "variations must not be null"));
-            replacement = replacement != null ? replacement : "";
+            replacement = Objects.requireNonNullElse(replacement, "");
         }
     }
 }

@@ -6,6 +6,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.List;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Normalizes compiler and linter error traces by masking volatile environment variables,
@@ -85,7 +86,7 @@ public class ErrorSignatureExtractor {
                     pendingSpace = false;
                 }
 
-                if (match != null) {
+                if (nonNull(match)) {
                     sb.append(match.replacement());
                     cursor.setOffset(match.endIndex());
                 } else {
@@ -100,7 +101,7 @@ public class ErrorSignatureExtractor {
         private Match matchFirstRule(ScanCursor cursor) {
             for (NormalizationRule rule : rules) {
                 Match match = rule.tryMatch(cursor);
-                if (match != null) {
+                if (nonNull(match)) {
                     return match;
                 }
             }
@@ -196,11 +197,11 @@ public class ErrorSignatureExtractor {
         @Override
         public Match tryMatch(ScanCursor cursor) {
             Match bracket = tryMatchBracket(cursor);
-            if (bracket != null) {
+            if (nonNull(bracket)) {
                 return bracket;
             }
             Match word = tryMatchWord(cursor);
-            if (word != null) {
+            if (nonNull(word)) {
                 return word;
             }
             return tryMatchColon(cursor);
@@ -277,7 +278,7 @@ public class ErrorSignatureExtractor {
         @Override
         public Match tryMatch(ScanCursor cursor) {
             Match winPath = tryMatchWindowsPath(cursor);
-            if (winPath != null) {
+            if (nonNull(winPath)) {
                 return winPath;
             }
             return tryMatchLinuxPath(cursor);

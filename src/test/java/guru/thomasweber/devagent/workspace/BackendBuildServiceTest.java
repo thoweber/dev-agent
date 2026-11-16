@@ -285,4 +285,35 @@ class BackendBuildServiceTest {
         Files.writeString(repoRoot.resolve("build.gradle.kts"), "");
         assertThat(BackendBuildService.hasBackendBuildMarker(repoRoot)).isTrue();
     }
+
+    @Test
+    @DisplayName("Given registered Axis 1 SPI build system without Maven/Gradle markers - hasApplicableBuildSystem queries SPI cleanly")
+    void givenCustomSpiBuildSystem_whenHasApplicableBuildSystem_thenQueriesSpi() throws Exception {
+        WorkspaceContextResolver customResolver = mock(WorkspaceContextResolver.class);
+        BackendBuildSystem customBuild = mock(BackendBuildSystem.class);
+        Path otherDir = repoRoot.resolve("empty-project");
+        Files.createDirectories(otherDir);
+
+        when(customResolver.hasRegisteredBackendBuildSystems()).thenReturn(true);
+        when(customResolver.resolveBackendBuildSystem(repoRoot)).thenReturn(Optional.of(customBuild));
+        when(customResolver.resolveBackendBuildSystem(otherDir)).thenReturn(Optional.empty());
+
+        BackendBuildService service = new BackendBuildService(
+            customResolver,
+            mock(SubprocessExecutor.class),
+            new DevAgentConfigLoader(),
+            new GitExcludeManager()
+        );
+        assertThat(service.hasApplicableBuildSystem(repoRoot)).isTrue();
+        assertThat(service.hasApplicableBuildSystem(otherDir)).isFalse();
+        assertThat(service.hasApplicableBuildSystem(null)).isFalse();
+
+        BackendBuildService fallbackService = new BackendBuildService(
+            new WorkspaceContextResolver(otherDir),
+            mock(SubprocessExecutor.class)
+        );
+        assertThat(fallbackService.hasApplicableBuildSystem(otherDir)).isFalse();
+        Files.writeString(otherDir.resolve("pom.xml"), "<project/>");
+        assertThat(fallbackService.hasApplicableBuildSystem(otherDir)).isTrue();
+    }
 }

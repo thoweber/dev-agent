@@ -113,6 +113,16 @@ public class BackendBuildService {
         return executeAndSanitize(buildSystem, command, effectiveRoot);
     }
 
+    public boolean hasApplicableBuildSystem(Path projectRoot) {
+        if (isNull(projectRoot)) {
+            return false;
+        }
+        if (contextResolver.hasRegisteredBackendBuildSystems()) {
+            return contextResolver.resolveBackendBuildSystem(projectRoot).isPresent();
+        }
+        return hasBackendBuildMarker(projectRoot);
+    }
+
     public static boolean hasBackendBuildMarker(Path projectRoot) {
         return nonNull(projectRoot)
             && (Files.isRegularFile(projectRoot.resolve("pom.xml"))

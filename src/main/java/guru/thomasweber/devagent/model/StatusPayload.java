@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.model;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * JSON payload emitted by {@code dev-agent status --json} without opening JDBC database connections.
@@ -13,10 +14,6 @@ public record StatusPayload(
     String message
 ) {
     public StatusPayload {
-        if (activeTasks == null) {
-            activeTasks = List.of();
-        } else {
-            activeTasks = List.copyOf(activeTasks);
-        }
+        activeTasks = List.copyOf(Objects.requireNonNullElse(activeTasks, List.of()));
     }
 }

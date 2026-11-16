@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static java.util.Objects.nonNull;
+
 /**
  * Robust subprocess execution engine enforcing mandatory timeouts, forced process cleanup,
  * and bounded 2-tier output buffering (1 MB RAM -> 10 MB Disk overflow) to eliminate pipe deadlocks.
@@ -75,7 +77,10 @@ public class SubprocessExecutor {
 
             String out = readOutputSafely(stdoutBuffer);
             String err = readOutputSafely(stderrBuffer);
-            int exitCode = timedOut ? -1 : process.exitValue();
+            int exitCode = -1;
+            if (!timedOut) {
+                exitCode = process.exitValue();
+            }
             boolean truncated = stdoutBuffer.isTruncated() || stderrBuffer.isTruncated();
 
             return ProcessResult.builder()
@@ -93,10 +98,10 @@ public class SubprocessExecutor {
 
     private ProcessBuilder createProcessBuilder(List<String> command, Path workingDir, Map<String, String> extraEnv) {
         ProcessBuilder pb = new ProcessBuilder(command);
-        if (workingDir != null) {
+        if (nonNull(workingDir)) {
             pb.directory(workingDir.toFile());
         }
-        if (extraEnv != null && !extraEnv.isEmpty()) {
+        if (nonNull(extraEnv) && !extraEnv.isEmpty()) {
             pb.environment().putAll(extraEnv);
         }
         return pb;

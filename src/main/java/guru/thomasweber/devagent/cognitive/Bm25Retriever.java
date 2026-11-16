@@ -1,7 +1,9 @@
 package guru.thomasweber.devagent.cognitive;
 
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
+import lombok.Builder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,6 +18,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Pure-Java lexical inverted index retrieval engine implementing Okapi BM25 ranking.
@@ -80,6 +85,8 @@ public class Bm25Retriever {
         StemmableSuffix.replace(3, "i", "y")
     );
 
+    @RegisterForReflection
+    @Builder(toBuilder = true)
     private record IndexSnapshot(
         Map<String, ArchitecturalRecord> documents,
         Map<String, Integer> documentLengths,
@@ -88,7 +95,13 @@ public class Bm25Retriever {
         int totalDocs
     ) {
         static IndexSnapshot empty() {
-            return new IndexSnapshot(Map.of(), Map.of(), Map.of(), 0.0, 0);
+            return IndexSnapshot.builder()
+                .documents(Map.of())
+                .documentLengths(Map.of())
+                .invertedIndex(Map.of())
+                .avgDocLength(0.0)
+                .totalDocs(0)
+                .build();
         }
     }
 
@@ -112,14 +125,14 @@ public class Bm25Retriever {
     }
 
     public void index(List<ArchitecturalRecord> records) {
-        if (records == null || records.isEmpty()) {
+        if (isNull(records) || records.isEmpty()) {
             snapshot.set(IndexSnapshot.empty());
             return;
         }
 
         Map<String, ArchitecturalRecord> uniqueRecords = new LinkedHashMap<>();
         for (ArchitecturalRecord rec : records) {
-            if (rec != null && rec.id() != null) {
+            if (nonNull(rec) && nonNull(rec.id())) {
                 uniqueRecords.put(rec.id(), rec);
             }
         }
@@ -140,25 +153,28 @@ public class Bm25Retriever {
         }
 
         int totalDocs = newDocs.size();
-        double avgDocLength = totalDocs > 0 ? (double) totalTokens / totalDocs : 0.0;
+        double avgDocLength = 0.0;
+        if (totalDocs > 0) {
+            avgDocLength = (double) totalTokens / totalDocs;
+        }
 
         Map<String, Map<String, Integer>> frozenIndex = new LinkedHashMap<>();
         for (Map.Entry<String, Map<String, Integer>> e : newInvertedIndex.entrySet()) {
             frozenIndex.put(e.getKey(), Collections.unmodifiableMap(e.getValue()));
         }
 
-        snapshot.set(new IndexSnapshot(
-            Collections.unmodifiableMap(newDocs),
-            Collections.unmodifiableMap(newLengths),
-            Collections.unmodifiableMap(frozenIndex),
-            avgDocLength,
-            totalDocs
-        ));
+        snapshot.set(IndexSnapshot.builder()
+            .documents(Collections.unmodifiableMap(newDocs))
+            .documentLengths(Collections.unmodifiableMap(newLengths))
+            .invertedIndex(Collections.unmodifiableMap(frozenIndex))
+            .avgDocLength(avgDocLength)
+            .totalDocs(totalDocs)
+            .build());
     }
 
     public double computeIdf(String term) {
         IndexSnapshot current = snapshot.get();
-        if (current.totalDocs() == 0 || term == null || term.isBlank()) {
+        if (current.totalDocs() == 0 || isNull(term) || term.isBlank()) {
             return 0.0;
         }
         List<String> tokens = tokenize(term);
@@ -170,7 +186,10 @@ public class Bm25Retriever {
 
     private double computeIdfForStem(IndexSnapshot current, String stem) {
         Map<String, Integer> postings = current.invertedIndex().get(stem);
-        int docFreq = (postings != null) ? postings.size() : 0;
+        int docFreq = 0;
+        if (nonNull(postings)) {
+            docFreq = postings.size();
+        }
 
         // Robertson-Spärck Jones / Lucene non-negative IDF: ln(1 + (N - n(t) + 0.5) / (n(t) + 0.5))
         double numerator = current.totalDocs() - docFreq + 0.5;
@@ -180,7 +199,7 @@ public class Bm25Retriever {
 
     public double scoreDocument(String docId, String query) {
         IndexSnapshot current = snapshot.get();
-        if (current.totalDocs() == 0 || query == null || !current.documents().containsKey(docId)) {
+        if (current.totalDocs() == 0 || isNull(query) || !current.documents().containsKey(docId)) {
             return 0.0;
         }
         List<String> queryTokens = tokenize(query);
@@ -189,12 +208,12 @@ public class Bm25Retriever {
         }
 
         int docLength = current.documentLengths().getOrDefault(docId, 0);
-        double lenNorm = (current.avgDocLength() > 0.0) ? (1.0 - b + b * (docLength / current.avgDocLength())) : 1.0;
+        double lenNorm = computeLengthNorm(current, docLength);
 
         double totalScore = 0.0;
         for (String token : queryTokens) {
             Map<String, Integer> postings = current.invertedIndex().get(token);
-            if (postings != null && postings.containsKey(docId)) {
+            if (nonNull(postings) && postings.containsKey(docId)) {
                 int freq = postings.get(docId);
                 double idf = computeIdfForStem(current, token);
                 double tfPart = (freq * (k1 + 1.0)) / (freq + k1 * lenNorm);
@@ -206,7 +225,7 @@ public class Bm25Retriever {
 
     public List<ArchitecturalRecord> search(String query, int topK) {
         IndexSnapshot current = snapshot.get();
-        if (query == null || query.isBlank() || current.totalDocs() == 0 || topK <= 0) {
+        if (isNull(query) || query.isBlank() || current.totalDocs() == 0 || topK <= 0) {
             return Collections.emptyList();
         }
 
@@ -219,7 +238,7 @@ public class Bm25Retriever {
 
         for (String token : queryTokens) {
             Map<String, Integer> postings = current.invertedIndex().get(token);
-            if (postings == null) {
+            if (isNull(postings)) {
                 continue;
             }
 
@@ -228,7 +247,7 @@ public class Bm25Retriever {
                 String docId = entry.getKey();
                 int freq = entry.getValue();
                 int docLength = current.documentLengths().getOrDefault(docId, 0);
-                double lenNorm = (current.avgDocLength() > 0.0) ? (1.0 - b + b * (docLength / current.avgDocLength())) : 1.0;
+                double lenNorm = computeLengthNorm(current, docLength);
                 double tfPart = (freq * (k1 + 1.0)) / (freq + k1 * lenNorm);
                 scores.merge(docId, idf * tfPart, Double::sum);
             }
@@ -256,15 +275,22 @@ public class Bm25Retriever {
         return Collections.unmodifiableList(results);
     }
 
+    private double computeLengthNorm(IndexSnapshot current, int docLength) {
+        if (current.avgDocLength() > 0.0) {
+            return 1.0 - b + b * (docLength / current.avgDocLength());
+        }
+        return 1.0;
+    }
+
     public String formatForPrompt(List<ArchitecturalRecord> records) {
-        if (records == null || records.isEmpty()) {
+        if (isNull(records) || records.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("### RETRIEVED ARCHITECTURAL DECISIONS & RULES:%n"));
         for (ArchitecturalRecord rec : records) {
             sb.append(String.format("- [%s] %s (Status: %s)%n", rec.id(), rec.title(), rec.status()));
-            if (rec.summary() != null && !rec.summary().isBlank()) {
+            if (nonNull(rec.summary()) && !rec.summary().isBlank()) {
                 sb.append(String.format("  Summary: %s%n", rec.summary().strip()));
             }
         }
@@ -272,7 +298,7 @@ public class Bm25Retriever {
     }
 
     public List<String> tokenize(String text) {
-        if (text == null || text.isBlank()) {
+        if (isNull(text) || text.isBlank()) {
             return Collections.emptyList();
         }
 
@@ -312,7 +338,7 @@ public class Bm25Retriever {
             Objects.toString(rec.title(), ""),
             Objects.toString(rec.summary(), ""),
             Objects.toString(rec.content(), ""),
-            String.join(" ", rec.tags() != null ? rec.tags() : Collections.emptyList())
+            String.join(" ", Objects.requireNonNullElse(rec.tags(), Collections.emptyList()))
         );
 
         List<String> tokens = tokenize(fullText);

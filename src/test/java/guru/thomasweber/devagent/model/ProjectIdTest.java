@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.model;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -79,5 +80,18 @@ class ProjectIdTest {
 
         assertThatThrownBy(() -> ProjectId.of(null))
             .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    @DisplayName("Given ProjectId - when serialized and deserialized with Jackson - then round-trips as plain UUID string")
+    void testJsonRoundTrip() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ProjectId original = ProjectId.fromCoordinate("github.com/thoweber/dev-agent");
+
+        String json = mapper.writeValueAsString(original);
+        assertThat(json).isEqualTo("\"" + original.idString() + "\"");
+
+        ProjectId restored = mapper.readValue(json, ProjectId.class);
+        assertThat(restored).isEqualTo(original);
     }
 }

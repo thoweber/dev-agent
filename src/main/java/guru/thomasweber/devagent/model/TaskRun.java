@@ -5,6 +5,7 @@ import lombok.Builder;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Domain representation of an engineering task execution run.
@@ -29,10 +30,6 @@ public record TaskRun(
     List<StepAudit> steps
 ) {
     public TaskRun {
-        if (steps == null) {
-            steps = List.of();
-        } else {
-            steps = List.copyOf(steps);
-        }
+        steps = List.copyOf(Objects.requireNonNullElse(steps, List.of()));
     }
 }

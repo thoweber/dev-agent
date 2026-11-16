@@ -68,12 +68,12 @@ public class ProjectIdResolver {
     }
 
     public String normalizeRemote(String remoteUrl) {
-        if (remoteUrl == null || remoteUrl.isBlank()) {
+        if (isNull(remoteUrl) || remoteUrl.isBlank()) {
             return "unknown";
         }
         String clean = remoteUrl.trim();
         HostAndPath parsed = parseHostAndPath(clean);
-        if (parsed != null) {
+        if (nonNull(parsed)) {
             String host = parsed.host().toLowerCase(Locale.ROOT);
             String path = cleanPath(parsed.path());
             return host + "/" + path;

@@ -4,6 +4,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 
 import java.util.Objects;
 
+import static java.util.Objects.isNull;
+
 /**
  * Strongly-typed value object representing credential-scrubbed text output.
  * Ensures raw unredacted tool execution outputs cannot be written to persistence sinks
@@ -13,14 +15,12 @@ import java.util.Objects;
 public record SanitizedOutput(String value) {
 
     public SanitizedOutput {
-        if (value == null) {
-            value = "";
-        }
+        value = Objects.requireNonNullElse(value, "");
     }
 
     public static SanitizedOutput of(String rawText, SecretRedactionFilter filter) {
         Objects.requireNonNull(filter, "SecretRedactionFilter cannot be null");
-        if (rawText == null || rawText.isBlank()) {
+        if (isNull(rawText) || rawText.isBlank()) {
             return empty();
         }
         return new SanitizedOutput(filter.scrub(rawText));

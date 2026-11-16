@@ -37,7 +37,7 @@ public abstract class BaseAgentCommand implements Runnable {
 
     @SuppressWarnings("java:S8450")
     protected BufferedReader getIn() {
-        if (in != null) {
+        if (nonNull(in)) {
             return in;
         }
         return new BufferedReader(new InputStreamReader(System.in));
@@ -45,7 +45,7 @@ public abstract class BaseAgentCommand implements Runnable {
 
     protected boolean isInteractive() {
         Console console = System.console();
-        return in != null || (console != null && console.isTerminal());
+        return nonNull(in) || (nonNull(console) && console.isTerminal());
     }
 
     @SuppressWarnings("java:S106")

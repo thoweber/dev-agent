@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Robust Maven build/test output parser and log sanitizer.
  * Drops extraneous downloader and progress bar noise while capturing compilation diagnostics,
@@ -50,22 +53,22 @@ public class MavenOutputParser {
         StringBuilder cleanStdoutBuilder = new StringBuilder();
         StringBuilder cleanStderrBuilder = new StringBuilder();
 
-        if (rawStdout != null && !rawStdout.isBlank()) {
+        if (nonNull(rawStdout) && !rawStdout.isBlank()) {
             processLogStream(rawStdout, cleanStdoutBuilder, errorLines);
         }
 
-        if (rawStderr != null && !rawStderr.isBlank()) {
+        if (nonNull(rawStderr) && !rawStderr.isBlank()) {
             processLogStream(rawStderr, cleanStderrBuilder, errorLines);
         }
 
         String cleanStdout = cleanStdoutBuilder.toString().stripTrailing();
         String cleanStderr = cleanStderrBuilder.toString().stripTrailing();
 
-        int effectiveExitCode;
-        if (explicitExitCode != null) {
+        int effectiveExitCode = 0;
+        if (nonNull(explicitExitCode)) {
             effectiveExitCode = explicitExitCode;
-        } else {
-            effectiveExitCode = errorLines.isEmpty() ? 0 : 1;
+        } else if (!errorLines.isEmpty()) {
+            effectiveExitCode = 1;
         }
 
         // Invariant: If exitCode != 0, critical diagnostics must NEVER be omitted
@@ -134,7 +137,7 @@ public class MavenOutputParser {
     }
 
     private static boolean isErrorContinuation(String line) {
-        if (line == null || line.isBlank()) {
+        if (isNull(line) || line.isBlank()) {
             return false;
         }
         String trimmed = line.trim();

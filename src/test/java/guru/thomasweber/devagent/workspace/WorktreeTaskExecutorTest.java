@@ -44,6 +44,7 @@ class WorktreeTaskExecutorTest {
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
         GitWorktreeService worktreeService = mock(GitWorktreeService.class);
 
+        when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
         when(buildService.compile(worktreeDir, null, "target-custom"))
             .thenReturn(SanitizedLog.builder().exitCode(0).errorCount(0).build());
         TaskRun existing = TaskRunMother.builder("TASK-EX-1")
@@ -119,6 +120,7 @@ class WorktreeTaskExecutorTest {
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
         GitWorktreeService worktreeService = mock(GitWorktreeService.class);
 
+        when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
         when(buildService.compile(worktreeDir, null, "target-agent"))
             .thenReturn(SanitizedLog.builder().exitCode(1).errorCount(2).build())
             .thenThrow(new IllegalStateException("compile exploded token=ghp_1234567890abcdefghijklmnopqrstuvwxyz1234"));
@@ -175,5 +177,59 @@ class WorktreeTaskExecutorTest {
     @DisplayName("Given default executor construction - when constructed - then initializes cleanly")
     void givenDefaultConstructor_whenConstructed_thenInitializes() {
         assertThat(new WorktreeTaskExecutor()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Given custom SPI build system without pom.xml and error-flagged log with zero exit code - fails verification cleanly")
+    void givenCustomSpiBuildSystemWithErrors_whenExecuted_thenFailsVerification() throws IOException {
+        Path worktreeDir = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-SPI-1"));
+        StateSocketService socketService = new StateSocketService();
+        StateSyncService syncService = mock(StateSyncService.class);
+        BackendBuildService buildService = mock(BackendBuildService.class);
+        DesktopAlertService alertService = mock(DesktopAlertService.class);
+        TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+        GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+
+        when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
+        when(buildService.compile(worktreeDir, null, TargetDir.DEFAULT_VALUE))
+            .thenReturn(SanitizedLog.builder().exitCode(0).errorCount(1).build())
+            .thenReturn(null);
+
+        WorktreeTaskExecutor executor = new WorktreeTaskExecutor(
+            socketService,
+            syncService,
+            buildService,
+            alertService,
+            persistenceService,
+            worktreeService
+        );
+        WorktreeState initial = WorktreeStateMother.builder("TASK-SPI-1")
+            .projectId("proj-spi")
+            .branch("feature/TASK-SPI-1-custom")
+            .build();
+
+        WorktreeState failedByErrors = executor.executeInWorktree(
+            tempDir,
+            worktreeDir,
+            initial,
+            null,
+            "Custom SPI compile",
+            TargetDir.DEFAULT,
+            false,
+            null
+        );
+        assertThat(failedByErrors.status()).isEqualTo(TaskStatus.FAILED);
+
+        WorktreeState nullLogPasses = executor.executeInWorktree(
+            tempDir,
+            worktreeDir,
+            initial,
+            null,
+            "Custom SPI null log",
+            TargetDir.DEFAULT,
+            false,
+            null
+        );
+        assertThat(nullLogPasses.status()).isEqualTo(TaskStatus.COMPLETED);
     }
 }

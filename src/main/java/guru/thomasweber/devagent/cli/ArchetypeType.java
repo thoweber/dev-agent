@@ -2,6 +2,8 @@ package guru.thomasweber.devagent.cli;
 
 import java.util.Arrays;
 
+import static java.util.Objects.isNull;
+
 /**
  * Supported archetype project profiles for dev-agent init.
  */
@@ -22,7 +24,7 @@ public enum ArchetypeType {
     }
 
     public static ArchetypeType fromString(String value) {
-        if (value == null || value.isBlank()) {
+        if (isNull(value) || value.isBlank()) {
             return REST_PANACHE;
         }
         for (ArchetypeType type : values()) {
