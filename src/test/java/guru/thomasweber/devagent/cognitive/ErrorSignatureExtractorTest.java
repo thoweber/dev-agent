@@ -293,7 +293,7 @@ class ErrorSignatureExtractorTest {
     }
 
     @Test
-    @DisplayName("Given massive error trace exceeding max chars - when extracting - then truncates safely and extracts signature")
+    @DisplayName("Given massive error trace exceeding max chars - when extracting - then retains trailing failure lines and produces distinct signatures")
     void givenMassiveErrorTrace_whenExtracting_thenTruncatesSafely() {
         String massive = "massive error trace line ".repeat(3000);
         String sig = extractor.extractSignature(massive);
@@ -301,5 +301,14 @@ class ErrorSignatureExtractorTest {
 
         String normalized = extractor.extractNormalizedText(massive);
         assertThat(normalized.length()).isLessThanOrEqualTo(ErrorSignatureExtractor.MAX_INPUT_CHARS);
+
+        String sigA = extractor.extractSignature(massive + "\nAssertionFailedError: expected A");
+        String sigB = extractor.extractSignature(massive + "\nNullPointerException: NPE");
+        assertThat(sigA).isNotEqualTo(sigB);
+
+        String edgeNorm = extractor.extractNormalizedText(
+            "2026-11-16 21:22:25-ERROR C:/dev/project/App.java:12:4 at /home/user/workspace/Service.java"
+        );
+        assertThat(edgeNorm).isEqualTo("<TIME>-ERROR <PATH>:<LINE>:<COL> at <PATH>");
     }
 }

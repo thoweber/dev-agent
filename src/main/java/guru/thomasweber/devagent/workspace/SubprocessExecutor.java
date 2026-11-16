@@ -112,12 +112,18 @@ public class SubprocessExecutor {
 
     private boolean waitForProcess(Process process, Duration timeout) {
         boolean finished = false;
+        boolean interrupted = false;
         try {
             finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException _) {
+            interrupted = true;
             killProcessTree(process);
             Thread.currentThread().interrupt();
             return true;
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         if (!finished) {
@@ -133,14 +139,25 @@ public class SubprocessExecutor {
     }
 
     private void killProcessTree(Process process) {
-        process.descendants().forEach(ProcessHandle::destroyForcibly);
         process.destroyForcibly();
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
     }
 
     private void joinDrainers(Thread stdoutDrainer, Thread stderrDrainer) {
+        boolean wasInterrupted = Thread.interrupted();
         try {
-            stdoutDrainer.join(Duration.ofSeconds(1));
-            stderrDrainer.join(Duration.ofSeconds(1));
+            joinQuietly(stdoutDrainer);
+            joinQuietly(stderrDrainer);
+        } finally {
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private static void joinQuietly(Thread drainer) {
+        try {
+            drainer.join(Duration.ofSeconds(1));
         } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }

@@ -10,12 +10,15 @@ import jakarta.inject.Inject;
 
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Normalized loop circuit breaker governing the TDD coder loop (ADR-009).
@@ -36,8 +39,9 @@ public class LoopCircuitBreaker {
 
     private static class TaskBreakerState {
         CircuitBreakerState state = CircuitBreakerState.NORMAL;
-        final LinkedList<String> history = new LinkedList<>();
+        final List<String> history = new ArrayList<>();
         int postPivotFailures = 0;
+        int consecutiveRepeatCount = 0;
     }
 
     private final ConcurrentMap<String, TaskBreakerState> taskStates = new ConcurrentHashMap<>();
@@ -58,10 +62,11 @@ public class LoopCircuitBreaker {
     }
 
     public LoopAction recordFailure(String taskId, String rawOutput, Path workingDir) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
+        String effectiveTaskId = normalizeTaskId(taskId);
         TaskBreakerState taskState = taskStates.computeIfAbsent(effectiveTaskId, _ -> new TaskBreakerState());
         String sig = signatureExtractor.extractSignature(rawOutput);
 
+        boolean needsRollback = false;
         synchronized (taskState) {
             if (taskState.state == CircuitBreakerState.TRIPPED) {
                 return LoopAction.TRIP_AND_HALT;
@@ -71,7 +76,6 @@ public class LoopCircuitBreaker {
                 taskState.postPivotFailures++;
                 if (taskState.postPivotFailures >= MAX_POST_PIVOT_FAILURES) {
                     taskState.state = CircuitBreakerState.TRIPPED;
-                    // Preserve diagnostic error state on trip; do not rollback!
                     return LoopAction.TRIP_AND_HALT;
                 }
                 appendHistory(taskState, sig);
@@ -81,28 +85,41 @@ public class LoopCircuitBreaker {
             if (!taskState.history.isEmpty()) {
                 String lastSig = taskState.history.getLast();
                 if (Objects.equals(lastSig, sig)) {
-                    taskState.state = CircuitBreakerState.WARNING;
+                    taskState.consecutiveRepeatCount++;
+                    if (taskState.consecutiveRepeatCount < 2) {
+                        taskState.state = CircuitBreakerState.WARNING;
+                        appendHistory(taskState, sig);
+                        return LoopAction.INJECT_WARNING;
+                    }
                     appendHistory(taskState, sig);
-                    return LoopAction.INJECT_WARNING;
+                    needsRollback = true;
+                } else {
+                    taskState.consecutiveRepeatCount = 0;
                 }
 
-                if (isOscillatingSequence(taskState.history, sig)) {
+                if (!needsRollback && isOscillatingSequence(taskState.history, sig)) {
                     appendHistory(taskState, sig);
-                    boolean rolledBack = rollback(workingDir);
-                    if (rolledBack) {
-                        taskState.state = CircuitBreakerState.PIVOT_ACTIVE;
-                        taskState.postPivotFailures = 0;
-                        return LoopAction.ROLLBACK_AND_PIVOT;
-                    } else {
-                        taskState.state = CircuitBreakerState.TRIPPED;
-                        return LoopAction.TRIP_AND_HALT;
-                    }
+                    needsRollback = true;
                 }
             }
 
-            taskState.state = CircuitBreakerState.NORMAL;
-            appendHistory(taskState, sig);
-            return LoopAction.CONTINUE;
+            if (!needsRollback) {
+                taskState.state = CircuitBreakerState.NORMAL;
+                appendHistory(taskState, sig);
+                return LoopAction.CONTINUE;
+            }
+        }
+
+        boolean rolledBack = rollback(workingDir);
+        synchronized (taskState) {
+            if (rolledBack) {
+                taskState.state = CircuitBreakerState.PIVOT_ACTIVE;
+                taskState.postPivotFailures = 0;
+                taskState.consecutiveRepeatCount = 0;
+                return LoopAction.ROLLBACK_AND_PIVOT;
+            }
+            taskState.state = CircuitBreakerState.TRIPPED;
+            return LoopAction.TRIP_AND_HALT;
         }
     }
 
@@ -130,15 +147,7 @@ public class LoopCircuitBreaker {
     }
 
     public void recordSuccess(String taskId) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
-        TaskBreakerState taskState = taskStates.get(effectiveTaskId);
-        if (taskState != null) {
-            synchronized (taskState) {
-                taskState.state = CircuitBreakerState.NORMAL;
-                taskState.history.clear();
-                taskState.postPivotFailures = 0;
-            }
-        }
+        taskStates.remove(normalizeTaskId(taskId));
     }
 
     public void reset() {
@@ -154,9 +163,8 @@ public class LoopCircuitBreaker {
     }
 
     public CircuitBreakerState getState(String taskId) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
-        TaskBreakerState taskState = taskStates.get(effectiveTaskId);
-        if (taskState != null) {
+        TaskBreakerState taskState = taskStates.get(normalizeTaskId(taskId));
+        if (nonNull(taskState)) {
             synchronized (taskState) {
                 return taskState.state;
             }
@@ -169,9 +177,8 @@ public class LoopCircuitBreaker {
     }
 
     public int getPostPivotFailures(String taskId) {
-        String effectiveTaskId = (taskId != null && !taskId.isBlank()) ? taskId : DEFAULT_TASK_ID;
-        TaskBreakerState taskState = taskStates.get(effectiveTaskId);
-        if (taskState != null) {
+        TaskBreakerState taskState = taskStates.get(normalizeTaskId(taskId));
+        if (nonNull(taskState)) {
             synchronized (taskState) {
                 return taskState.postPivotFailures;
             }
@@ -179,8 +186,15 @@ public class LoopCircuitBreaker {
         return 0;
     }
 
+    private static String normalizeTaskId(String taskId) {
+        if (nonNull(taskId) && !taskId.isBlank()) {
+            return taskId;
+        }
+        return DEFAULT_TASK_ID;
+    }
+
     private boolean rollback(Path workingDir) {
-        if (workingDir == null) {
+        if (isNull(workingDir)) {
             return false;
         }
         Path worktreeRoot = WorktreeLayout.detectWorktreeRoot(workingDir)

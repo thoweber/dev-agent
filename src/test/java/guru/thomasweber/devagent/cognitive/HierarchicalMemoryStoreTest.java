@@ -672,4 +672,25 @@ class HierarchicalMemoryStoreTest {
         assertThat(memory.messages()).isNotEmpty();
         assertThatMemory(memory).satisfiesTurnStructureInvariants();
     }
+
+    @Test
+    @DisplayName("Given null tool IDs - when adding ToolExecutionResultMessage - then rejects null tool ID match")
+    void testNullToolIdRejectedAndSingleTurnPreserved() {
+        HierarchicalMemoryStore memory = new HierarchicalMemoryStore(TEST_SESSION);
+        memory.add(new UserMessage("Single turn"));
+        for (int i = 0; i < 20; i++) {
+            ToolExecutionRequest req = ToolExecutionRequest.builder().id("id-" + i).name("tool").arguments("{}").build();
+            memory.add(AiMessage.from(List.of(req)));
+            memory.add(ToolExecutionResultMessage.from(req, "res-" + i));
+        }
+        // Adding a 2nd turn evicts the first complete turn cleanly
+        memory.add(new UserMessage("Turn 2"));
+        assertThat(memory.messages()).hasSize(1);
+
+        HierarchicalMemoryStore nullIdMemory = new HierarchicalMemoryStore(TEST_SESSION);
+        ToolExecutionRequest nullReq = ToolExecutionRequest.builder().id(null).name("t").arguments("{}").build();
+        nullIdMemory.add(AiMessage.from(List.of(nullReq)));
+        nullIdMemory.add(ToolExecutionResultMessage.from(null, "t", "bad"));
+        assertThat(nullIdMemory.messages()).hasSize(1);
+    }
 }

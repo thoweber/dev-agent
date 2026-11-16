@@ -1,55 +1,67 @@
 package guru.thomasweber.devagent.cognitive;
 
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.workspace.DigestUtils;
 import io.quarkus.cache.CacheKeyGenerator;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.HexFormat;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Deterministic cache key generator for Architectural Gatekeeper evaluations (ADR-009).
- * Computes: SHA-256(UnifiedDiff + RetrievedAdrsDigest)
- * When passed a List of ArchitecturalRecord, extracts and sorts rule IDs deterministically.
+ * Computes: SHA-256(MethodSignature + UnifiedDiff + DeduplicatedSortedRetrievedAdrs)
  */
 @ApplicationScoped
 public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
 
     @Override
     public Object generate(Method method, Object... methodParams) {
+        String methodSig = formatMethodSignature(method);
         String diff = extractDiff(methodParams);
         String adrs = extractAdrs(methodParams);
-        String compositePayload = "DIFF:" + diff.length() + ":" + diff + "\nADRS:" + adrs.length() + ":" + adrs;
-        return sha256Hex(compositePayload);
+        String compositePayload = "METHOD:" + frame(methodSig) + "\nDIFF:" + frame(diff) + "\nADRS:" + frame(adrs);
+        return DigestUtils.sha256Hex(compositePayload);
+    }
+
+    private static String formatMethodSignature(Method method) {
+        if (isNull(method)) {
+            return "";
+        }
+        String params = Arrays.stream(method.getParameterTypes())
+            .map(Class::getName)
+            .collect(Collectors.joining(","));
+        return method.getName() + "(" + params + ")";
     }
 
     private static String extractDiff(Object[] methodParams) {
-        if (methodParams != null && methodParams.length > 0 && methodParams[0] != null) {
+        if (nonNull(methodParams) && methodParams.length > 0 && nonNull(methodParams[0])) {
             return methodParams[0].toString().strip();
         }
         return "";
     }
 
     private static String extractAdrs(Object[] methodParams) {
-        if (methodParams == null || methodParams.length <= 1 || methodParams[1] == null) {
+        if (isNull(methodParams) || methodParams.length <= 1 || isNull(methodParams[1])) {
             return "";
         }
         Object second = methodParams[1];
         if (second instanceof List<?> list) {
-            List<String> items = new ArrayList<>();
+            Set<String> uniqueItems = new LinkedHashSet<>();
             for (Object item : list) {
-                if (item != null) {
-                    items.add(formatRecordItem(item));
+                if (nonNull(item)) {
+                    uniqueItems.add(formatRecordItem(item));
                 }
             }
-            items.sort(null);
-            return String.join("\n---\n", items);
+            return uniqueItems.stream().sorted().collect(Collectors.joining("\n---\n"));
         }
         return second.toString().strip();
     }
@@ -58,9 +70,9 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
         if (item instanceof ArchitecturalRecord rec) {
             String summary = Objects.toString(rec.summary(), "").strip();
             String content = Objects.toString(rec.content(), "").strip();
-            return frame(String.valueOf(rec.id()))
-                + frame(String.valueOf(rec.title()))
-                + frame(String.valueOf(rec.status()))
+            return frame(Objects.toString(rec.id(), ""))
+                + frame(Objects.toString(rec.title(), ""))
+                + frame(Objects.toString(rec.status(), ""))
                 + frame(summary)
                 + frame(content);
         }
@@ -69,15 +81,5 @@ public class GatekeeperCacheKeyGenerator implements CacheKeyGenerator {
 
     private static String frame(String value) {
         return value.length() + ":" + value;
-    }
-
-    private static String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 message digest algorithm not available", e);
-        }
     }
 }

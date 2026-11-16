@@ -347,4 +347,13 @@ class LoopCircuitBreakerTest {
                 .isInstanceOf(SecurityException.class)
                 .hasMessageContaining("Forbidden symbolic link in worktree path");
     }
+
+    @Test
+    @DisplayName("Given three consecutive identical errors (A -> A -> A) - when recorded - then escalates from WARNING to ROLLBACK_AND_PIVOT")
+    void givenThreeConsecutiveIdenticalErrors_whenRecorded_thenEscalatesBeyondWarning() {
+        assertThat(circuitBreaker.recordFailure("error A", worktreeDir)).isEqualTo(LoopAction.CONTINUE);
+        assertThat(circuitBreaker.recordFailure("error A", worktreeDir)).isEqualTo(LoopAction.INJECT_WARNING);
+        assertThat(circuitBreaker.recordFailure("error A", worktreeDir)).isEqualTo(LoopAction.ROLLBACK_AND_PIVOT);
+        assertThat(circuitBreaker.getState("task-101")).isEqualTo(CircuitBreakerState.PIVOT_ACTIVE);
+    }
 }

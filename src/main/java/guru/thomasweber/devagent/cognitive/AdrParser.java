@@ -36,7 +36,7 @@ public class AdrParser {
     private static final String METADATA_SUMMARY = "summary";
     private static final String METADATA_TAGS = "tags";
 
-    private static final Pattern STATUS_PATTERN = Pattern.compile("(?i)(?:\\*\\s*\\*\\*status:\\*\\*|status:)\\s*([a-z0-9_-]+)");
+    private static final Pattern STATUS_PATTERN = Pattern.compile("(?im)(?:^|[\\s*>\\-])(?:\\*\\s*)?(?:\\*\\*status:\\*\\*|\\*\\*status\\*\\*:|status:)\\s*([a-z0-9_-]+)");
     private static final Pattern ADR_ID_HEADER_PATTERN = Pattern.compile("(?i)\\b([A-Z0-9]+-\\d+)\\b");
     private static final Pattern ADR_ID_FILE_PATTERN = Pattern.compile("(?i)^([A-Z0-9]+-\\d+)(?:-.*)?\\.md$");
     private static final Pattern ADR_TAG_PATTERN = Pattern.compile("(?i)(?:^|/)adrs?(?:/|[-_.]|$)");

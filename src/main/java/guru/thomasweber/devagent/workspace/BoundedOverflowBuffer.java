@@ -35,8 +35,6 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     private boolean truncated = false;
     private boolean closed = false;
 
-    private final OutputStream sink;
-
     public BoundedOverflowBuffer(int memoryThreshold, int maxCapacity) {
         this(memoryThreshold, maxCapacity, null);
     }
@@ -52,7 +50,6 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         this.maxCapacity = maxCapacity;
         this.tempDirRoot = tempDirRoot;
         this.memoryBuffer = new ByteArrayOutputStream(Math.min(memoryThreshold, 8192));
-        this.sink = new BufferOutputStream(this);
     }
 
     /**
@@ -69,7 +66,6 @@ public class BoundedOverflowBuffer implements AutoCloseable {
         if (closed) {
             throw new IOException("Buffer is closed");
         }
-        sink.flush();
         if (nonNull(diskTempFile)) {
             return Files.newInputStream(diskTempFile);
         }
@@ -135,7 +131,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     private void checkOverflow(int incoming) throws IOException {
-        if (isNull(diskTempFile) && totalBytesWritten + incoming > memoryThreshold) {
+        if (isNull(diskTempFile) && (long) totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
             try {
                 this.fileChannel = FileChannel.open(

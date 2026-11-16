@@ -327,4 +327,12 @@ class AdrParserTest {
             .isInstanceOf(SecurityException.class)
             .hasMessageContaining("Refusing to read through symbolic link");
     }
+
+    @Test
+    @DisplayName("Given bold unbulleted Status line - when parseRecord called - then extracts Accepted instead of defaulting to Active")
+    void givenBoldUnbulletedStatus_whenParseRecord_thenExtractsStatus() {
+        RepoPath path = RepoPath.of(tempDir.resolve("docs/adr/ADR-777.md"), tempDir);
+        ArchitecturalRecord rec = parser.parseRecord(path, "# ADR-777\n**Status:** Accepted\n");
+        assertThat(rec.status()).isEqualTo("Accepted");
+    }
 }
