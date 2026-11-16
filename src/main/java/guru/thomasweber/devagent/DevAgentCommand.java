@@ -11,6 +11,7 @@ import guru.thomasweber.devagent.cli.LogsCommand;
 import guru.thomasweber.devagent.cli.ResumeCommand;
 import guru.thomasweber.devagent.cli.AbortCommand;
 import guru.thomasweber.devagent.cli.MetricsCommand;
+import guru.thomasweber.devagent.cli.WorkerCommand;
 
 /**
  * Top-level CLI entry point for dev-agent.
@@ -29,7 +30,8 @@ import guru.thomasweber.devagent.cli.MetricsCommand;
         LogsCommand.class,
         ResumeCommand.class,
         AbortCommand.class,
-        MetricsCommand.class
+        MetricsCommand.class,
+        WorkerCommand.class
     }
 )
 @SuppressWarnings("java:S106")

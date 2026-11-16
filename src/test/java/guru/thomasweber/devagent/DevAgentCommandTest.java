@@ -47,6 +47,7 @@ class DevAgentCommandTest {
                 "abort",
                 "metrics"
             );
+        assertThat(sw.toString()).doesNotContain("  worker ");
     }
 
     @Test

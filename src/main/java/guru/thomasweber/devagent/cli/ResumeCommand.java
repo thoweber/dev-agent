@@ -6,15 +6,20 @@ import jakarta.inject.Inject;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.TaskRun;
+import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.workspace.CrashRecoveryDetector;
+import guru.thomasweber.devagent.workspace.DetachedWorkerLauncher;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
+import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -32,26 +37,51 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
     private static final String RESUMPTION_ABORTED = "[dev-agent] Resumption aborted.";
     private static final String CANNOT_RESUME_PREFIX = "[dev-agent] Cannot resume ";
 
+    @Option(names = {"--detach"}, description = "Re-launch the resumed task as a detached background worker")
+    private boolean detach;
+
     private final CrashRecoveryDetector crashDetector;
     private final ProjectIdResolver projectResolver;
     private final TaskPersistenceService persistenceService;
     private final WorkspaceContextResolver workspaceResolver;
+    private final DetachedWorkerLauncher workerLauncher;
+    private final StateSocketService socketService;
 
     @Inject
     public ResumeCommand(
         CrashRecoveryDetector crashDetector,
         ProjectIdResolver projectResolver,
         TaskPersistenceService persistenceService,
-        WorkspaceContextResolver workspaceResolver
+        WorkspaceContextResolver workspaceResolver,
+        DetachedWorkerLauncher workerLauncher,
+        StateSocketService socketService
     ) {
         this.crashDetector = crashDetector;
         this.projectResolver = projectResolver;
         this.persistenceService = persistenceService;
         this.workspaceResolver = workspaceResolver;
+        this.workerLauncher = workerLauncher;
+        this.socketService = socketService;
+    }
+
+    public ResumeCommand(
+        CrashRecoveryDetector crashDetector,
+        ProjectIdResolver projectResolver,
+        TaskPersistenceService persistenceService,
+        WorkspaceContextResolver workspaceResolver
+    ) {
+        this(crashDetector, projectResolver, persistenceService, workspaceResolver, new DetachedWorkerLauncher(), new StateSocketService());
     }
 
     public ResumeCommand() {
-        this(new CrashRecoveryDetector(), new ProjectIdResolver(), new TaskPersistenceService(), new WorkspaceContextResolver());
+        this(
+            new CrashRecoveryDetector(),
+            new ProjectIdResolver(),
+            new TaskPersistenceService(),
+            new WorkspaceContextResolver(),
+            new DetachedWorkerLauncher(),
+            new StateSocketService()
+        );
     }
 
     @Override
@@ -155,10 +185,35 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             return 1;
         }
 
-        String validationError = validateTaskEligibility(taskOpt.get(), targetTaskId);
+        TaskRun task = taskOpt.get();
+        String validationError = validateTaskEligibility(task, targetTaskId);
         if (validationError != null) {
             err.println(CANNOT_RESUME_PREFIX + targetTaskId + ": " + validationError);
             return 1;
+        }
+
+        if (detach) {
+            Path repoRoot = getWorkspaceRoot();
+            String story = task.userStory() != null ? task.userStory() : "";
+            long pid = workerLauncher.launchWorker(repoRoot, targetTaskId, story);
+            WorktreeState resumedState = socketService.readState(repoRoot, targetTaskId)
+                .map(existing -> existing.toBuilder().pid(pid).updatedAt(Instant.now()).lastMessage("Resumed detached worker").build())
+                .orElseGet(() -> WorktreeState.builder()
+                    .taskId(targetTaskId)
+                    .projectId(task.projectId())
+                    .status(task.status())
+                    .phase(task.currentPhase())
+                    .pid(pid)
+                    .branch(task.branch())
+                    .worktreePath(workspaceResolver.resolveWorktreeDir(targetTaskId).toString())
+                    .startedAt(task.createdAt())
+                    .updatedAt(Instant.now())
+                    .lastMessage("Resumed detached worker")
+                    .build());
+            socketService.writeHeartbeat(repoRoot, resumedState);
+            persistenceService.saveTask(task.toBuilder().pid(pid).updatedAt(Instant.now()).build());
+            out.println(RESUMING_TASK_PREFIX + targetTaskId + " (PID " + pid + ")");
+            return 0;
         }
 
         out.println(RESUMING_TASK_PREFIX + targetTaskId);
