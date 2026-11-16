@@ -150,7 +150,7 @@ public class WorkspaceContextResolver {
      * Resolves the target directory for sliced agent builds.
      */
     public Path resolveAgentTargetDir() {
-        return resolveExecutionRoot().resolve("target-agent");
+        return resolveExecutionRoot().resolve(TargetDir.DEFAULT_VALUE);
     }
 
     /**

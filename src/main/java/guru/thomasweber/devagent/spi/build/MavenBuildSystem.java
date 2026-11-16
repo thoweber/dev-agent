@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.spi.build;
 
+import guru.thomasweber.devagent.workspace.TargetDir;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -13,6 +14,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Axis 1 SPI implementation for Maven backend build tooling execution, command synthesis,
  * target directory slicing, and build output log sanitization.
@@ -22,7 +26,7 @@ import java.util.Objects;
 public class MavenBuildSystem implements BackendBuildSystem {
 
     public static final int DEFAULT_PRIORITY = 100;
-    public static final String DEFAULT_TARGET_DIR = "target-agent";
+    public static final String DEFAULT_TARGET_DIR = TargetDir.DEFAULT_VALUE;
     public static final String SUREFIRE_MEMORY_ARGS = "-DargLine=-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1";
     public static final String POM_XML = "pom.xml";
 
@@ -100,7 +104,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
         command.add(resolveExecutable(projectRoot));
         command.add("-B");
 
-        String effectiveTargetDir = (targetDir != null && !targetDir.isBlank()) ? targetDir.trim() : DEFAULT_TARGET_DIR;
+        String effectiveTargetDir = TargetDir.of(targetDir).value();
         command.add("-Dproject.build.directory=" + effectiveTargetDir);
 
         if (isNotBlankModule(modulePath)) {
@@ -119,7 +123,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
         command.add(resolveExecutable(projectRoot));
         command.add("-B");
 
-        String effectiveTargetDir = (targetDir != null && !targetDir.isBlank()) ? targetDir.trim() : DEFAULT_TARGET_DIR;
+        String effectiveTargetDir = TargetDir.of(targetDir).value();
         command.add("-Dproject.build.directory=" + effectiveTargetDir);
         command.add(SUREFIRE_MEMORY_ARGS);
 
@@ -131,7 +135,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
 
         command.add("test");
 
-        if (testPattern != null && !testPattern.isBlank()) {
+        if (nonNull(testPattern) && !testPattern.isBlank()) {
             command.add("-Dtest=" + testPattern.trim());
         }
 
@@ -149,7 +153,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
     }
 
     private static boolean isNotBlankModule(String modulePath) {
-        if (modulePath == null || modulePath.isBlank()) {
+        if (isNull(modulePath) || modulePath.isBlank()) {
             return false;
         }
         String trimmed = modulePath.trim();

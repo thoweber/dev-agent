@@ -24,5 +24,8 @@ public record WorktreeAllocation(
         if (nonNull(taskId)) {
             TaskId.of(taskId);
         }
+        if (nonNull(branch) && !branch.isBlank()) {
+            BranchName.of(branch);
+        }
     }
 }

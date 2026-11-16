@@ -25,7 +25,7 @@ import static java.util.Objects.nonNull;
 @ApplicationScoped
 public class BackendBuildService {
 
-    public static final String DEFAULT_TARGET_DIR = "target-agent";
+    public static final String DEFAULT_TARGET_DIR = TargetDir.DEFAULT_VALUE;
     public static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(5);
 
     private final WorkspaceContextResolver contextResolver;
@@ -70,10 +70,7 @@ public class BackendBuildService {
      */
     public SanitizedLog compile(Path projectRoot, String modulePath, String targetDir) {
         Path effectiveRoot = Objects.requireNonNullElseGet(projectRoot, this::resolveActiveRoot);
-        String effectiveTarget = DEFAULT_TARGET_DIR;
-        if (nonNull(targetDir) && !targetDir.isBlank()) {
-            effectiveTarget = targetDir;
-        }
+        String effectiveTarget = TargetDir.of(targetDir).value();
         ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
@@ -104,10 +101,7 @@ public class BackendBuildService {
      */
     public SanitizedLog test(Path projectRoot, String modulePath, String testPattern, String targetDir) {
         Path effectiveRoot = Objects.requireNonNullElseGet(projectRoot, this::resolveActiveRoot);
-        String effectiveTarget = DEFAULT_TARGET_DIR;
-        if (nonNull(targetDir) && !targetDir.isBlank()) {
-            effectiveTarget = targetDir;
-        }
+        String effectiveTarget = TargetDir.of(targetDir).value();
         ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
@@ -130,13 +124,10 @@ public class BackendBuildService {
     private String resolveConfiguredTargetDir() {
         Path configFile = contextResolver.resolveConfigFile();
         if (isNull(configFile) || !Files.isRegularFile(configFile)) {
-            return DEFAULT_TARGET_DIR;
+            return TargetDir.DEFAULT_VALUE;
         }
         String configured = configLoader.load(configFile).build().backend().targetDir();
-        if (nonNull(configured) && !configured.isBlank()) {
-            return configured;
-        }
-        return DEFAULT_TARGET_DIR;
+        return TargetDir.of(configured).value();
     }
 
     private void ensureExcludes(Path effectiveRoot, String targetDir) {

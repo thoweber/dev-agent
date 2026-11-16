@@ -3,6 +3,8 @@ package guru.thomasweber.devagent.cli;
 import guru.thomasweber.devagent.config.DevAgentConfig;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
+import guru.thomasweber.devagent.model.BranchName;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorkerProcess;
@@ -148,7 +150,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             .phase(TaskStatus.PLANNING.name())
             .pid(currentProcess.pid())
             .pidStartedAt(currentProcess.startedAt())
-            .branch("feature/" + taskId)
+            .branch(BranchName.forTask(TaskId.of(taskId)).value())
             .worktreePath(executionRoot.toString())
             .startedAt(now)
             .updatedAt(now)

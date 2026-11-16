@@ -22,7 +22,6 @@ import static java.util.Objects.isNull;
 @ApplicationScoped
 public class GitExcludeManager {
 
-    private static final String DEFAULT_TARGET_ENTRY = "target-agent/";
     private static final List<String> STANDARD_AGENT_EXCLUDES = List.of(".cache-agent/", "state.json", "worker.log");
 
     public void ensureExcluded(Path repoRoot, String targetDir) {
@@ -123,19 +122,8 @@ public class GitExcludeManager {
 
     private List<String> buildRequiredEntries(String targetDir) {
         List<String> entries = new ArrayList<>();
-        entries.add(normalizeDirectoryEntry(targetDir));
+        entries.add(TargetDir.of(targetDir).excludeEntry());
         entries.addAll(STANDARD_AGENT_EXCLUDES);
         return entries;
-    }
-
-    private String normalizeDirectoryEntry(String targetDir) {
-        if (isNull(targetDir) || targetDir.isBlank()) {
-            return DEFAULT_TARGET_ENTRY;
-        }
-        String trimmed = targetDir.trim().replace('\\', '/');
-        if (trimmed.endsWith("/")) {
-            return trimmed;
-        }
-        return trimmed + "/";
     }
 }

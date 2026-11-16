@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.workspace;
 
 import guru.thomasweber.devagent.config.DevAgentConfig;
+import guru.thomasweber.devagent.model.BranchName;
 import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -12,7 +13,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
@@ -26,7 +26,6 @@ import static java.util.Objects.nonNull;
 public class GitWorktreeService {
 
     private static final Duration GIT_TIMEOUT = Duration.ofSeconds(30);
-    private static final int MAX_SLUG_LENGTH = 48;
 
     private final SubprocessExecutor subprocessExecutor;
     private final GitExcludeManager gitExcludeManager;
@@ -77,11 +76,11 @@ public class GitWorktreeService {
         Path worktreeDir = layout.worktreeDir(taskId);
 
         String baseCommit = resolveHeadCommit(canonicalRoot);
-        String template = "feature/{task-id}-{story-slug}";
+        String template = BranchName.DEFAULT_TEMPLATE;
         if (nonNull(isolation)) {
             template = isolation.branchTemplate();
         }
-        String branchName = renderBranchName(template, taskId.value(), storySlug);
+        String branchName = BranchName.render(template, taskId, storySlug).value();
 
         createOrAttachWorktree(canonicalRoot, worktreeDir, branchName, baseCommit);
 
@@ -120,7 +119,7 @@ public class GitWorktreeService {
     }
 
     public void resetToBase(Path worktreePath, String baseCommit) {
-        resetToBase(worktreePath, baseCommit, BackendBuildService.DEFAULT_TARGET_DIR);
+        resetToBase(worktreePath, baseCommit, TargetDir.DEFAULT_VALUE);
     }
 
     public void resetToBase(Path worktreePath, String baseCommit, String targetDir) {
@@ -128,10 +127,7 @@ public class GitWorktreeService {
         if (!reset.isSuccess()) {
             throw new WorkspaceException("Failed to reset worktree to " + baseCommit + ": " + reset.stdErr());
         }
-        String effectiveTarget = BackendBuildService.DEFAULT_TARGET_DIR;
-        if (nonNull(targetDir) && !targetDir.isBlank()) {
-            effectiveTarget = targetDir.trim();
-        }
+        String effectiveTarget = TargetDir.of(targetDir).value();
         ProcessResult clean = subprocessExecutor.execute(
             List.of("git", "clean", "-fd", "-e", "state.json", "-e", "worker.log", "-e", effectiveTarget, "-e", ".cache-agent"),
             worktreePath,
@@ -162,13 +158,14 @@ public class GitWorktreeService {
         subprocessExecutor.execute(List.of("git", "worktree", "prune"), canonicalRoot, GIT_TIMEOUT);
 
         if (deleteBranch && nonNull(branchName) && !branchName.isBlank()) {
+            String safeBranch = BranchName.of(branchName).value();
             ProcessResult branchDelete = subprocessExecutor.execute(
-                List.of("git", "branch", "-D", branchName),
+                List.of("git", "branch", "-D", safeBranch),
                 canonicalRoot,
                 GIT_TIMEOUT
             );
             if (!branchDelete.isSuccess()) {
-                throw new WorkspaceException("Failed to delete branch " + branchName + ": " + branchDelete.stdErr());
+                throw new WorkspaceException("Failed to delete branch " + safeBranch + ": " + branchDelete.stdErr());
             }
         }
     }
@@ -253,32 +250,5 @@ public class GitWorktreeService {
         } catch (IOException e) {
             throw new WorkspaceException("Failed to remove residual worktree directory: " + dir, e);
         }
-    }
-
-    private String renderBranchName(String template, String taskId, String storySlug) {
-        String effectiveTemplate = "feature/{task-id}-{story-slug}";
-        if (nonNull(template) && !template.isBlank()) {
-            effectiveTemplate = template;
-        }
-        String sanitizedSlug = sanitizeSlug(storySlug);
-        return effectiveTemplate
-            .replace("{task-id}", taskId)
-            .replace("{story-slug}", sanitizedSlug);
-    }
-
-    private String sanitizeSlug(String storySlug) {
-        if (isNull(storySlug) || storySlug.isBlank()) {
-            return "task";
-        }
-        String normalized = storySlug.toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", "-")
-            .replaceAll("^-+|-+$", "");
-        if (normalized.isEmpty()) {
-            return "task";
-        }
-        if (normalized.length() > MAX_SLUG_LENGTH) {
-            return normalized.substring(0, MAX_SLUG_LENGTH).replaceAll("-+$", "");
-        }
-        return normalized;
     }
 }
