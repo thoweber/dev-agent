@@ -2,7 +2,6 @@ package guru.thomasweber.devagent.workspace;
 
 import guru.thomasweber.devagent.model.TaskId;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -20,29 +19,17 @@ public record WorktreeLayout(Path repoRoot) {
     public static final String GIT_DIR_NAME = ".git";
     public static final String WORKTREES_DIR_NAME = "dev-agent-worktrees";
     public static final String STATE_FILE_NAME = "state.json";
-    public static final String STATE_TMP_FILE_NAME = "state.json.tmp";
     public static final String WORKER_LOG_FILE_NAME = "worker.log";
 
     public WorktreeLayout {
         if (isNull(repoRoot)) {
             throw new IllegalArgumentException("repoRoot must not be null");
         }
-        repoRoot = canonicalizeRoot(repoRoot);
+        repoRoot = PathGuard.toRealOrNormalized(repoRoot);
     }
 
     public static WorktreeLayout forRoot(Path repoRoot) {
         return new WorktreeLayout(repoRoot);
-    }
-
-    private static Path canonicalizeRoot(Path root) {
-        if (isNull(root)) {
-            throw new IllegalArgumentException("repoRoot must not be null");
-        }
-        try {
-            return root.toRealPath();
-        } catch (IOException _) {
-            return root.toAbsolutePath().normalize();
-        }
     }
 
     public Path worktreesRoot() {
@@ -58,12 +45,6 @@ public record WorktreeLayout(Path repoRoot) {
 
     public Path stateFile(TaskId taskId) {
         Path file = worktreeDir(taskId).resolve(STATE_FILE_NAME);
-        validateSingleNoSymlink(file);
-        return file;
-    }
-
-    public Path stateTempFile(TaskId taskId) {
-        Path file = worktreeDir(taskId).resolve(STATE_TMP_FILE_NAME);
         validateSingleNoSymlink(file);
         return file;
     }
@@ -98,16 +79,25 @@ public record WorktreeLayout(Path repoRoot) {
             if (GIT_DIR_NAME.equals(normalized.getName(i).toString())
                 && WORKTREES_DIR_NAME.equals(normalized.getName(i + 1).toString())) {
                 Path root = normalized.getRoot();
-                Path subpath = normalized.subpath(0, i + 3);
-                Path worktreeRoot = subpath;
-                if (nonNull(root)) {
-                    worktreeRoot = root.resolve(subpath);
+                Path worktreeRoot = resolvePrefix(root, normalized.subpath(0, i + 3));
+                Path boundaryRoot = null;
+                if (i > 0) {
+                    boundaryRoot = resolvePrefix(root, normalized.subpath(0, i));
+                } else {
+                    boundaryRoot = root;
                 }
-                validateNoSymlinks(null, worktreeRoot);
+                validateNoSymlinks(boundaryRoot, worktreeRoot);
                 return Optional.of(worktreeRoot);
             }
         }
         return Optional.empty();
+    }
+
+    private static Path resolvePrefix(Path root, Path subpath) {
+        if (nonNull(root)) {
+            return root.resolve(subpath);
+        }
+        return subpath;
     }
 
     private static void validateSingleNoSymlink(Path path) {

@@ -278,6 +278,21 @@ class DevAgentConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("Given symlinked or oversized dev-agent.yaml - when load called - then throws SecurityException")
+    void givenSymlinkOrOversizedFile_whenLoad_thenThrowsSecurityException(@TempDir Path tempDir) throws IOException {
+        Path external = Files.writeString(tempDir.resolve("external.yaml"), "agent:\n  max-concurrent-workers: 5\n");
+        Path symlinkYaml = Files.createSymbolicLink(tempDir.resolve("sym.yaml"), external);
+
+        assertThatThrownBy(() -> loader.load(symlinkYaml))
+            .isInstanceOf(SecurityException.class);
+
+        Path bigYaml = tempDir.resolve("huge.yaml");
+        Files.writeString(bigYaml, "#".repeat(1_100_000));
+        assertThatThrownBy(() -> loader.load(bigYaml))
+            .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
     @DisplayName("Given workspace root with or without dev-agent.yaml - when loadForWorkspace called - then resolves defaults or parsed config")
     void givenWorkspaceRoot_whenLoadForWorkspace_thenResolvesConfig(@TempDir Path tempDir) throws IOException {
         assertThat(loader.loadForWorkspace(null).maxConcurrentWorkers()).isEqualTo(2);

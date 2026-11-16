@@ -7,8 +7,10 @@ import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.model.StatusPayload;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.workspace.PathGuard;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorktreeLayout;
 import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
@@ -19,6 +21,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -125,13 +128,17 @@ public class StatusCommand extends BaseAgentCommand {
 
     private List<WorktreeState> readHistoricalMarkdownStates(Path repoRoot) {
         Path runsDir = repoRoot.resolve(".agents").resolve("runs");
-        if (!Files.isDirectory(runsDir)) {
+        if (Files.isSymbolicLink(repoRoot.resolve(".agents")) || !Files.isDirectory(runsDir, LinkOption.NOFOLLOW_LINKS)) {
             return List.of();
         }
         List<WorktreeState> historical = new ArrayList<>();
         try (Stream<Path> files = Files.list(runsDir)) {
-            for (Path file : files.filter(p -> p.getFileName().toString().endsWith(".md")).sorted().toList()) {
-                parseJournalToState(file).ifPresent(historical::add);
+            for (Path file : files
+                .filter(p -> p.getFileName().toString().endsWith(".md"))
+                .filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS))
+                .sorted()
+                .toList()) {
+                parseJournalToState(repoRoot, file).ifPresent(historical::add);
             }
         } catch (IOException _) {
             return List.of();
@@ -139,9 +146,11 @@ public class StatusCommand extends BaseAgentCommand {
         return historical;
     }
 
-    private Optional<WorktreeState> parseJournalToState(Path journalFile) {
+    private Optional<WorktreeState> parseJournalToState(Path repoRoot, Path journalFile) {
         try {
-            ParsedMarkdown parsed = markdownParserService.parse(Files.readString(journalFile));
+            WorktreeLayout.validateNoSymlinks(repoRoot, journalFile);
+            String content = PathGuard.readRegularFileBounded(journalFile, PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
+            ParsedMarkdown parsed = markdownParserService.parse(content);
             Map<String, List<String>> meta = parsed.metadata();
             String taskId = firstMeta(meta, "task_id");
             if (isNull(taskId) || taskId.isBlank()) {

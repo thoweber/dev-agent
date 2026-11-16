@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,6 +22,7 @@ import static java.util.Objects.isNull;
 public class GitExcludeManager {
 
     private static final List<String> STANDARD_AGENT_EXCLUDES = List.of(".cache-agent/", "state.json", "worker.log");
+    private static final Object EXCLUDE_WRITE_LOCK = new Object();
 
     public void ensureExcluded(Path repoRoot, String targetDir) {
         if (isNull(repoRoot)) {
@@ -35,44 +35,42 @@ public class GitExcludeManager {
         Path excludeFile = excludeFileOpt.get();
         List<String> requiredEntries = buildRequiredEntries(targetDir);
 
-        try {
-            Path infoDir = excludeFile.getParent();
-            if (!Files.exists(infoDir, LinkOption.NOFOLLOW_LINKS)) {
-                Files.createDirectories(infoDir);
-            }
-            if (Files.isSymbolicLink(infoDir) || Files.isSymbolicLink(excludeFile)) {
-                throw new SecurityException("Symbolic link detected in Git exclude path: " + excludeFile);
-            }
-
-            List<String> existingLines = List.of();
-            if (Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
-                existingLines = Files.readAllLines(excludeFile);
-            }
-            Set<String> present = new LinkedHashSet<>(existingLines);
-            List<String> updated = new ArrayList<>(existingLines);
-            boolean changed = false;
-
-            for (String entry : requiredEntries) {
-                if (!present.contains(entry)) {
-                    updated.add(entry);
-                    present.add(entry);
-                    changed = true;
+        synchronized (EXCLUDE_WRITE_LOCK) {
+            try {
+                Path infoDir = excludeFile.getParent();
+                if (Files.isSymbolicLink(infoDir) || Files.isSymbolicLink(excludeFile)) {
+                    throw new SecurityException("Symbolic link detected in Git exclude path: " + excludeFile);
                 }
-            }
+                if (!Files.exists(infoDir, LinkOption.NOFOLLOW_LINKS)) {
+                    Files.createDirectories(infoDir);
+                }
+                if (Files.isSymbolicLink(infoDir) || Files.isSymbolicLink(excludeFile)) {
+                    throw new SecurityException("Symbolic link detected in Git exclude path: " + excludeFile);
+                }
 
-            if (changed || !Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
-                String content = String.join(System.lineSeparator(), updated) + System.lineSeparator();
-                Files.writeString(
-                    excludeFile,
-                    content,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING,
-                    StandardOpenOption.WRITE,
-                    LinkOption.NOFOLLOW_LINKS
-                );
+                List<String> existingLines = List.of();
+                if (Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
+                    existingLines = Files.readAllLines(excludeFile);
+                }
+                Set<String> present = new LinkedHashSet<>(existingLines);
+                List<String> updated = new ArrayList<>(existingLines);
+                boolean changed = false;
+
+                for (String entry : requiredEntries) {
+                    if (!present.contains(entry)) {
+                        updated.add(entry);
+                        present.add(entry);
+                        changed = true;
+                    }
+                }
+
+                if (changed || !Files.exists(excludeFile, LinkOption.NOFOLLOW_LINKS)) {
+                    String content = String.join(System.lineSeparator(), updated) + System.lineSeparator();
+                    PathGuard.writeOwnerOnlyAtomically(excludeFile, content);
+                }
+            } catch (IOException e) {
+                throw new WorkspaceException("Failed to update .git/info/exclude: " + excludeFile, e);
             }
-        } catch (IOException e) {
-            throw new WorkspaceException("Failed to update .git/info/exclude: " + excludeFile, e);
         }
     }
 

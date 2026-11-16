@@ -27,8 +27,24 @@ class WorktreeLayoutTest {
         assertThat(layout.worktreesRoot()).isEqualTo(tempDir.toRealPath().resolve(".git/dev-agent-worktrees"));
         assertThat(layout.worktreeDir(taskId)).isEqualTo(layout.worktreesRoot().resolve("TASK-LAYOUT-1"));
         assertThat(layout.stateFile(taskId)).isEqualTo(layout.worktreeDir(taskId).resolve("state.json"));
-        assertThat(layout.stateTempFile(taskId)).isEqualTo(layout.worktreeDir(taskId).resolve("state.json.tmp"));
         assertThat(layout.workerLogFile(taskId)).isEqualTo(layout.worktreeDir(taskId).resolve("worker.log"));
+    }
+
+    @Test
+    @DisplayName("Given worktree subpath under symlinked mount ancestor - when detectWorktreeRoot called - then still resolves worktree root")
+    void givenSymlinkedAncestorAboveRepo_whenDetectWorktreeRoot_thenResolves() throws IOException {
+        Path realMount = Files.createDirectories(tempDir.resolve("real-mount"));
+        Path symMount = Files.createSymbolicLink(tempDir.resolve("sym-mount"), realMount);
+        Path realWorktree = Files.createDirectories(realMount.resolve("repo/.git/dev-agent-worktrees/TASK-MAC/src"));
+        Path viaSym = symMount.resolve("repo/.git/dev-agent-worktrees/TASK-MAC/src");
+
+        assertThat(WorktreeLayout.detectWorktreeRoot(viaSym))
+            .isPresent()
+            .get()
+            .extracting(Path::getFileName)
+            .extracting(Path::toString)
+            .isEqualTo("TASK-MAC");
+        assertThat(WorktreeLayout.detectWorktreeRoot(realWorktree)).isPresent();
     }
 
     @Test

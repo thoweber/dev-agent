@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.cli;
 
+import guru.thomasweber.devagent.workspace.PathGuard;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import guru.thomasweber.devagent.workspace.WorkspaceJailValidator;
 import io.quarkus.arc.Unremovable;
@@ -58,22 +59,29 @@ public class InitCommand extends BaseAgentCommand implements Callable<Integer> {
         RepoPath yamlPath = jail.validateForWrite(".agents/dev-agent.yaml");
 
         try {
-            if (!Files.exists(agentsDir)) {
+            if (!Files.exists(agentsDir, LinkOption.NOFOLLOW_LINKS)) {
                 Files.createDirectories(agentsDir);
             }
-            if (!Files.exists(rulesDir)) {
+            if (!Files.exists(rulesDir, LinkOption.NOFOLLOW_LINKS)) {
                 Files.createDirectories(rulesDir);
             }
 
-            if (Files.exists(yamlPath.toPath()) && !force) {
-                String existingYaml = Files.readString(yamlPath.toPath());
+            if (Files.exists(yamlPath.toPath(), LinkOption.NOFOLLOW_LINKS) && !force) {
+                String existingYaml = PathGuard.readRegularFileBounded(yamlPath.toPath(), PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
                 if (!existingYaml.contains("Archetype: " + archetype.getId())) {
                     getErr().printf("[dev-agent] Workspace already initialized with different archetype. Use --force to overwrite.%n");
                     return 1;
                 }
             } else {
                 String yamlContent = generateYamlConfig(archetype);
-                Files.writeString(yamlPath.toPath(), yamlContent);
+                Files.writeString(
+                    yamlPath.toPath(),
+                    yamlContent,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE,
+                    LinkOption.NOFOLLOW_LINKS
+                );
             }
 
             if (force) {
@@ -173,7 +181,7 @@ public class InitCommand extends BaseAgentCommand implements Callable<Integer> {
 
     private void writeRuleIfMissing(Path path, String content, WorkspaceJailValidator jail) throws IOException {
         RepoPath repoPath = jail.validateForWrite(path.toString());
-        if (!Files.exists(repoPath.toPath()) || force) {
+        if (!Files.exists(repoPath.toPath(), LinkOption.NOFOLLOW_LINKS) || force) {
             Files.writeString(
                 repoPath.toPath(),
                 content.stripIndent(),
@@ -190,7 +198,7 @@ public class InitCommand extends BaseAgentCommand implements Callable<Integer> {
         for (String ruleFile : ALL_MANAGED_RULE_FILES) {
             if (!activeRules.contains(ruleFile)) {
                 Path obsolete = rulesDir.resolve(ruleFile);
-                if (Files.exists(obsolete)) {
+                if (Files.exists(obsolete, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(obsolete)) {
                     Files.delete(obsolete);
                 }
             }

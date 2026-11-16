@@ -8,6 +8,9 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Objects;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Strongly-typed, canonical value object encapsulating a verified in-jail repository path.
  * Guarantees that the path physically resides within the repository root, rejects directory
@@ -64,7 +67,7 @@ public record RepoPath(Path path, Path root) {
 
     private static void validateNoAncestorSymlinks(Path candidate, Path realRoot, Path originalPath) {
         Path curr = candidate;
-        while (curr != null && !curr.equals(realRoot)) {
+        while (nonNull(curr) && !curr.equals(realRoot)) {
             if (Files.isSymbolicLink(curr)) {
                 throw new SecurityException("Jailbreak attempt: Symbolic links are forbidden for repository paths: " + originalPath);
             }
@@ -81,7 +84,7 @@ public record RepoPath(Path path, Path root) {
 
     private static Path resolveMissingCandidate(Path candidate) throws IOException {
         Path existingParent = findExistingAncestor(candidate);
-        if (existingParent == null) {
+        if (isNull(existingParent)) {
             return candidate;
         }
         Path realParent = existingParent.toRealPath(LinkOption.NOFOLLOW_LINKS);
@@ -91,7 +94,7 @@ public record RepoPath(Path path, Path root) {
 
     private static Path findExistingAncestor(Path p) {
         Path ancestor = p.getParent();
-        while (ancestor != null && !Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
+        while (nonNull(ancestor) && !Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
             ancestor = ancestor.getParent();
         }
         return ancestor;
@@ -105,12 +108,12 @@ public record RepoPath(Path path, Path root) {
         }
 
         String userHome = System.getProperty("user.home");
-        if (userHome != null && !userHome.isBlank()) {
-            Path globalConfig = Path.of(userHome, ".config", "dev-agent").toAbsolutePath().normalize();
+        if (nonNull(userHome) && !userHome.isBlank()) {
+            Path globalConfig = PathGuard.toRealOrNormalized(Path.of(userHome, ".config", "dev-agent"));
             if (canonicalCandidate.startsWith(globalConfig)) {
                 throw new SecurityException("Protected location: modification of user global configuration is forbidden: " + canonicalCandidate);
             }
-            Path localBin = Path.of(userHome, ".local", "bin", "dev-agent").toAbsolutePath().normalize();
+            Path localBin = PathGuard.toRealOrNormalized(Path.of(userHome, ".local", "bin", "dev-agent"));
             if (canonicalCandidate.equals(localBin)) {
                 throw new SecurityException("Protected location: modification of CLI binary is forbidden: " + canonicalCandidate);
             }

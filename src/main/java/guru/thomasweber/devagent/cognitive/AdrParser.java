@@ -5,13 +5,13 @@ import dev.langchain4j.data.segment.TextSegment;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.DocumentSection;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.model.ArchitecturalRecord;
+import guru.thomasweber.devagent.workspace.PathGuard;
 import guru.thomasweber.devagent.workspace.RepoPath;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,10 +61,7 @@ public class AdrParser {
      */
     public ArchitecturalRecord parseRecord(RepoPath repoPath) {
         try {
-            if (Files.isSymbolicLink(repoPath.toPath())) {
-                throw new SecurityException("Refusing to read through symbolic link: " + repoPath.toPath());
-            }
-            String content = Files.readString(repoPath.toPath());
+            String content = PathGuard.readRegularFileBounded(repoPath.toPath(), PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
             return parseRecord(repoPath, content);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read record at " + repoPath.toPath(), e);

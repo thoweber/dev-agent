@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.Optional;
@@ -173,12 +172,12 @@ public class StateSyncService {
             %s
             """,
             taskRun.taskId(),
-            taskRun.projectId(),
+            escapeYamlQuoted(taskRun.projectId()),
             taskRun.status(),
-            taskRun.currentPhase(),
-            Objects.requireNonNullElse(taskRun.branch(), "unassigned"),
-            Objects.requireNonNullElse(taskRun.baseCommit(), "HEAD"),
-            Objects.requireNonNullElse(taskRun.checkpointStash(), "none"),
+            escapeYamlQuoted(String.valueOf(taskRun.currentPhase())),
+            escapeYamlQuoted(Objects.requireNonNullElse(taskRun.branch(), "unassigned")),
+            escapeYamlQuoted(Objects.requireNonNullElse(taskRun.baseCommit(), "HEAD")),
+            escapeYamlQuoted(Objects.requireNonNullElse(taskRun.checkpointStash(), "none")),
             Objects.requireNonNullElse(taskRun.pid(), 0L),
             taskRun.retryCount(),
             formattedUpdatedAt,
@@ -195,14 +194,7 @@ public class StateSyncService {
             Files.createDirectories(runsDir.toPath());
             RepoPath journalFile = runsDir.resolve(safeTaskId.value() + ".md");
 
-            Files.writeString(
-                journalFile.toPath(),
-                secretFilter.sanitize(markdown).value(),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE,
-                LinkOption.NOFOLLOW_LINKS
-            );
+            PathGuard.writeOwnerOnlyAtomically(journalFile.toPath(), secretFilter.sanitize(markdown).value());
             mirrorStateSocketIfWorktreeExists(repoRoot, taskRun);
         } catch (IOException e) {
             LOG.warnf(e, "Failed to project Markdown state journal: %s", e.getMessage());
@@ -249,15 +241,26 @@ public class StateSyncService {
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
             RepoPath journalFile = runsDir.resolve(safeTaskId.value() + ".md");
-            if (!Files.isRegularFile(journalFile.toPath())) {
+            if (!Files.isRegularFile(journalFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 return Optional.empty();
             }
-            String content = Files.readString(journalFile.toPath());
+            String content = PathGuard.readRegularFileBounded(journalFile.toPath(), PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
             return Optional.of(markdownParserService.parse(content));
         } catch (IOException e) {
             LOG.warnf(e, "Failed to read Markdown state journal for taskId=%s: %s", taskId, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private static String escapeYamlQuoted(String value) {
+        if (isNull(value)) {
+            return "";
+        }
+        return value
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", " ")
+            .replace("\n", " ");
     }
 
     private String renderStepsHistory(TaskRun taskRun) {

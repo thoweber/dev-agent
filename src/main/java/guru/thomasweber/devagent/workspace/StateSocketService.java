@@ -11,11 +11,9 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -85,14 +83,18 @@ public class StateSocketService {
         WorktreeLayout layout = layoutFor(repoRoot);
         Path stateFile = layout.stateFile(safeTaskId);
         Path worktreeDir = stateFile.getParent();
-        Path tempFile = layout.stateTempFile(safeTaskId);
 
         WorktreeState sanitizedState = sanitizeState(state);
         try {
+            WorktreeLayout.validateNoSymlinks(layout.repoRoot(), worktreeDir);
             Files.createDirectories(worktreeDir);
-            WorktreeLayout.validateNoSymlinks(layout.repoRoot(), tempFile);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), sanitizedState);
-            moveAtomically(tempFile, stateFile);
+            Path tempFile = PathGuard.createOwnerOnlyTempFile(worktreeDir, "state-", ".tmp");
+            try {
+                objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), sanitizedState);
+                PathGuard.moveAtomically(tempFile, stateFile);
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
         } catch (IOException e) {
             throw new WorkspaceException("Failed to write state.json heartbeat for task " + state.taskId(), e);
         }
@@ -108,7 +110,9 @@ public class StateSocketService {
     }
 
     public List<WorktreeState> readAllStates(Path repoRoot) {
-        Path worktreesRoot = layoutFor(repoRoot).worktreesRoot();
+        WorktreeLayout layout = layoutFor(repoRoot);
+        Path worktreesRoot = layout.worktreesRoot();
+        WorktreeLayout.validateNoSymlinks(layout.repoRoot(), worktreesRoot);
         if (!Files.isDirectory(worktreesRoot, LinkOption.NOFOLLOW_LINKS)) {
             return List.of();
         }
@@ -171,14 +175,6 @@ public class StateSocketService {
             .lastMessage(cleanMessage)
             .updatedAt(now)
             .build();
-    }
-
-    private void moveAtomically(Path source, Path target) throws IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException _) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-        }
     }
 
     public static ObjectMapper createDefaultObjectMapper() {

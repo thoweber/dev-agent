@@ -12,12 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.FileAttribute;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.util.EnumSet;
 import java.util.Objects;
-import java.util.Set;
 
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
@@ -136,15 +131,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     private Path createSecureTempFile() throws IOException {
-        Path parent = Objects.requireNonNullElseGet(tempDirRoot, () -> Path.of(System.getProperty("java.io.tmpdir")));
-        try {
-            FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
-                EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
-            );
-            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
-        } catch (UnsupportedOperationException _) {
-            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
-        }
+        return PathGuard.createOwnerOnlyTempFile(tempDirRoot, "dev-agent-proc-", ".tmp");
     }
 
     private void checkOverflow(int incoming) throws IOException {

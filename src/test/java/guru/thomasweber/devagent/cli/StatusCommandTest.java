@@ -164,6 +164,19 @@ class StatusCommandTest {
         int exitCode = cmd.execute("--dir=" + tempDir, "--all");
         assertThat(exitCode).isZero();
         assertThat(out.toString()).contains("TASK-HIST", "COMPLETED");
+
+        Path outsideSecret = Files.writeString(tempDir.resolve("outside.md"), """
+            ---
+            task_id: "TASK-LEAK"
+            status: "COMPLETED"
+            ---
+            """);
+        Files.createSymbolicLink(tempDir.resolve(".agents/runs/TASK-LEAK.md"), outsideSecret);
+
+        StringWriter outAfterSymlink = new StringWriter();
+        cmd.setOut(new PrintWriter(outAfterSymlink));
+        assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
+        assertThat(outAfterSymlink.toString()).doesNotContain("TASK-LEAK");
     }
 
     @Test

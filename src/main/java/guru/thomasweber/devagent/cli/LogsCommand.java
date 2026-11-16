@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.cli;
 
 import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.workspace.PathGuard;
 import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
@@ -20,6 +21,7 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
@@ -73,14 +75,15 @@ public class LogsCommand extends BaseTaskCommand {
 
         out.println("[dev-agent] Streaming logs for task: " + taskId);
 
-        if (Files.isRegularFile(workerLog)) {
+        if (Files.isRegularFile(workerLog, LinkOption.NOFOLLOW_LINKS)) {
             streamWorkerLog(out, repoRoot, workerLog);
             return;
         }
 
-        Path journalFile = repoRoot.resolve(".agents").resolve("runs").resolve(taskId.trim() + ".md");
-        WorktreeLayout.validateNoSymlinks(repoRoot, journalFile);
-        if (Files.isRegularFile(journalFile)) {
+        Path canonicalRoot = WorktreeLayout.forRoot(repoRoot).repoRoot();
+        Path journalFile = canonicalRoot.resolve(".agents").resolve("runs").resolve(taskId.trim() + ".md");
+        WorktreeLayout.validateNoSymlinks(canonicalRoot, journalFile);
+        if (Files.isRegularFile(journalFile, LinkOption.NOFOLLOW_LINKS)) {
             printFileOnce(out, journalFile);
             return;
         }
@@ -168,7 +171,8 @@ public class LogsCommand extends BaseTaskCommand {
 
     private void printFileOnce(PrintWriter out, Path file) {
         try {
-            out.print(secretFilter.sanitize(Files.readString(file)).value());
+            String raw = PathGuard.readRegularFileBounded(file, PathGuard.DEFAULT_MAX_TEXT_FILE_BYTES);
+            out.print(secretFilter.sanitize(raw).value());
             out.flush();
         } catch (IOException _) {
             out.println("[dev-agent] Failed to read journal for task: " + taskId);
