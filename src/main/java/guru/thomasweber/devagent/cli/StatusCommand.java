@@ -2,8 +2,6 @@ package guru.thomasweber.devagent.cli;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.model.StatusPayload;
@@ -23,6 +21,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,15 +60,15 @@ public class StatusCommand extends BaseAgentCommand {
     ) {
         this.socketService = socketService;
         this.markdownParserService = markdownParserService;
-        this.objectMapper = !isNull(objectMapper) ? objectMapper : createDefaultObjectMapper();
+        this.objectMapper = !isNull(objectMapper) ? objectMapper : StateSocketService.createDefaultObjectMapper();
     }
 
     public StatusCommand(StateSocketService socketService, MarkdownParserService markdownParserService) {
-        this(socketService, markdownParserService, createDefaultObjectMapper());
+        this(socketService, markdownParserService, StateSocketService.createDefaultObjectMapper());
     }
 
     public StatusCommand() {
-        this(new StateSocketService(), new MarkdownParserService(), createDefaultObjectMapper());
+        this(new StateSocketService(), new MarkdownParserService(), StateSocketService.createDefaultObjectMapper());
     }
 
     @Override
@@ -183,7 +182,7 @@ public class StatusCommand extends BaseAgentCommand {
         }
         try {
             return Instant.parse(raw.trim());
-        } catch (Exception _) {
+        } catch (DateTimeParseException _) {
             return null;
         }
     }
@@ -209,12 +208,6 @@ public class StatusCommand extends BaseAgentCommand {
         } catch (JsonProcessingException e) {
             out.println("{\"activeTasks\":[],\"message\":\"Serialization error: " + e.getMessage() + "\"}");
         }
-    }
-
-    private static ObjectMapper createDefaultObjectMapper() {
-        return new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
     public boolean isAll() {

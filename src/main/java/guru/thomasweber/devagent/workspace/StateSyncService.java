@@ -266,9 +266,7 @@ public class StateSyncService {
     }
 
     private void validateTaskId(String taskId) {
-        if (taskId == null || taskId.contains("..") || taskId.contains("/") || taskId.contains("\\")) {
-            throw new SecurityException("Jailbreak attempt: Task ID resolves outside the runs directory: " + taskId);
-        }
+        StateSocketService.validateTaskId(taskId);
     }
 
     private String safe(String value, String fallback) {

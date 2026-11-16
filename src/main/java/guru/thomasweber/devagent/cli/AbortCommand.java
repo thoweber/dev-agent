@@ -20,6 +20,9 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static java.util.Objects.isNull;
 
@@ -83,10 +86,11 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
 
         Long pid = socketOpt.map(WorktreeState::pid)
             .orElseGet(() -> persistedOpt.map(TaskRun::pid).orElse(null));
+        Instant expectedPidStart = socketOpt.map(WorktreeState::pidStartedAt).orElse(null);
         String branch = socketOpt.map(WorktreeState::branch)
             .orElseGet(() -> persistedOpt.map(TaskRun::branch).orElse(null));
 
-        terminateProcess(pid);
+        terminateProcess(pid, expectedPidStart);
 
         if (socketOpt.isPresent()) {
             WorktreeState aborted = socketOpt.get().toBuilder()
@@ -104,21 +108,25 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
         return 0;
     }
 
-    private void terminateProcess(Long pid) {
-        if (isNull(pid)) {
+    private void terminateProcess(Long pid, Instant expectedStart) {
+        if (isNull(pid) || pid <= 0 || pid == ProcessHandle.current().pid()) {
             return;
         }
-        ProcessHandle.of(pid).ifPresent(handle -> {
-            handle.destroy();
-            try {
-                Thread.sleep(100L);
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-            }
-            if (handle.isAlive()) {
-                handle.destroyForcibly();
-            }
-        });
+        ProcessHandle.of(pid)
+            .filter(handle -> StateSocketService.matchesPidStart(handle, expectedStart))
+            .ifPresent(handle -> {
+                handle.destroy();
+                try {
+                    handle.onExit().get(100L, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException | TimeoutException _) {
+                    // Process still alive after grace period; fall through to destroyForcibly
+                }
+                if (handle.isAlive()) {
+                    handle.destroyForcibly();
+                }
+            });
     }
 
     private Optional<TaskRun> findPersistedSafely(String projectId, String targetTaskId) {

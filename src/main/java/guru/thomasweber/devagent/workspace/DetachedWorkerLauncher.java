@@ -35,8 +35,10 @@ public class DetachedWorkerLauncher {
             throw new IllegalArgumentException("repoRoot must not be null");
         }
         Path logFile = socketService.resolveWorkerLogFile(repoRoot, taskId);
+        Path worktreeDir = logFile.getParent();
+        Path workingDir = (!isNull(worktreeDir) && Files.isDirectory(worktreeDir)) ? worktreeDir : repoRoot;
         List<String> command = buildWorkerCommand(repoRoot, taskId, instruction);
-        return launchCommand(command, repoRoot, logFile);
+        return launchCommand(command, workingDir, logFile);
     }
 
     public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction) {
@@ -65,8 +67,7 @@ public class DetachedWorkerLauncher {
         command.add("worker");
         command.add("--task-id");
         command.add(taskId);
-        command.add("--instruction");
-        command.add(effectiveInstruction);
+        command.add("--instruction=" + effectiveInstruction);
         return List.copyOf(command);
     }
 

@@ -27,7 +27,6 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.io.PrintWriter;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.UUID;
@@ -126,7 +125,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
 
         WorkspaceContextResolver resolver = getWorkspaceContextResolver();
         Path repoRoot = resolver.resolveRepoRoot();
-        DevAgentConfig config = loadConfig(repoRoot);
+        DevAgentConfig config = configLoader.loadForWorkspace(repoRoot);
         boolean isolateInWorktree = worktreeService.isGitRepository(repoRoot)
             && (config.isolation().useWorktrees() || detach);
 
@@ -147,12 +146,14 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         String projectId = projectResolver.resolveForPath(repoRoot).idString();
         Instant now = Instant.now();
 
+        long currentPid = ProcessHandle.current().pid();
         WorktreeState initialState = WorktreeState.builder()
             .taskId(taskId)
             .projectId(projectId)
             .status(TaskStatus.PLANNING)
             .phase(TaskStatus.PLANNING.name())
-            .pid(ProcessHandle.current().pid())
+            .pid(currentPid)
+            .pidStartedAt(StateSocketService.resolvePidStartInstant(currentPid))
             .branch(allocation.branch())
             .worktreePath(allocation.worktreePath().toString())
             .startedAt(now)
@@ -166,7 +167,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
             if (detach) {
                 return launchDetached(out, repoRoot, allocation, initialState);
             }
-            return executeForeground(out, repoRoot, allocation, initialState, targetDir);
+            return executeForeground(out, repoRoot, allocation, initialState, targetDir, config.isolation().autoPruneOnComplete());
         });
     }
 
@@ -179,6 +180,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         long childPid = workerLauncher.launchWorker(repoRoot, allocation.taskId(), instruction);
         WorktreeState detachedState = initialState.toBuilder()
             .pid(childPid)
+            .pidStartedAt(StateSocketService.resolvePidStartInstant(childPid))
             .updatedAt(Instant.now())
             .lastMessage("Detached worker started (PID " + childPid + ")")
             .build();
@@ -200,7 +202,8 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         Path repoRoot,
         WorktreeAllocation allocation,
         WorktreeState initialState,
-        String targetDir
+        String targetDir,
+        boolean autoPruneOnComplete
     ) {
         WorktreeState terminalState;
         try {
@@ -213,7 +216,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
                     .build();
                 socketService.writeHeartbeat(repoRoot, verifying);
 
-                if (hasBuildMarker(allocation.worktreePath())) {
+                if (BackendBuildService.hasBackendBuildMarker(allocation.worktreePath())) {
                     SanitizedLog log = buildService.compile(allocation.worktreePath(), null, targetDir);
                     if (!isNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
                         return verifying.toBuilder()
@@ -243,19 +246,11 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         socketService.writeHeartbeat(repoRoot, terminalState);
         saveTaskRunSafely(terminalState, allocation);
         alertService.notifyTaskOutcome(repoRoot, terminalState);
+        if (terminalState.status() == TaskStatus.COMPLETED && autoPruneOnComplete) {
+            worktreeService.removeWorktree(repoRoot, allocation.taskId(), false, allocation.branch());
+        }
         out.println("[dev-agent] Task " + allocation.taskId() + " finished with status: " + terminalState.status());
         return terminalState.status() == TaskStatus.COMPLETED ? 0 : 1;
-    }
-
-    private DevAgentConfig loadConfig(Path repoRoot) {
-        Path configFile = repoRoot.resolve(".agents").resolve("dev-agent.yaml");
-        return Files.isRegularFile(configFile) ? configLoader.load(configFile) : configLoader.loadFromYaml("");
-    }
-
-    private boolean hasBuildMarker(Path worktreePath) {
-        return Files.isRegularFile(worktreePath.resolve("pom.xml"))
-            || Files.isRegularFile(worktreePath.resolve("build.gradle"))
-            || Files.isRegularFile(worktreePath.resolve("build.gradle.kts"));
     }
 
     private void saveTaskRunSafely(WorktreeState state, WorktreeAllocation allocation) {

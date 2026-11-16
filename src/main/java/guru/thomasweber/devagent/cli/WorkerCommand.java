@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.cli;
 
+import guru.thomasweber.devagent.config.DevAgentConfig;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskRun;
@@ -8,6 +9,7 @@ import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
 import guru.thomasweber.devagent.workspace.BackendBuildService;
 import guru.thomasweber.devagent.workspace.DesktopAlertService;
+import guru.thomasweber.devagent.workspace.GitWorktreeService;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.StateSyncService;
@@ -56,6 +58,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
     private final ProjectIdResolver projectResolver;
     private final TaskPersistenceService persistenceService;
     private final DevAgentConfigLoader configLoader;
+    private final GitWorktreeService worktreeService;
 
     @Inject
     public WorkerCommand(
@@ -65,7 +68,8 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         DesktopAlertService alertService,
         ProjectIdResolver projectResolver,
         TaskPersistenceService persistenceService,
-        DevAgentConfigLoader configLoader
+        DevAgentConfigLoader configLoader,
+        GitWorktreeService worktreeService
     ) {
         this.socketService = socketService;
         this.stateSyncService = stateSyncService;
@@ -74,6 +78,19 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         this.projectResolver = projectResolver;
         this.persistenceService = persistenceService;
         this.configLoader = configLoader;
+        this.worktreeService = worktreeService;
+    }
+
+    public WorkerCommand(
+        StateSocketService socketService,
+        StateSyncService stateSyncService,
+        BackendBuildService buildService,
+        DesktopAlertService alertService,
+        ProjectIdResolver projectResolver,
+        TaskPersistenceService persistenceService,
+        DevAgentConfigLoader configLoader
+    ) {
+        this(socketService, stateSyncService, buildService, alertService, projectResolver, persistenceService, configLoader, new GitWorktreeService());
     }
 
     public WorkerCommand(
@@ -84,7 +101,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         ProjectIdResolver projectResolver,
         TaskPersistenceService persistenceService
     ) {
-        this(socketService, stateSyncService, buildService, alertService, projectResolver, persistenceService, new DevAgentConfigLoader());
+        this(socketService, stateSyncService, buildService, alertService, projectResolver, persistenceService, new DevAgentConfigLoader(), new GitWorktreeService());
     }
 
     public WorkerCommand() {
@@ -95,7 +112,8 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             new DesktopAlertService(),
             new ProjectIdResolver(),
             new TaskPersistenceService(),
-            new DevAgentConfigLoader()
+            new DevAgentConfigLoader(),
+            new GitWorktreeService()
         );
     }
 
@@ -117,7 +135,9 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         Path executionRoot = Files.isDirectory(worktreeDir) ? worktreeDir : repoRoot;
         String projectId = projectResolver.resolveForPath(repoRoot).idString();
         long currentPid = ProcessHandle.current().pid();
+        Instant pidStart = StateSocketService.resolvePidStartInstant(currentPid);
         Instant now = Instant.now();
+        DevAgentConfig config = configLoader.loadForWorkspace(repoRoot);
 
         Optional<WorktreeState> existingOpt = socketService.readState(repoRoot, taskId);
         WorktreeState baseState = existingOpt.orElseGet(() -> WorktreeState.builder()
@@ -126,6 +146,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             .status(TaskStatus.PLANNING)
             .phase(TaskStatus.PLANNING.name())
             .pid(currentPid)
+            .pidStartedAt(pidStart)
             .branch("feature/" + taskId)
             .worktreePath(executionRoot.toString())
             .startedAt(now)
@@ -137,6 +158,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             .status(TaskStatus.PLANNING)
             .phase(TaskStatus.PLANNING.name())
             .pid(currentPid)
+            .pidStartedAt(pidStart)
             .worktreePath(executionRoot.toString())
             .updatedAt(Instant.now())
             .lastMessage("Worker running in isolated worktree")
@@ -148,7 +170,7 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         try {
             terminalState = WorktreeExecutionContext.runInWorktree(
                 executionRoot,
-                () -> executeVerificationPhase(repoRoot, executionRoot, runningState)
+                () -> executeVerificationPhase(repoRoot, executionRoot, runningState, config)
             );
         } catch (Exception e) {
             err.println("[dev-agent] Worker execution failed for task " + taskId + ": " + e.getMessage());
@@ -163,11 +185,21 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         socketService.writeHeartbeat(repoRoot, terminalState);
         persistTerminalRun(terminalState);
         alertService.notifyTaskOutcome(repoRoot, terminalState);
+        if (terminalState.status() == TaskStatus.COMPLETED
+            && config.isolation().autoPruneOnComplete()
+            && !repoRoot.equals(executionRoot)) {
+            worktreeService.removeWorktree(repoRoot, taskId, false, terminalState.branch());
+        }
 
         return terminalState.status() == TaskStatus.COMPLETED ? 0 : 1;
     }
 
-    private WorktreeState executeVerificationPhase(Path repoRoot, Path executionRoot, WorktreeState runningState) {
+    private WorktreeState executeVerificationPhase(
+        Path repoRoot,
+        Path executionRoot,
+        WorktreeState runningState,
+        DevAgentConfig config
+    ) {
         WorktreeState verifying = runningState.toBuilder()
             .status(TaskStatus.VERIFYING)
             .phase(TaskStatus.VERIFYING.name())
@@ -176,8 +208,8 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             .build();
         socketService.writeHeartbeat(repoRoot, verifying);
 
-        if (hasBackendBuildMarker(executionRoot)) {
-            String targetDir = resolveTargetDir(repoRoot);
+        if (BackendBuildService.hasBackendBuildMarker(executionRoot)) {
+            String targetDir = config.build().backend().targetDir();
             SanitizedLog log = buildService.compile(executionRoot, null, targetDir);
             if (!isNull(log) && (log.exitCode() != 0 || log.hasErrors())) {
                 return verifying.toBuilder()
@@ -197,33 +229,32 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             .build();
     }
 
-    private boolean hasBackendBuildMarker(Path executionRoot) {
-        return Files.isRegularFile(executionRoot.resolve("pom.xml"))
-            || Files.isRegularFile(executionRoot.resolve("build.gradle"))
-            || Files.isRegularFile(executionRoot.resolve("build.gradle.kts"));
-    }
-
-    private String resolveTargetDir(Path repoRoot) {
-        Path configFile = repoRoot.resolve(".agents").resolve("dev-agent.yaml");
-        if (!Files.isRegularFile(configFile)) {
-            return BackendBuildService.DEFAULT_TARGET_DIR;
-        }
-        return configLoader.load(configFile).build().backend().targetDir();
-    }
-
     private void persistTerminalRun(WorktreeState terminalState) {
         try {
-            TaskRun run = TaskRun.builder()
-                .projectId(terminalState.projectId())
-                .taskId(terminalState.taskId())
-                .status(terminalState.status())
-                .currentPhase(terminalState.phase())
-                .branch(terminalState.branch())
-                .pid(terminalState.pid())
-                .createdAt(terminalState.startedAt())
-                .updatedAt(terminalState.updatedAt())
-                .userStory(instruction)
-                .build();
+            Optional<TaskRun> existingOpt = persistenceService.findByProjectAndTask(
+                terminalState.projectId(),
+                terminalState.taskId()
+            );
+            TaskRun run = existingOpt
+                .map(existing -> existing.toBuilder()
+                    .status(terminalState.status())
+                    .currentPhase(terminalState.phase())
+                    .branch(!isNull(terminalState.branch()) ? terminalState.branch() : existing.branch())
+                    .pid(terminalState.pid())
+                    .updatedAt(terminalState.updatedAt())
+                    .userStory(!isNull(instruction) && !instruction.isBlank() ? instruction : existing.userStory())
+                    .build())
+                .orElseGet(() -> TaskRun.builder()
+                    .projectId(terminalState.projectId())
+                    .taskId(terminalState.taskId())
+                    .status(terminalState.status())
+                    .currentPhase(terminalState.phase())
+                    .branch(terminalState.branch())
+                    .pid(terminalState.pid())
+                    .createdAt(terminalState.startedAt())
+                    .updatedAt(terminalState.updatedAt())
+                    .userStory(instruction)
+                    .build());
             TaskRun saved = persistenceService.saveTask(run);
             if (!isNull(saved)) {
                 stateSyncService.projectToMarkdown(saved);

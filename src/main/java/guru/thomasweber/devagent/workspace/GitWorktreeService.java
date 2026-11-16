@@ -64,7 +64,7 @@ public class GitWorktreeService {
 
         Path worktreesRoot = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees");
         Path worktreeDir = worktreesRoot.resolve(taskId);
-        validateNoSymlinks(worktreeDir, canonicalRoot);
+        StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
 
         String baseCommit = resolveHeadCommit(canonicalRoot);
         String template = !isNull(isolation) ? isolation.branchTemplate() : "feature/{task-id}-{story-slug}";
@@ -105,12 +105,17 @@ public class GitWorktreeService {
     }
 
     public void resetToBase(Path worktreePath, String baseCommit) {
+        resetToBase(worktreePath, baseCommit, BackendBuildService.DEFAULT_TARGET_DIR);
+    }
+
+    public void resetToBase(Path worktreePath, String baseCommit, String targetDir) {
         ProcessResult reset = subprocessExecutor.execute(List.of("git", "reset", "--hard", baseCommit), worktreePath, GIT_TIMEOUT);
         if (!reset.isSuccess()) {
             throw new WorkspaceException("Failed to reset worktree to " + baseCommit + ": " + reset.stdErr());
         }
+        String effectiveTarget = (!isNull(targetDir) && !targetDir.isBlank()) ? targetDir.trim() : BackendBuildService.DEFAULT_TARGET_DIR;
         ProcessResult clean = subprocessExecutor.execute(
-            List.of("git", "clean", "-fd", "-e", "state.json", "-e", "worker.log", "-e", "target-agent", "-e", ".cache-agent"),
+            List.of("git", "clean", "-fd", "-e", "state.json", "-e", "worker.log", "-e", effectiveTarget, "-e", ".cache-agent"),
             worktreePath,
             GIT_TIMEOUT
         );
@@ -123,7 +128,7 @@ public class GitWorktreeService {
         validateTaskId(taskId);
         Path canonicalRoot = resolveCanonicalRoot(repoRoot);
         Path worktreeDir = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
-        validateNoSymlinks(worktreeDir, canonicalRoot);
+        StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
 
         if (Files.exists(worktreeDir)) {
             subprocessExecutor.execute(
@@ -177,6 +182,8 @@ public class GitWorktreeService {
         } catch (IOException e) {
             throw new WorkspaceException("Failed to create worktrees parent directory", e);
         }
+
+        subprocessExecutor.execute(List.of("git", "worktree", "prune"), repoRoot, GIT_TIMEOUT);
 
         ProcessResult branchCheck = subprocessExecutor.execute(
             List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/" + branchName),
@@ -236,19 +243,7 @@ public class GitWorktreeService {
     }
 
     private void validateTaskId(String taskId) {
-        if (isNull(taskId) || taskId.isBlank() || taskId.contains("..") || taskId.contains("/") || taskId.contains("\\")) {
-            throw new SecurityException("Jailbreak attempt: invalid worktree task ID: " + taskId);
-        }
-    }
-
-    private void validateNoSymlinks(Path target, Path stopAt) {
-        Path current = target;
-        while (!isNull(current) && !current.equals(stopAt)) {
-            if (Files.isSymbolicLink(current)) {
-                throw new SecurityException("Jailbreak attempt: symbolic link forbidden in worktree path: " + current);
-            }
-            current = current.getParent();
-        }
+        StateSocketService.validateTaskId(taskId);
     }
 
     private String renderBranchName(String template, String taskId, String storySlug) {

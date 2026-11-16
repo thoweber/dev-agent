@@ -152,7 +152,8 @@ class DesktopAlertServiceTest {
         verify(executor).execute(cmdCaptor.capture(), eq(tempDir), eq(Duration.ofSeconds(3)));
         assertThat(cmdCaptor.getValue().get(0)).isEqualTo("powershell");
         assertThat(cmdCaptor.getValue().get(2)).isEqualTo("-Command");
-        assertThat(cmdCaptor.getValue().get(3)).contains("User''s abort request");
+        assertThat(cmdCaptor.getValue().get(3))
+            .contains("User''s abort request", "CreateToastNotifier", ".Show(");
     }
 
     @Test

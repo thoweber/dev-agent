@@ -121,4 +121,54 @@ class StateSocketServiceTest {
         Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-DIR/state.json"));
         assertThat(service.readState(tempDir, "TASK-DIR")).isEmpty();
     }
+
+    @Test
+    @DisplayName("Given dot taskId or symlinked .git root - when resolved - then throws SecurityException")
+    void givenDotTaskIdOrDotGitSymlink_whenResolved_thenThrowsSecurityException() throws IOException {
+        StateSocketService service = new StateSocketService();
+        assertThatThrownBy(() -> service.resolveStateFile(tempDir, "."))
+            .isInstanceOf(SecurityException.class);
+
+        Path externalDir = Files.createDirectories(tempDir.resolve("external-git"));
+        Path repo = Files.createDirectories(tempDir.resolve("repo-symlink-git"));
+        Files.createSymbolicLink(repo.resolve(".git"), externalDir);
+
+        assertThatThrownBy(() -> service.resolveStateFile(repo, "TASK-SYM"))
+            .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    @DisplayName("Given branch with secret and mismatched pidStartedAt - when writeHeartbeat or isProcessAlive called - then redacts branch and rejects recycled PID")
+    void givenSecretBranchAndStalePidStart_whenInvoked_thenSanitizesAndDetectsReuse() {
+        StateSocketService service = new StateSocketService();
+        WorktreeState dirtyBranch = WorktreeStateMother.builder("TASK-REDACT-BR")
+            .branch("feature/ghp_1234567890abcdef1234567890abcdef1234")
+            .lastMessage("ok")
+            .build();
+        service.writeHeartbeat(tempDir, dirtyBranch);
+
+        assertThat(service.readState(tempDir, "TASK-REDACT-BR"))
+            .isPresent()
+            .get()
+            .extracting(WorktreeState::branch)
+            .asString()
+            .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234");
+
+        long currentPid = ProcessHandle.current().pid();
+        WorktreeState reusedPidState = WorktreeStateMother.active("TASK-REUSED", currentPid)
+            .toBuilder()
+            .pidStartedAt(Instant.now().minusSeconds(7200))
+            .build();
+        assertThat(service.isProcessAlive(reusedPidState)).isFalse();
+
+        WorktreeState matchingPidState = WorktreeStateMother.active("TASK-MATCH", currentPid)
+            .toBuilder()
+            .pidStartedAt(StateSocketService.resolvePidStartInstant(currentPid))
+            .build();
+        assertThat(service.isProcessAlive(matchingPidState)).isTrue();
+        assertThat(StateSocketService.resolvePidStartInstant(null)).isNull();
+        assertThat(StateSocketService.resolvePidStartInstant(0L)).isNull();
+        assertThat(StateSocketService.matchesPidStart(null, null)).isFalse();
+        assertThat(service.isProcessAlive(WorktreeStateMother.builder("TASK-ZERO").pid(0L).build())).isFalse();
+    }
 }

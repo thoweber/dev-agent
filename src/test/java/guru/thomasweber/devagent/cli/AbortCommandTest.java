@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -172,5 +173,38 @@ class AbortCommandTest {
         assertThat(exitCode).isZero();
         assertThat(command.isDeleteBranch()).isTrue();
         verify(worktreeService).removeWorktree(tempDir.toRealPath(), "TASK-DEL-1", true, "feature/TASK-DEL-1-old");
+    }
+
+    @Test
+    @DisplayName("Given recycled PID whose start instant disagrees with pidStartedAt - when abort executed - then does not kill unrelated process")
+    void testAbortSkipsRecycledPidMismatch() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        Process sleeper = new ProcessBuilder("sleep", "30").start();
+        try {
+            WorktreeState recycled = WorktreeStateMother.active("TASK-RECYCLED", sleeper.pid())
+                .toBuilder()
+                .pidStartedAt(Instant.now().minusSeconds(3600))
+                .branch("feature/TASK-RECYCLED-demo")
+                .build();
+            socketService.writeHeartbeat(tempDir, recycled);
+
+            GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+            TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+            when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-RECYCLED"))).thenReturn(Optional.empty());
+
+            AbortCommand command = new AbortCommand(
+                socketService,
+                worktreeService,
+                persistenceService,
+                new ProjectIdResolver(new WorkspaceContextResolver(tempDir))
+            );
+            CommandLine cmd = new CommandLine(command);
+            int exitCode = cmd.execute("--dir=" + tempDir, "TASK-RECYCLED");
+
+            assertThat(exitCode).isZero();
+            assertThat(sleeper.isAlive()).isTrue();
+        } finally {
+            sleeper.destroyForcibly();
+        }
     }
 }

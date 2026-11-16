@@ -196,14 +196,16 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
             Path repoRoot = getWorkspaceRoot();
             String story = task.userStory() != null ? task.userStory() : "";
             long pid = workerLauncher.launchWorker(repoRoot, targetTaskId, story);
+            Instant pidStart = StateSocketService.resolvePidStartInstant(pid);
             WorktreeState resumedState = socketService.readState(repoRoot, targetTaskId)
-                .map(existing -> existing.toBuilder().pid(pid).updatedAt(Instant.now()).lastMessage("Resumed detached worker").build())
+                .map(existing -> existing.toBuilder().pid(pid).pidStartedAt(pidStart).updatedAt(Instant.now()).lastMessage("Resumed detached worker").build())
                 .orElseGet(() -> WorktreeState.builder()
                     .taskId(targetTaskId)
                     .projectId(task.projectId())
                     .status(task.status())
                     .phase(task.currentPhase())
                     .pid(pid)
+                    .pidStartedAt(pidStart)
                     .branch(task.branch())
                     .worktreePath(workspaceResolver.resolveWorktreeDir(targetTaskId).toString())
                     .startedAt(task.createdAt())

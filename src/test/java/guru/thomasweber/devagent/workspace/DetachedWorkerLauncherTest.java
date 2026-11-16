@@ -23,7 +23,7 @@ class DetachedWorkerLauncherTest {
         List<String> command = launcher.buildWorkerCommand(tempDir, "TASK-701", "Add metrics");
 
         assertThat(command).isNotEmpty();
-        assertThat(command).contains("--dir", tempDir.toString(), "worker", "--task-id", "TASK-701", "--instruction", "Add metrics");
+        assertThat(command).contains("--dir", tempDir.toString(), "worker", "--task-id", "TASK-701", "--instruction=Add metrics");
     }
 
     @Test
@@ -72,7 +72,7 @@ class DetachedWorkerLauncherTest {
         try {
             System.setProperty("java.class.path", "/opt/dev-agent/quarkus-run.jar");
             List<String> jarCmd = launcher.buildWorkerCommand(tempDir, "TASK-703", null);
-            assertThat(jarCmd).contains("-jar", "/opt/dev-agent/quarkus-run.jar", "worker", "--task-id", "TASK-703", "--instruction", "");
+            assertThat(jarCmd).contains("-jar", "/opt/dev-agent/quarkus-run.jar", "worker", "--task-id", "TASK-703", "--instruction=");
 
             System.setProperty("java.class.path", "/opt/a:/opt/b");
             System.setProperty("sun.java.command", "");
@@ -89,5 +89,34 @@ class DetachedWorkerLauncherTest {
 
         long pid = launcher.launchCommand(List.of("sh", "-c", "true"), null, null);
         assertThat(pid).isPositive();
+    }
+
+    @Test
+    @DisplayName("Given dash-prefixed instruction - when buildWorkerCommand called - then encodes as --instruction=value")
+    void givenDashPrefixedInstruction_whenBuildWorkerCommand_thenUsesEqualsOptionForm() {
+        DetachedWorkerLauncher launcher = new DetachedWorkerLauncher();
+        List<String> command = launcher.buildWorkerCommand(tempDir, "TASK-DASH", "- fix login bug");
+        assertThat(command).contains("--instruction=- fix login bug");
+    }
+
+    @Test
+    @DisplayName("Given existing worktree directory - when launchWorker invoked - then sets working directory to worktreeDir")
+    void givenExistingWorktreeDir_whenLaunchWorker_thenUsesWorktreeAsWorkingDir() throws Exception {
+        Path worktreeDir = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-CWD"));
+        DetachedWorkerLauncher spyLauncher = new DetachedWorkerLauncher() {
+            @Override
+            public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction) {
+                return List.of("sh", "-c", "pwd");
+            }
+        };
+
+        long pid = spyLauncher.launchWorker(tempDir, "TASK-CWD", "cwd test");
+        assertThat(pid).isPositive();
+        Path logFile = new StateSocketService().resolveWorkerLogFile(tempDir, "TASK-CWD");
+        long deadline = System.currentTimeMillis() + 3000L;
+        while (System.currentTimeMillis() < deadline && (!Files.exists(logFile) || Files.readString(logFile).isBlank())) {
+            Thread.sleep(25);
+        }
+        assertThat(Files.readString(logFile).trim()).isEqualTo(worktreeDir.toRealPath().toString());
     }
 }

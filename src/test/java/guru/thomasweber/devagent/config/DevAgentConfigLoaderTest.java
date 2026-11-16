@@ -276,4 +276,18 @@ class DevAgentConfigLoaderTest {
         assertThatThrownBy(() -> loader.load(unreadableFile))
             .isInstanceOf(UncheckedIOException.class);
     }
+
+    @Test
+    @DisplayName("Given workspace root with or without dev-agent.yaml - when loadForWorkspace called - then resolves defaults or parsed config")
+    void givenWorkspaceRoot_whenLoadForWorkspace_thenResolvesConfig(@TempDir Path tempDir) throws IOException {
+        assertThat(loader.loadForWorkspace(null).maxConcurrentWorkers()).isEqualTo(2);
+        assertThat(loader.loadForWorkspace(tempDir).maxConcurrentWorkers()).isEqualTo(2);
+
+        Files.createDirectories(tempDir.resolve(".agents"));
+        Files.writeString(tempDir.resolve(".agents/dev-agent.yaml"), """
+            agent:
+              max-concurrent-workers: 5
+            """);
+        assertThat(loader.loadForWorkspace(tempDir).maxConcurrentWorkers()).isEqualTo(5);
+    }
 }

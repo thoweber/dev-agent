@@ -8,7 +8,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -61,7 +60,7 @@ public class DesktopAlertService {
         if (isNull(state) || isNull(state.status()) || !state.status().isTerminal()) {
             return;
         }
-        DevAgentConfig.NotificationsConfig notifications = loadConfig(repoRoot).notifications();
+        DevAgentConfig.NotificationsConfig notifications = configLoader.loadForWorkspace(repoRoot).notifications();
         if (!notifications.desktopEnabled() || !shouldNotifyStatus(state.status(), notifications)) {
             return;
         }
@@ -84,14 +83,6 @@ public class DesktopAlertService {
         }
     }
 
-    private DevAgentConfig loadConfig(Path repoRoot) {
-        if (isNull(repoRoot)) {
-            return configLoader.loadFromYaml("");
-        }
-        Path configFile = repoRoot.resolve(".agents").resolve("dev-agent.yaml");
-        return Files.isRegularFile(configFile) ? configLoader.load(configFile) : configLoader.loadFromYaml("");
-    }
-
     private boolean shouldNotifyStatus(TaskStatus status, DevAgentConfig.NotificationsConfig notifications) {
         return status == TaskStatus.COMPLETED ? notifications.onSuccess() : notifications.onFailure();
     }
@@ -104,8 +95,15 @@ public class DesktopAlertService {
             return List.of("osascript", "-e", script);
         }
         if (osName.contains("win")) {
-            String psScript = "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; "
-                + "Write-Output '" + escapePowerShellSingleQuoted(title + ": " + body) + "'";
+            String safeTitle = escapePowerShellSingleQuoted(escapeXml(title));
+            String safeBody = escapePowerShellSingleQuoted(escapeXml(body));
+            String psScript = "$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+                + "[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
+                + "$nodes = $xml.GetElementsByTagName('text'); "
+                + "$nodes.Item(0).AppendChild($xml.CreateTextNode('" + safeTitle + "')) | Out-Null; "
+                + "$nodes.Item(1).AppendChild($xml.CreateTextNode('" + safeBody + "')) | Out-Null; "
+                + "$toast = [Windows.UI.Notifications.ToastNotification]::new($xml); "
+                + "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('dev-agent').Show($toast)";
             return List.of("powershell", "-NoProfile", "-Command", psScript);
         }
         if (!hasLinuxDisplaySession()) {
@@ -131,5 +129,12 @@ public class DesktopAlertService {
 
     private String escapePowerShellSingleQuoted(String value) {
         return value.replace("'", "''");
+    }
+
+    private String escapeXml(String value) {
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
     }
 }

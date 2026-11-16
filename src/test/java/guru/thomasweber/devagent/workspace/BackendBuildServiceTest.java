@@ -275,4 +275,14 @@ class BackendBuildServiceTest {
         assertThat(result).isEqualTo(expected);
         assertThat(Files.readAllLines(repoRoot.resolve(".git/info/exclude"))).contains("target-custom/", ".cache-agent/");
     }
+
+    @Test
+    @DisplayName("Given various build markers - when hasBackendBuildMarker called - then detects pom, gradle, kts, or null cleanly")
+    void givenBuildMarkers_whenHasBackendBuildMarker_thenDetectsCleanly() throws Exception {
+        assertThat(BackendBuildService.hasBackendBuildMarker(null)).isFalse();
+        assertThat(BackendBuildService.hasBackendBuildMarker(repoRoot)).isFalse();
+
+        Files.writeString(repoRoot.resolve("build.gradle.kts"), "");
+        assertThat(BackendBuildService.hasBackendBuildMarker(repoRoot)).isTrue();
+    }
 }

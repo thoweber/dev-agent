@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.cli;
 
 import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import io.quarkus.arc.Unremovable;
@@ -31,19 +32,26 @@ import static java.util.Objects.isNull;
 public class LogsCommand extends BaseTaskCommand {
 
     private static final long POLL_INTERVAL_MS = 200L;
+    private static final int READ_BUFFER_SIZE = 8192;
 
     @Option(names = {"-f", "--follow"}, description = "Follow live log output")
     private boolean follow;
 
     private final StateSocketService socketService;
+    private final SecretRedactionFilter secretFilter;
 
     @Inject
-    public LogsCommand(StateSocketService socketService) {
+    public LogsCommand(StateSocketService socketService, SecretRedactionFilter secretFilter) {
         this.socketService = socketService;
+        this.secretFilter = secretFilter;
+    }
+
+    public LogsCommand(StateSocketService socketService) {
+        this(socketService, new SecretRedactionFilter());
     }
 
     public LogsCommand() {
-        this(new StateSocketService());
+        this(new StateSocketService(), new SecretRedactionFilter());
     }
 
     @Override
@@ -66,6 +74,7 @@ public class LogsCommand extends BaseTaskCommand {
         }
 
         Path journalFile = repoRoot.resolve(".agents").resolve("runs").resolve(taskId.trim() + ".md");
+        StateSocketService.validateWorktreePathSymlinks(repoRoot, journalFile);
         if (Files.isRegularFile(journalFile)) {
             printFileOnce(out, journalFile);
             return;
@@ -102,18 +111,18 @@ public class LogsCommand extends BaseTaskCommand {
     private long readAndPrintChunk(PrintWriter out, Path file, long offset) {
         try (SeekableByteChannel channel = Files.newByteChannel(file, StandardOpenOption.READ)) {
             long size = channel.size();
-            if (size <= offset) {
-                return offset;
+            long effectiveOffset = size < offset ? 0L : offset;
+            if (size <= effectiveOffset) {
+                return effectiveOffset;
             }
-            channel.position(offset);
-            int remaining = (int) Math.min(Integer.MAX_VALUE, size - offset);
-            ByteBuffer buffer = ByteBuffer.allocate(remaining);
-            while (buffer.hasRemaining() && channel.read(buffer) > 0) {
-                // Drain available bytes
+            channel.position(effectiveOffset);
+            ByteBuffer buffer = ByteBuffer.allocate(READ_BUFFER_SIZE);
+            while (channel.read(buffer) > 0) {
+                buffer.flip();
+                String text = StandardCharsets.UTF_8.decode(buffer).toString();
+                out.print(secretFilter.sanitize(text).value());
+                buffer.clear();
             }
-            buffer.flip();
-            String text = StandardCharsets.UTF_8.decode(buffer).toString();
-            out.print(text);
             out.flush();
             return channel.position();
         } catch (IOException _) {
@@ -123,7 +132,7 @@ public class LogsCommand extends BaseTaskCommand {
 
     private void printFileOnce(PrintWriter out, Path file) {
         try {
-            out.print(Files.readString(file));
+            out.print(secretFilter.sanitize(Files.readString(file)).value());
             out.flush();
         } catch (IOException _) {
             out.println("[dev-agent] Failed to read journal for task: " + taskId);

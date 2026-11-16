@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GitWorktreeServiceTest {
@@ -236,6 +237,28 @@ class GitWorktreeServiceTest {
             .thenReturn(ProcessResultMother.failure(1, "", "branch err"));
         assertThatThrownBy(() -> service.removeWorktree(tempDir, "TASK-99", true, "feature/x"))
             .isInstanceOf(WorkspaceException.class);
+    }
+
+    @Test
+    @DisplayName("Given custom target-dir - when resetToBase with targetDir called - then excludes custom target-dir during git clean")
+    void givenCustomTargetDir_whenResetToBase_thenExcludesCustomTargetDir() {
+        SubprocessExecutor mocked = mock(SubprocessExecutor.class);
+        when(mocked.execute(eq(List.of("git", "reset", "--hard", "HEAD")), eq(tempDir), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
+        when(mocked.execute(
+            eq(List.of("git", "clean", "-fd", "-e", "state.json", "-e", "worker.log", "-e", "target-custom", "-e", ".cache-agent")),
+            eq(tempDir),
+            any(Duration.class)
+        )).thenReturn(ProcessResultMother.success(""));
+
+        GitWorktreeService service = new GitWorktreeService(mocked, new GitExcludeManager());
+        service.resetToBase(tempDir, "HEAD", "target-custom");
+
+        verify(mocked).execute(
+            eq(List.of("git", "clean", "-fd", "-e", "state.json", "-e", "worker.log", "-e", "target-custom", "-e", ".cache-agent")),
+            eq(tempDir),
+            any(Duration.class)
+        );
     }
 
     private static void initGitRepo(SubprocessExecutor executor, Path dir) {

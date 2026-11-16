@@ -1,13 +1,16 @@
 package guru.thomasweber.devagent.cli;
 
+import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
+import guru.thomasweber.devagent.testutil.TaskRunMother;
 import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import guru.thomasweber.devagent.workspace.BackendBuildService;
 import guru.thomasweber.devagent.workspace.DesktopAlertService;
+import guru.thomasweber.devagent.workspace.GitWorktreeService;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.StateSyncService;
@@ -16,6 +19,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
+
+import org.mockito.ArgumentCaptor;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -53,7 +58,9 @@ class WorkerCommandTest {
             buildService,
             alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService
+            persistenceService,
+            new DevAgentConfigLoader(),
+            mock(GitWorktreeService.class)
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter out = new StringWriter();
@@ -90,7 +97,9 @@ class WorkerCommandTest {
             buildService,
             alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService
+            persistenceService,
+            new DevAgentConfigLoader(),
+            mock(GitWorktreeService.class)
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter err = new StringWriter();
@@ -134,7 +143,9 @@ class WorkerCommandTest {
             buildService,
             alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService
+            persistenceService,
+            new DevAgentConfigLoader(),
+            mock(GitWorktreeService.class)
         );
         CommandLine cmd = new CommandLine(command);
         cmd.setOut(new PrintWriter(new StringWriter()));
@@ -170,7 +181,9 @@ class WorkerCommandTest {
             buildService,
             alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService
+            persistenceService,
+            new DevAgentConfigLoader(),
+            mock(GitWorktreeService.class)
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter err = new StringWriter();
@@ -185,5 +198,65 @@ class WorkerCommandTest {
             .get()
             .extracting(WorktreeState::status)
             .isEqualTo(TaskStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("Given existing TaskRun in H2 and auto-prune enabled - when WorkerCommand completes - then preserves baseCommit and checkpointStash and prunes worktree")
+    void givenExistingTaskRunAndAutoPrune_whenWorkerCompletes_thenPreservesMetadataAndPrunesWorktree() throws IOException {
+        Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees/TASK-805"));
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.builder("TASK-805")
+            .branch("feature/TASK-805-keep")
+            .build());
+        TaskRun existing = TaskRunMother.builder("TASK-805")
+            .branch("feature/TASK-805-keep")
+            .baseCommit("deadbeef123")
+            .checkpointStash("stash123")
+            .userStory("Existing story")
+            .retryCount(2)
+            .build();
+
+        DesktopAlertService alertService = mock(DesktopAlertService.class);
+        StateSyncService syncService = mock(StateSyncService.class);
+        BackendBuildService buildService = mock(BackendBuildService.class);
+        GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+        TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+        when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-805"))).thenReturn(Optional.of(existing));
+        when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        WorkerCommand command = new WorkerCommand(
+            socketService,
+            syncService,
+            buildService,
+            alertService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            persistenceService,
+            new DevAgentConfigLoader(),
+            worktreeService
+        );
+        CommandLine cmd = new CommandLine(command);
+        cmd.setOut(new PrintWriter(new StringWriter()));
+
+        int exitCode = cmd.execute("--dir=" + tempDir, "--task-id=TASK-805");
+
+        assertThat(exitCode).isZero();
+        ArgumentCaptor<TaskRun> savedCaptor = ArgumentCaptor.forClass(TaskRun.class);
+        verify(persistenceService).saveTask(savedCaptor.capture());
+        assertThat(savedCaptor.getValue().baseCommit()).isEqualTo("deadbeef123");
+        assertThat(savedCaptor.getValue().checkpointStash()).isEqualTo("stash123");
+        assertThat(savedCaptor.getValue().userStory()).isEqualTo("Existing story");
+        assertThat(savedCaptor.getValue().retryCount()).isEqualTo(2);
+        assertThat(savedCaptor.getValue().status()).isEqualTo(TaskStatus.COMPLETED);
+        verify(worktreeService).removeWorktree(tempDir.toRealPath(), "TASK-805", false, "feature/TASK-805-keep");
+
+        // Now verify auto-prune-on-complete=false preserves worktree and non-blank instruction updates userStory
+        Files.createDirectories(tempDir.resolve(".agents"));
+        Files.writeString(tempDir.resolve(".agents/dev-agent.yaml"), """
+            agent:
+              isolation:
+                auto-prune-on-complete: false
+            """);
+        assertThat(cmd.execute("--dir=" + tempDir, "--task-id=TASK-805", "--instruction=Updated story")).isZero();
+        verify(worktreeService).removeWorktree(tempDir.toRealPath(), "TASK-805", false, "feature/TASK-805-keep");
     }
 }

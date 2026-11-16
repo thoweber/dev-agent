@@ -106,6 +106,13 @@ public class BackendBuildService {
         return executeAndSanitize(buildSystem, command, effectiveRoot);
     }
 
+    public static boolean hasBackendBuildMarker(Path projectRoot) {
+        return projectRoot != null
+            && (Files.isRegularFile(projectRoot.resolve("pom.xml"))
+                || Files.isRegularFile(projectRoot.resolve("build.gradle"))
+                || Files.isRegularFile(projectRoot.resolve("build.gradle.kts")));
+    }
+
     private Path resolveActiveRoot() {
         Path executionRoot = contextResolver.resolveExecutionRoot();
         return executionRoot != null ? executionRoot : contextResolver.resolveRepoRoot();

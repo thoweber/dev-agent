@@ -204,4 +204,60 @@ class LogsCommandTest {
 
         assertThat(outFollow.toString()).contains("[worker] Step 1", "[worker] Step 2");
     }
+
+    @Test
+    @DisplayName("Given symlinked journal or secret tokens in worker.log - when logs executed - then blocks symlink and redacts secrets")
+    void testLogsRejectsSymlinkedJournalAndRedactsSecrets() throws IOException {
+        Path secretTarget = Files.writeString(tempDir.resolve("outside.txt"), "top secret");
+        Path runsDir = Files.createDirectories(tempDir.resolve(".agents/runs"));
+        Files.createSymbolicLink(runsDir.resolve("TASK-SYM-J.md"), secretTarget);
+
+        LogsCommand symCommand = new LogsCommand(new StateSocketService());
+        CommandLine clSym = new CommandLine(symCommand);
+        clSym.parseArgs("--dir=" + tempDir, "TASK-SYM-J");
+        assertThatThrownBy(symCommand::run)
+            .isInstanceOf(SecurityException.class);
+
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-SECRET-LOG"));
+        Path logFile = socketService.resolveWorkerLogFile(tempDir, "TASK-SECRET-LOG");
+        Files.writeString(logFile, "Using token ghp_1234567890abcdef1234567890abcdef1234 for build\n");
+
+        LogsCommand redactCmd = new LogsCommand(socketService);
+        CommandLine clRedact = new CommandLine(redactCmd);
+        StringWriter out = new StringWriter();
+        clRedact.setOut(new PrintWriter(out));
+        assertThat(clRedact.execute("--dir=" + tempDir, "TASK-SECRET-LOG")).isZero();
+        assertThat(out.toString())
+            .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        // Verify multi-chunk streaming (> 8KB buffer) and log truncation reset while following
+        String largeBlock = "line-chunk-0123456789\n".repeat(500);
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.active("TASK-CHUNK", ProcessHandle.current().pid()));
+        Path chunkLog = socketService.resolveWorkerLogFile(tempDir, "TASK-CHUNK");
+        Files.writeString(chunkLog, largeBlock);
+
+        Thread truncator = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(100L);
+                Files.writeString(chunkLog, "[worker] truncated tail\n");
+                socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-CHUNK"));
+            } catch (Exception _) {
+                // ignore
+            }
+        });
+
+        LogsCommand chunkCmd = new LogsCommand(socketService);
+        CommandLine clChunk = new CommandLine(chunkCmd);
+        StringWriter chunkOut = new StringWriter();
+        clChunk.setOut(new PrintWriter(chunkOut));
+        assertThat(clChunk.execute("--dir=" + tempDir, "--follow", "TASK-CHUNK")).isZero();
+        try {
+            truncator.join(3000L);
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        }
+        assertThat(chunkOut.toString()).contains("line-chunk-0123456789", "[worker] truncated tail");
+    }
 }

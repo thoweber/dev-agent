@@ -19,6 +19,7 @@ public record WorktreeState(
     long tokens,
     BigDecimal cost,
     Long pid,
+    Instant pidStartedAt,
     String branch,
     String worktreePath,
     Instant startedAt,

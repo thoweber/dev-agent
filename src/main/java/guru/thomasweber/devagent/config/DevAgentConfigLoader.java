@@ -15,6 +15,13 @@ import java.nio.file.Path;
 @ApplicationScoped
 public class DevAgentConfigLoader {
 
+    public DevAgentConfig loadForWorkspace(Path repoRoot) {
+        if (repoRoot == null) {
+            return loadFromYaml("");
+        }
+        return load(repoRoot.resolve(".agents").resolve("dev-agent.yaml"));
+    }
+
     public DevAgentConfig load(Path configFile) {
         if (configFile == null || !Files.isRegularFile(configFile)) {
             return loadFromYaml("");

@@ -125,6 +125,10 @@ public class InitCommand extends BaseAgentCommand implements Callable<Integer> {
               budget:
                 max-task-cost-usd: 2.00
                 max-task-tokens: 250000
+              notifications:
+                desktop-enabled: true
+                on-success: true
+                on-failure: true
             """, archetype.getId(), archetype == ArchetypeType.FULLSTACK_ANGULAR);
     }
 

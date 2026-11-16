@@ -100,10 +100,19 @@ public class GitExcludeManager {
             if (!gitDir.isAbsolute()) {
                 gitDir = dotGitFile.getParent().resolve(gitDir).normalize();
             }
+            if (Files.isSymbolicLink(gitDir)) {
+                throw new SecurityException("Symbolic link detected in Git worktree metadata path: " + gitDir);
+            }
             Path commonDirFile = gitDir.resolve("commondir");
+            if (Files.isSymbolicLink(commonDirFile)) {
+                throw new SecurityException("Symbolic link detected in Git commondir path: " + commonDirFile);
+            }
             Path commonGitDir = Files.isRegularFile(commonDirFile)
                 ? gitDir.resolve(Files.readString(commonDirFile).trim()).normalize()
                 : gitDir;
+            if (Files.isSymbolicLink(commonGitDir)) {
+                throw new SecurityException("Symbolic link detected in Git common dir path: " + commonGitDir);
+            }
             return Optional.of(commonGitDir.resolve("info").resolve("exclude"));
         } catch (IOException e) {
             throw new WorkspaceException("Failed to resolve Git worktree exclude file", e);

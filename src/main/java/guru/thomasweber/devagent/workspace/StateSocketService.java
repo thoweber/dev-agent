@@ -14,10 +14,12 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
@@ -34,6 +36,8 @@ public class StateSocketService {
     private static final String STATE_FILE_NAME = "state.json";
     private static final String STATE_TMP_FILE_NAME = "state.json.tmp";
     private static final String WORKER_LOG_FILE_NAME = "worker.log";
+    private static final Pattern SAFE_TASK_ID_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+    private static final long PID_START_TOLERANCE_SECONDS = 2L;
 
     private final ObjectMapper objectMapper;
     private final SecretRedactionFilter secretFilter;
@@ -114,10 +118,35 @@ public class StateSocketService {
     }
 
     public boolean isProcessAlive(WorktreeState state) {
-        if (isNull(state) || isNull(state.pid())) {
+        if (isNull(state) || isNull(state.pid()) || state.pid() <= 0) {
             return false;
         }
-        return ProcessHandle.of(state.pid()).isPresent();
+        return ProcessHandle.of(state.pid())
+            .filter(handle -> matchesPidStart(handle, state.pidStartedAt()))
+            .isPresent();
+    }
+
+    public static Instant resolvePidStartInstant(Long pid) {
+        if (isNull(pid) || pid <= 0) {
+            return null;
+        }
+        return ProcessHandle.of(pid)
+            .flatMap(handle -> handle.info().startInstant())
+            .orElse(null);
+    }
+
+    public static boolean matchesPidStart(ProcessHandle handle, Instant expectedStart) {
+        if (isNull(handle) || !handle.isAlive()) {
+            return false;
+        }
+        if (isNull(expectedStart)) {
+            return true;
+        }
+        Optional<Instant> actualStart = handle.info().startInstant();
+        if (actualStart.isEmpty()) {
+            return true;
+        }
+        return Duration.between(expectedStart, actualStart.get()).abs().toSeconds() <= PID_START_TOLERANCE_SECONDS;
     }
 
     private Optional<WorktreeState> readStateFile(Path stateFile) {
@@ -137,16 +166,23 @@ public class StateSocketService {
     }
 
     private Path resolveWorktreeFile(Path repoRoot, String taskId, String fileName) {
-        validateTaskId(taskId);
+        String safeTaskId = validateTaskId(taskId);
         Path effectiveRoot = resolveEffectiveRoot(repoRoot);
         Path worktreesRoot = effectiveRoot.resolve(".git").resolve("dev-agent-worktrees");
-        Path worktreeDir = worktreesRoot.resolve(taskId);
+        Path worktreeDir = worktreesRoot.resolve(safeTaskId);
         Path targetFile = worktreeDir.resolve(fileName);
 
-        validateNoSymlink(worktreesRoot);
-        validateNoSymlink(worktreeDir);
-        validateNoSymlink(targetFile);
+        validateWorktreePathSymlinks(effectiveRoot, targetFile);
         return targetFile;
+    }
+
+    public static void validateWorktreePathSymlinks(Path boundaryRoot, Path target) {
+        Path normalizedBoundary = boundaryRoot.toAbsolutePath().normalize();
+        Path current = target.toAbsolutePath().normalize();
+        while (!isNull(current) && !current.equals(normalizedBoundary)) {
+            validateNoSymlink(current);
+            current = current.getParent();
+        }
     }
 
     private Path resolveEffectiveRoot(Path repoRoot) {
@@ -162,8 +198,12 @@ public class StateSocketService {
         String cleanMessage = (!isNull(state.lastMessage()) && !state.lastMessage().isBlank())
             ? secretFilter.sanitize(state.lastMessage()).value()
             : state.lastMessage();
+        String cleanBranch = (!isNull(state.branch()) && !state.branch().isBlank())
+            ? secretFilter.sanitize(state.branch()).value()
+            : state.branch();
         Instant now = !isNull(state.updatedAt()) ? state.updatedAt() : Instant.now();
         return state.toBuilder()
+            .branch(cleanBranch)
             .lastMessage(cleanMessage)
             .updatedAt(now)
             .build();
@@ -177,19 +217,23 @@ public class StateSocketService {
         }
     }
 
-    private void validateTaskId(String taskId) {
-        if (isNull(taskId) || taskId.isBlank() || taskId.contains("..") || taskId.contains("/") || taskId.contains("\\")) {
-            throw new SecurityException("Jailbreak attempt: invalid state socket task ID: " + taskId);
+    public static String validateTaskId(String taskId) {
+        if (isNull(taskId)
+            || taskId.isBlank()
+            || taskId.contains("..")
+            || !SAFE_TASK_ID_PATTERN.matcher(taskId).matches()) {
+            throw new SecurityException("Jailbreak attempt: invalid task ID: " + taskId);
         }
+        return taskId;
     }
 
-    private void validateNoSymlink(Path path) {
+    private static void validateNoSymlink(Path path) {
         if (Files.isSymbolicLink(path)) {
             throw new SecurityException("Jailbreak attempt: symbolic links are forbidden in state sockets: " + path);
         }
     }
 
-    private static ObjectMapper createDefaultObjectMapper() {
+    public static ObjectMapper createDefaultObjectMapper() {
         return new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);

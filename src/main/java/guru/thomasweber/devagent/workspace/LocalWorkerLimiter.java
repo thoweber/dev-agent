@@ -6,7 +6,6 @@ import guru.thomasweber.devagent.model.WorktreeState;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -54,14 +53,7 @@ public class LocalWorkerLimiter {
     }
 
     private int resolveConfiguredLimit(Path repoRoot) {
-        if (isNull(repoRoot)) {
-            return DEFAULT_MAX_CONCURRENT_WORKERS;
-        }
-        Path configFile = repoRoot.resolve(".agents").resolve("dev-agent.yaml");
-        if (!Files.isRegularFile(configFile)) {
-            return DEFAULT_MAX_CONCURRENT_WORKERS;
-        }
-        return configLoader.load(configFile).maxConcurrentWorkers();
+        return configLoader.loadForWorkspace(repoRoot).maxConcurrentWorkers();
     }
 
     /**
