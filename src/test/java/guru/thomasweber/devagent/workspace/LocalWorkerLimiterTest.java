@@ -193,5 +193,39 @@ class LocalWorkerLimiterTest {
         );
         assertThatThrownBy(() -> gate.executeBatch(null, checkedBatch))
             .isInstanceOf(WorkspaceException.class);
+
+        // Interrupting executeBatch while waiting on future.get() wraps InterruptedException cleanly
+        CountDownLatch startedBatch = new CountDownLatch(1);
+        CountDownLatch releaseBatch = new CountDownLatch(1);
+        List<LocalWorkerLimiter.QueuedTask<String>> blockingBatch = List.of(
+            new LocalWorkerLimiter.QueuedTask<>(errWrapState, () -> {
+                startedBatch.countDown();
+                releaseBatch.await(3, TimeUnit.SECONDS);
+                return "done";
+            })
+        );
+        Thread callingThread = Thread.currentThread();
+        Thread interrupter = Thread.ofVirtual().start(() -> {
+            try {
+                if (startedBatch.await(3, TimeUnit.SECONDS)) {
+                    callingThread.interrupt();
+                }
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        try {
+            assertThatThrownBy(() -> gate.executeBatch(null, blockingBatch))
+                .isInstanceOf(WorkspaceException.class)
+                .hasMessageContaining("Interrupted");
+        } finally {
+            Thread.interrupted();
+            releaseBatch.countDown();
+            try {
+                interrupter.join(3000L);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 }

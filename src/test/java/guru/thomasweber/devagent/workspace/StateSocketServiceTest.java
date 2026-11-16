@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -180,5 +181,14 @@ class StateSocketServiceTest {
         Path worktreesParent = Files.createDirectories(tempDir.resolve(".git/dev-agent-worktrees"));
         Files.writeString(worktreesParent.resolve("stray-file.txt"), "ignore");
         assertThat(service.readAllStates(tempDir)).isNotEmpty();
+
+        // Unreadable worktrees root triggers IOException fallback in readAllStates
+        Files.setPosixFilePermissions(worktreesParent, PosixFilePermissions.fromString("---------"));
+        AutoCloseable restoreWorktreesPerms = () -> Files.setPosixFilePermissions(worktreesParent, PosixFilePermissions.fromString("rwxr-xr-x"));
+        try (restoreWorktreesPerms) {
+            assertThat(service.readAllStates(tempDir)).isEmpty();
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 }

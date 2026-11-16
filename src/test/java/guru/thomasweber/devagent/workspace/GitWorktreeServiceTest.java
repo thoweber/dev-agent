@@ -331,8 +331,18 @@ class GitWorktreeServiceTest {
         Files.writeString(wtDir.resolve("leftover.txt"), "residual");
         service.removeWorktree(tempDir, "TASK-SUB", false, null);
         assertThat(wtDir).doesNotExist();
+    }
 
-        // Existing branch attach + add failure + hydrate blank stash create + resolveHeadCommit blank/fail + file-as-worktreesRoot
+    @Test
+    @DisplayName("Given failing branch attach, blank stash create, bad HEAD, or blocked dir - when allocateWorktree called - then handles or throws WorkspaceException")
+    void givenFailingAllocationBranches_whenAllocated_thenHandlesCleanly() throws IOException {
+        SubprocessExecutor mocked = mock(SubprocessExecutor.class);
+        GitWorktreeService service = new GitWorktreeService(mocked, new GitExcludeManager());
+
+        when(mocked.execute(eq(List.of("git", "rev-parse", "HEAD")), eq(tempDir), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success("deadbeef"));
+        when(mocked.execute(eq(List.of("git", "worktree", "prune")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
         when(mocked.execute(eq(List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/feature/TASK-FAIL-ADD-slug")), any(Path.class), any(Duration.class)))
             .thenReturn(ProcessResultMother.success(""));
         when(mocked.execute(argThat(cmd -> nonNull(cmd) && cmd.size() >= 3 && "add".equals(cmd.get(2))), any(Path.class), any(Duration.class)))
@@ -342,12 +352,14 @@ class GitWorktreeServiceTest {
 
         when(mocked.execute(argThat(cmd -> nonNull(cmd) && cmd.size() >= 3 && "add".equals(cmd.get(2))), any(Path.class), any(Duration.class)))
             .thenReturn(ProcessResultMother.success(""));
+        when(mocked.execute(eq(List.of("git", "status", "--porcelain")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(" M Dirty.java\n"));
         when(mocked.execute(eq(List.of("git", "stash", "create")), any(Path.class), any(Duration.class)))
             .thenReturn(ProcessResultMother.success("   "));
         WorktreeAllocation blankStash = service.allocateWorktree(tempDir, "TASK-FAIL-ADD", "slug", null, "target-agent");
         assertThat(blankStash.hydrated()).isFalse();
 
-        when(mocked.execute(eq(List.of("git", "rev-parse", "HEAD")), any(Path.class), any(Duration.class)))
+        when(mocked.execute(eq(List.of("git", "rev-parse", "HEAD")), eq(tempDir), any(Duration.class)))
             .thenReturn(ProcessResultMother.failure(1, "", "no head"))
             .thenReturn(ProcessResultMother.success("  "));
         assertThatThrownBy(() -> service.allocateWorktree(tempDir, "TASK-NOHEAD", "slug", null, "target-agent"))

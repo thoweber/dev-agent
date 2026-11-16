@@ -332,15 +332,26 @@ class LogsCommandTest {
         // Unreadable journal triggers IOException fallback message
         Path unreadableJournal = runsDir.resolve("TASK-UNREADABLE.md");
         Files.writeString(unreadableJournal, "secret");
-        try {
-            Files.setPosixFilePermissions(unreadableJournal, PosixFilePermissions.fromString("---------"));
-            StringWriter unreadOut = new StringWriter();
+        Files.setPosixFilePermissions(unreadableJournal, PosixFilePermissions.fromString("---------"));
+        StringWriter unreadOut = new StringWriter();
+        AutoCloseable restorePerms = () -> Files.setPosixFilePermissions(unreadableJournal, PosixFilePermissions.fromString("rw-r--r--"));
+        try (restorePerms; PrintWriter unreadWriter = new PrintWriter(unreadOut)) {
             CommandLine unreadCmd = new CommandLine(new LogsCommand(socketService));
-            unreadCmd.setOut(new PrintWriter(unreadOut));
+            unreadCmd.setOut(unreadWriter);
             assertThat(unreadCmd.execute("--dir=" + tempDir, "TASK-UNREADABLE")).isZero();
             assertThat(unreadOut.toString()).contains("Failed to read journal for task: TASK-UNREADABLE");
-        } finally {
-            Files.setPosixFilePermissions(unreadableJournal, PosixFilePermissions.fromString("rw-r--r--"));
+        } catch (Exception e) {
+            throw new IOException(e);
         }
+
+        // --follow exits cleanly on first pass when socket does not exist for existing worker.log
+        Path orphanLog = socketService.resolveWorkerLogFile(tempDir, "TASK-ORPHAN-FOLLOW");
+        Files.createDirectories(orphanLog.getParent());
+        Files.writeString(orphanLog, "[worker] orphan follow\n");
+        StringWriter orphanOut = new StringWriter();
+        CommandLine orphanCmd = new CommandLine(new LogsCommand(socketService));
+        orphanCmd.setOut(new PrintWriter(orphanOut));
+        assertThat(orphanCmd.execute("--dir=" + tempDir, "--follow", "TASK-ORPHAN-FOLLOW")).isZero();
+        assertThat(orphanOut.toString()).contains("[worker] orphan follow");
     }
 }

@@ -17,6 +17,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -278,5 +279,14 @@ class StatusCommandTest {
         emptyCmd.setOut(new PrintWriter(emptyJsonOut));
         assertThat(emptyCmd.execute("--dir=" + emptyRepo, "--json")).isZero();
         assertThat(emptyJsonOut.toString()).contains("No active background tasks detected.");
+
+        // Unreadable .agents/runs directory falls back gracefully on status --all
+        Files.setPosixFilePermissions(runsDir, PosixFilePermissions.fromString("---------"));
+        AutoCloseable restoreRunsPerms = () -> Files.setPosixFilePermissions(runsDir, PosixFilePermissions.fromString("rwxr-xr-x"));
+        try (restoreRunsPerms) {
+            assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
     }
 }
