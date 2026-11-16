@@ -18,7 +18,7 @@ class TargetDirTest {
         TargetDir custom = TargetDir.of("  target-custom/  ");
         assertThat(custom.value()).isEqualTo("target-custom");
         assertThat(custom.excludeEntry()).isEqualTo("target-custom/");
-        assertThat(custom.toString()).isEqualTo("target-custom");
+        assertThat(custom).hasToString("target-custom");
 
         TargetDir winStyle = TargetDir.of("build\\agent\\");
         assertThat(winStyle.value()).isEqualTo("build/agent");

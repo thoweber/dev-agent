@@ -141,5 +141,20 @@ class ProjectIdResolverTest {
             .doesNotStartWith("c/");
         assertThat(resolver.resolveCoordinate(null)).isEqualTo("unknown");
         assertThat(resolver.normalizeRemote("https://gitlab.example.com/team/service")).isEqualTo("gitlab.example.com/team/service");
+        assertThat(resolver.normalizeRemote("https://github.com:8443/org/repo.git")).isEqualTo("github.com/org/repo");
+        assertThat(resolver.normalizeRemote("D:/repos/myrepo")).isEqualTo("D:/repos/myrepo");
+
+        // Malformed URL / scheme / IPv6 / port / empty authority edge cases
+        assertThat(resolver.normalizeRemote("1bad://github.com/org/repo")).isEqualTo("1bad://github.com/org/repo");
+        assertThat(resolver.normalizeRemote("ht!tp://github.com/org/repo")).isEqualTo("ht!tp://github.com/org/repo");
+        assertThat(resolver.normalizeRemote("https:///org/repo")).isEqualTo("https:///org/repo");
+        assertThat(resolver.normalizeRemote("https://github.com/")).isEqualTo("https://github.com");
+        assertThat(resolver.normalizeRemote("https://[::1/org/repo")).isEqualTo("https://[::1/org/repo");
+        assertThat(resolver.normalizeRemote("https://[]/org/repo")).isEqualTo("https://[]/org/repo");
+        assertThat(resolver.normalizeRemote("https://[::1]extra/org/repo")).isEqualTo("https://[::1]extra/org/repo");
+        assertThat(resolver.normalizeRemote("https://[::1]:abc/org/repo")).isEqualTo("https://[::1]:abc/org/repo");
+        assertThat(resolver.normalizeRemote("https://:8080/org/repo")).isEqualTo("https://:8080/org/repo");
+        assertThat(resolver.normalizeRemote("https://github.com:/org/repo")).isEqualTo("https://github.com:/org/repo");
+        assertThat(resolver.normalizeRemote("https://github.com:abc/org/repo")).isEqualTo("https://github.com:abc/org/repo");
     }
 }

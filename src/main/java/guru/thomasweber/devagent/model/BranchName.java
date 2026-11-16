@@ -71,15 +71,26 @@ public record BranchName(@JsonValue String value) {
         if (isNull(storySlug) || storySlug.isBlank()) {
             return "task";
         }
-        String normalized = storySlug.toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", "-")
-            .replaceAll("^-+|-+$", "");
+        String replaced = storySlug.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
+        String normalized = trimHyphens(replaced);
         if (normalized.isEmpty()) {
             return "task";
         }
         if (normalized.length() > MAX_SLUG_LENGTH) {
-            return normalized.substring(0, MAX_SLUG_LENGTH).replaceAll("-+$", "");
+            return trimHyphens(normalized.substring(0, MAX_SLUG_LENGTH));
         }
         return normalized;
+    }
+
+    private static String trimHyphens(String input) {
+        int start = 0;
+        int end = input.length();
+        while (start < end && input.charAt(start) == '-') {
+            start++;
+        }
+        while (end > start && input.charAt(end - 1) == '-') {
+            end--;
+        }
+        return input.substring(start, end);
     }
 }

@@ -22,9 +22,6 @@ import static java.util.Objects.nonNull;
 public class ProjectIdResolver {
 
     private static final Pattern SCP_PATTERN = Pattern.compile("^(?:[\\w.-]+@)?([\\w.-]+):(.+)$");
-    private static final Pattern URL_PATTERN = Pattern.compile(
-        "^(?:[a-zA-Z][a-zA-Z0-9+-.]*://)?(?:[^/]*@)?(\\[[0-9a-fA-F:]+\\]|[^:/]+)(?::\\d+)?/(.+)$"
-    );
 
     private final WorkspaceContextResolver workspaceResolver;
     private final SubprocessExecutor subprocessExecutor;
@@ -88,17 +85,89 @@ public class ProjectIdResolver {
         if (isWindowsDrivePath(clean)) {
             return null;
         }
-        if (!clean.contains("://")) {
+        int schemeIdx = clean.indexOf("://");
+        if (schemeIdx < 0) {
             Matcher scpMatcher = SCP_PATTERN.matcher(clean);
             if (scpMatcher.matches()) {
                 return new HostAndPath(scpMatcher.group(1), scpMatcher.group(2));
             }
+            return parseUrlAuthorityAndPath(clean);
         }
-        Matcher urlMatcher = URL_PATTERN.matcher(clean);
-        if (urlMatcher.matches()) {
-            return new HostAndPath(urlMatcher.group(1), urlMatcher.group(2));
+        String scheme = clean.substring(0, schemeIdx);
+        if (!isValidScheme(scheme)) {
+            return null;
         }
-        return null;
+        return parseUrlAuthorityAndPath(clean.substring(schemeIdx + 3));
+    }
+
+    private static boolean isValidScheme(String scheme) {
+        if (scheme.isEmpty() || !Character.isLetter(scheme.charAt(0))) {
+            return false;
+        }
+        for (int i = 1; i < scheme.length(); i++) {
+            char c = scheme.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '+' && c != '-' && c != '.') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static HostAndPath parseUrlAuthorityAndPath(String remainder) {
+        int slashIdx = remainder.indexOf('/');
+        if (slashIdx <= 0 || slashIdx == remainder.length() - 1) {
+            return null;
+        }
+        String authority = remainder.substring(0, slashIdx);
+        String path = remainder.substring(slashIdx + 1);
+        int atIdx = authority.lastIndexOf('@');
+        String hostPort = authority;
+        if (atIdx >= 0) {
+            hostPort = authority.substring(atIdx + 1);
+        }
+        String host = extractHost(hostPort);
+        if (isNull(host)) {
+            return null;
+        }
+        return new HostAndPath(host, path);
+    }
+
+    private static String extractHost(String hostPort) {
+        if (hostPort.isEmpty()) {
+            return null;
+        }
+        if (hostPort.startsWith("[")) {
+            int closeBracket = hostPort.indexOf(']');
+            if (closeBracket <= 1) {
+                return null;
+            }
+            String ipv6 = hostPort.substring(0, closeBracket + 1);
+            String after = hostPort.substring(closeBracket + 1);
+            if (after.isEmpty() || isValidPortSuffix(after)) {
+                return ipv6;
+            }
+            return null;
+        }
+        int colonIdx = hostPort.indexOf(':');
+        if (colonIdx < 0) {
+            return hostPort;
+        }
+        if (colonIdx == 0 || !isValidPortSuffix(hostPort.substring(colonIdx))) {
+            return null;
+        }
+        return hostPort.substring(0, colonIdx);
+    }
+
+    private static boolean isValidPortSuffix(String suffix) {
+        if (suffix.length() < 2 || suffix.charAt(0) != ':') {
+            return false;
+        }
+        for (int i = 1; i < suffix.length(); i++) {
+            if (!Character.isDigit(suffix.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isWindowsDrivePath(String path) {

@@ -25,7 +25,7 @@ public record WorktreeLayout(Path repoRoot) {
         if (isNull(repoRoot)) {
             throw new IllegalArgumentException("repoRoot must not be null");
         }
-        repoRoot = PathGuard.toRealOrNormalized(repoRoot);
+        repoRoot = Objects.requireNonNull(PathGuard.toRealOrNormalized(repoRoot), "repoRoot must not be null");
     }
 
     public static WorktreeLayout forRoot(Path repoRoot) {
@@ -38,7 +38,7 @@ public record WorktreeLayout(Path repoRoot) {
 
     public Path worktreeDir(TaskId taskId) {
         Objects.requireNonNull(taskId, "taskId must not be null");
-        Path dir = worktreesRoot().resolve(taskId.value());
+        Path dir = Objects.requireNonNull(worktreesRoot().resolve(taskId.value()));
         validateNoSymlinks(repoRoot, dir);
         return dir;
     }

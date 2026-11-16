@@ -104,15 +104,19 @@ public class LogsCommand extends BaseTaskCommand {
                 || !socketService.isProcessAlive(stateOpt.get());
 
             offset = readAndPrintChunk(out, workerLog, offset, done);
-            if (done) {
+            if (done || !sleepPollInterval()) {
                 break;
             }
-            try {
-                Thread.sleep(POLL_INTERVAL_MS);
-            } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-                break;
-            }
+        }
+    }
+
+    private boolean sleepPollInterval() {
+        try {
+            Thread.sleep(POLL_INTERVAL_MS);
+            return true;
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 

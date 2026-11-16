@@ -25,7 +25,7 @@ class StateSocketServiceTest {
 
     @Test
     @DisplayName("Given WorktreeState with secret in message - when writeHeartbeat and readState called - then writes atomically and redacts credentials")
-    void givenWorktreeStateWithSecret_whenWriteAndRead_thenWritesAtomicallyAndRedactsSecret() throws IOException {
+    void givenWorktreeStateWithSecret_whenWriteAndRead_thenWritesAtomicallyAndRedactsSecret() {
         StateSocketService service = new StateSocketService();
         WorktreeState state = WorktreeStateMother.active("TASK-501", ProcessHandle.current().pid())
             .toBuilder()
@@ -83,7 +83,8 @@ class StateSocketServiceTest {
         Path externalFile = Files.createTempFile("ext-state", ".json");
         Files.createSymbolicLink(worktreeDir.resolve("state.json"), externalFile);
 
-        assertThatThrownBy(() -> service.writeHeartbeat(tempDir, WorktreeStateMother.queued("TASK-SYM")))
+        WorktreeState symState = WorktreeStateMother.queued("TASK-SYM");
+        assertThatThrownBy(() -> service.writeHeartbeat(tempDir, symState))
             .isInstanceOf(SecurityException.class);
         Files.deleteIfExists(externalFile);
     }

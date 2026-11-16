@@ -34,5 +34,12 @@ class PathGuardTest {
             .isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> PathGuard.readRegularFileBounded(null, 10))
             .isInstanceOf(IllegalArgumentException.class);
+
+        Path defaultTemp = PathGuard.createOwnerOnlyTempFile(null, "pathguard-test-", ".tmp");
+        try {
+            assertThat(defaultTemp).exists();
+        } finally {
+            Files.deleteIfExists(defaultTemp);
+        }
     }
 }

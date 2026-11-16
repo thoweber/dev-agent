@@ -16,7 +16,7 @@ class BranchNameTest {
 
         BranchName rendered = BranchName.render(null, taskId, "Add User Auth & Rate Limiting!!!");
         assertThat(rendered.value()).isEqualTo("feature/TASK-501-add-user-auth-rate-limiting");
-        assertThat(rendered.toString()).isEqualTo("feature/TASK-501-add-user-auth-rate-limiting");
+        assertThat(rendered).hasToString("feature/TASK-501-add-user-auth-rate-limiting");
 
         BranchName defaultSlug = BranchName.render("agent/{task-id}/{story-slug}", taskId, "   ");
         assertThat(defaultSlug.value()).isEqualTo("agent/TASK-501/task");

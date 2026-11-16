@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
@@ -30,7 +30,7 @@ public class DesktopAlertService {
     private final SubprocessExecutor subprocessExecutor;
     private final SecretRedactionFilter secretFilter;
     private final DevAgentConfigLoader configLoader;
-    private final Function<String, String> envLookup;
+    private final UnaryOperator<String> envLookup;
 
     @Inject
     public DesktopAlertService(
@@ -45,7 +45,7 @@ public class DesktopAlertService {
         SubprocessExecutor subprocessExecutor,
         SecretRedactionFilter secretFilter,
         DevAgentConfigLoader configLoader,
-        Function<String, String> envLookup
+        UnaryOperator<String> envLookup
     ) {
         this.subprocessExecutor = subprocessExecutor;
         this.secretFilter = secretFilter;

@@ -15,7 +15,7 @@ import static java.util.Objects.isNull;
 public record TargetDir(String value) {
 
     public static final String DEFAULT_VALUE = "target-agent";
-    private static final Pattern SAFE_TARGET_PATTERN = Pattern.compile("^[A-Za-z0-9_][A-Za-z0-9._/-]*$");
+    private static final Pattern SAFE_TARGET_PATTERN = Pattern.compile("^\\w[\\w./-]*$");
     public static final TargetDir DEFAULT = new TargetDir(DEFAULT_VALUE);
 
     public TargetDir {

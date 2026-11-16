@@ -15,7 +15,7 @@ class TaskIdTest {
         TaskId id = TaskId.of("TASK-401.rc_1");
         assertThat(id.value()).isEqualTo("TASK-401.rc_1");
         assertThat(id.idString()).isEqualTo("TASK-401.rc_1");
-        assertThat(id.toString()).isEqualTo("TASK-401.rc_1");
+        assertThat(id).hasToString("TASK-401.rc_1");
 
         ObjectMapper mapper = new ObjectMapper();
         String json = mapper.writeValueAsString(id);
@@ -35,6 +35,7 @@ class TaskIdTest {
         assertThatThrownBy(() -> TaskId.of("bad\\id")).isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> TaskId.of("TASK..1")).isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> TaskId.of("-leading-dash")).isInstanceOf(SecurityException.class);
-        assertThatThrownBy(() -> TaskId.of("T".repeat(65))).isInstanceOf(SecurityException.class);
+        String tooLong = "T".repeat(65);
+        assertThatThrownBy(() -> TaskId.of(tooLong)).isInstanceOf(SecurityException.class);
     }
 }

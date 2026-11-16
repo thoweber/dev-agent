@@ -125,14 +125,15 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         out.println("[dev-agent] Worker started for task " + taskId + " (PID " + currentProcess.pid() + ")");
 
         WorktreeState terminalState = taskExecutor.executeInWorktree(
-            repoRoot,
-            executionRoot,
-            runningState,
-            null,
-            instruction,
-            TargetDir.of(config.build().backend().targetDir()),
-            config.isolation().autoPruneOnComplete(),
-            err
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(repoRoot)
+                .executionRoot(executionRoot)
+                .initialState(runningState)
+                .instruction(instruction)
+                .targetDir(TargetDir.of(config.build().backend().targetDir()))
+                .autoPruneOnComplete(config.isolation().autoPruneOnComplete())
+                .err(err)
+                .build()
         );
 
         if (terminalState.status() == TaskStatus.COMPLETED) {

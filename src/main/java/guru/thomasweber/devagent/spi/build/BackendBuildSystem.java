@@ -13,8 +13,8 @@ import static java.util.Objects.nonNull;
  */
 public interface BackendBuildSystem {
 
-    Pattern SAFE_MODULE_PATH = Pattern.compile("^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$");
-    Pattern SAFE_TEST_PATTERN = Pattern.compile("^[A-Za-z0-9_$.#,*!+?/-]+$");
+    Pattern SAFE_MODULE_PATH = Pattern.compile("^[\\w.-][\\w./-]*$");
+    Pattern SAFE_TEST_PATTERN = Pattern.compile("^[\\w$.#,*!+?/-]+$");
 
     int priority();
 
@@ -47,6 +47,7 @@ public interface BackendBuildSystem {
         if (normalized.startsWith("-")
             || normalized.startsWith("/")
             || normalized.contains(":")
+            || normalized.contains("//")
             || normalized.contains("..")
             || !SAFE_MODULE_PATH.matcher(normalized).matches()) {
             throw new SecurityException("Jailbreak attempt: unsafe backend module path: " + modulePath);

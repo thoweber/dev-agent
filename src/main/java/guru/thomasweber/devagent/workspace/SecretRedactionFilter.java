@@ -15,12 +15,23 @@ public class SecretRedactionFilter {
 
     private static final String REDACTED_PLACEHOLDER = "***REDACTED_CREDENTIAL***";
 
-    private static final String KEY_PREFIX =
-        "(?i)(\\b[\"']?[A-Za-z0-9_-]{0,64}(?:pass(?:word|wd)?|secret|token|key|auth(?:orization)?|credential|jwt|dsn|pwd|connection_string)[\"']?\\s*[:=]\\s*)";
+    private static final String KEY_PREFIX_CREDENTIALS =
+        "(?i)(\\b[\"']?[\\w-]{0,64}(?:password|passwd|pass|pwd|secret|token|jwt|dsn)[\"']?\\s*[:=]\\s*)";
+    private static final String KEY_PREFIX_AUTH =
+        "(?i)(\\b[\"']?[\\w-]{0,64}(?:authorization|auth|credential|connection_string|key)[\"']?\\s*[:=]\\s*)";
 
-    private static final Pattern KEY_DOUBLE_QUOTED = Pattern.compile(KEY_PREFIX + "\"([^\"]*)\"");
-    private static final Pattern KEY_SINGLE_QUOTED = Pattern.compile(KEY_PREFIX + "'([^']*)'");
-    private static final Pattern KEY_UNQUOTED = Pattern.compile(KEY_PREFIX + "([^\\s\"',;]+)");
+    private static final List<Pattern> KEY_DOUBLE_QUOTED_PATTERNS = List.of(
+        Pattern.compile(KEY_PREFIX_CREDENTIALS + "\"([^\"]*)\""),
+        Pattern.compile(KEY_PREFIX_AUTH + "\"([^\"]*)\"")
+    );
+    private static final List<Pattern> KEY_SINGLE_QUOTED_PATTERNS = List.of(
+        Pattern.compile(KEY_PREFIX_CREDENTIALS + "'([^']*)'"),
+        Pattern.compile(KEY_PREFIX_AUTH + "'([^']*)'")
+    );
+    private static final List<Pattern> KEY_UNQUOTED_PATTERNS = List.of(
+        Pattern.compile(KEY_PREFIX_CREDENTIALS + "([^\\s\"',;]+)"),
+        Pattern.compile(KEY_PREFIX_AUTH + "([^\\s\"',;]+)")
+    );
     private static final Pattern URL_CREDENTIALS = Pattern.compile(
         "([a-zA-Z][a-zA-Z0-9+.-]*://)([^\\s/@:]+:[^\\s/@]+)(@)"
     );
@@ -50,9 +61,15 @@ public class SecretRedactionFilter {
         for (Pattern pattern : SECRET_PATTERNS) {
             result = pattern.matcher(result).replaceAll(REDACTED_PLACEHOLDER);
         }
-        result = KEY_DOUBLE_QUOTED.matcher(result).replaceAll("$1\"" + REDACTED_PLACEHOLDER + "\"");
-        result = KEY_SINGLE_QUOTED.matcher(result).replaceAll("$1'" + REDACTED_PLACEHOLDER + "'");
-        result = KEY_UNQUOTED.matcher(result).replaceAll("$1" + REDACTED_PLACEHOLDER);
+        for (Pattern pattern : KEY_DOUBLE_QUOTED_PATTERNS) {
+            result = pattern.matcher(result).replaceAll("$1\"" + REDACTED_PLACEHOLDER + "\"");
+        }
+        for (Pattern pattern : KEY_SINGLE_QUOTED_PATTERNS) {
+            result = pattern.matcher(result).replaceAll("$1'" + REDACTED_PLACEHOLDER + "'");
+        }
+        for (Pattern pattern : KEY_UNQUOTED_PATTERNS) {
+            result = pattern.matcher(result).replaceAll("$1" + REDACTED_PLACEHOLDER);
+        }
         return result;
     }
 }

@@ -114,7 +114,7 @@ class StatusCommandTest {
 
     @Test
     @DisplayName("Given active and stale state.json sockets - when status executed - then displays live telemetry and JSON payload without JDBC")
-    void testStatusReadsStateSocketsAndJson() throws IOException {
+    void testStatusReadsStateSocketsAndJson() {
         StateSocketService socketService = new StateSocketService();
         WorktreeState active = WorktreeStateMother.active("TASK-LIVE", ProcessHandle.current().pid());
         WorktreeState stale = WorktreeStateMother.crashed("TASK-STALE");
@@ -228,5 +228,25 @@ class StatusCommandTest {
         assertThat(jsonExit).isZero();
         StatusPayload fallback = new ObjectMapper().readValue(errJsonOut.toString(), StatusPayload.class);
         assertThat(fallback.message()).contains("Serialization error: mock \"quoted\"");
+    }
+
+    @Test
+    @DisplayName("Given symlinked .agents directory or non-md files - when status --all executed - then skips safely")
+    void testStatusSkipsSymlinkedAgentsDirAndNonMarkdownFiles() throws IOException {
+        Path externalDir = Files.createDirectories(tempDir.resolve("ext-agents"));
+        Path repoSym = Files.createDirectories(tempDir.resolve("repo-sym-agents"));
+        Files.createSymbolicLink(repoSym.resolve(".agents"), externalDir);
+
+        StatusCommand command = new StatusCommand();
+        CommandLine cmd = new CommandLine(command);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+        assertThat(cmd.execute("--dir=" + repoSym, "--all")).isZero();
+        assertThat(out.toString()).contains("No active background tasks detected.");
+
+        Path runsDir = Files.createDirectories(tempDir.resolve(".agents/runs"));
+        Files.createDirectories(runsDir.resolve("subdir.md"));
+        Files.writeString(runsDir.resolve("notes.txt"), "not markdown");
+        assertThat(cmd.execute("--dir=" + tempDir, "--all")).isZero();
     }
 }

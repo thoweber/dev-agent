@@ -12,6 +12,9 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -185,22 +188,21 @@ class LogsCommandTest {
         Path liveLog = socketService.resolveWorkerLogFile(tempDir, "TASK-LOG-LIVE");
         Files.writeString(liveLog, "[worker] Step 1\n");
 
-        Thread updater = Thread.ofVirtual().start(() -> {
-            try {
-                Thread.sleep(100L);
-                Files.writeString(liveLog, "[worker] Step 1\n[worker] Step 2\n");
-                socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-LOG-LIVE"));
-            } catch (Exception _) {
-                // ignore
-            }
-        });
-
         LogsCommand followCmd = new LogsCommand(socketService);
         CommandLine clFollow = new CommandLine(followCmd);
         StringWriter outFollow = new StringWriter();
         clFollow.setOut(new PrintWriter(outFollow));
-        assertThat(clFollow.execute("--dir=" + tempDir, "--follow", "TASK-LOG-LIVE")).isZero();
-        updater.join(3000L);
+        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
+            scheduler.schedule(() -> {
+                try {
+                    Files.writeString(liveLog, "[worker] Step 1\n[worker] Step 2\n");
+                    socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-LOG-LIVE"));
+                } catch (Exception _) {
+                    // ignore
+                }
+            }, 80L, TimeUnit.MILLISECONDS);
+            assertThat(clFollow.execute("--dir=" + tempDir, "--follow", "TASK-LOG-LIVE")).isZero();
+        }
 
         assertThat(outFollow.toString()).contains("[worker] Step 1", "[worker] Step 2");
     }
@@ -238,25 +240,20 @@ class LogsCommandTest {
         Path chunkLog = socketService.resolveWorkerLogFile(tempDir, "TASK-CHUNK");
         Files.writeString(chunkLog, largeBlock);
 
-        Thread truncator = Thread.ofVirtual().start(() -> {
-            try {
-                Thread.sleep(100L);
-                Files.writeString(chunkLog, "[worker] truncated tail\n");
-                socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-CHUNK"));
-            } catch (Exception _) {
-                // ignore
-            }
-        });
-
         LogsCommand chunkCmd = new LogsCommand(socketService);
         CommandLine clChunk = new CommandLine(chunkCmd);
         StringWriter chunkOut = new StringWriter();
         clChunk.setOut(new PrintWriter(chunkOut));
-        assertThat(clChunk.execute("--dir=" + tempDir, "--follow", "TASK-CHUNK")).isZero();
-        try {
-            truncator.join(3000L);
-        } catch (InterruptedException _) {
-            Thread.currentThread().interrupt();
+        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
+            scheduler.schedule(() -> {
+                try {
+                    Files.writeString(chunkLog, "[worker] truncated tail\n");
+                    socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-CHUNK"));
+                } catch (Exception _) {
+                    // ignore
+                }
+            }, 80L, TimeUnit.MILLISECONDS);
+            assertThat(clChunk.execute("--dir=" + tempDir, "--follow", "TASK-CHUNK")).isZero();
         }
         assertThat(chunkOut.toString()).contains("line-chunk-0123456789", "[worker] truncated tail");
     }
@@ -282,5 +279,42 @@ class LogsCommandTest {
             .contains("🚀", "***REDACTED_CREDENTIAL***")
             .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234")
             .doesNotContain("\uFFFD");
+    }
+
+    @Test
+    @DisplayName("Given partial line without trailing newline while active - when logs --follow runs - then flushes cleanly on completion and handles interrupts")
+    void testLogsFollowPartialLineAndInterruptHandling() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.active("TASK-PARTIAL", ProcessHandle.current().pid()));
+        Path partialLog = socketService.resolveWorkerLogFile(tempDir, "TASK-PARTIAL");
+        Files.writeString(partialLog, "partial-without-newline");
+
+        LogsCommand cmdObj = new LogsCommand(socketService);
+        CommandLine cmd = new CommandLine(cmdObj);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+
+        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
+            scheduler.schedule(() -> {
+                try {
+                    Files.writeString(partialLog, "partial-without-newline-finished\n");
+                    socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-PARTIAL"));
+                } catch (Exception _) {
+                    // ignore
+                }
+            }, 60L, TimeUnit.MILLISECONDS);
+            assertThat(cmd.execute("--dir=" + tempDir, "--follow", "TASK-PARTIAL")).isZero();
+        }
+        assertThat(out.toString()).contains("partial-without-newline");
+
+        // Interrupted before loop poll
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.active("TASK-INT", ProcessHandle.current().pid()));
+        Files.writeString(socketService.resolveWorkerLogFile(tempDir, "TASK-INT"), "first-line\n");
+        Thread.currentThread().interrupt();
+        try {
+            assertThat(new CommandLine(new LogsCommand(socketService)).execute("--dir=" + tempDir, "--follow", "TASK-INT")).isZero();
+        } finally {
+            Thread.interrupted();
+        }
     }
 }

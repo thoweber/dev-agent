@@ -15,9 +15,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import static java.util.Objects.nonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -275,6 +277,31 @@ class GitWorktreeServiceTest {
             .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.commitChanges(tempDir, "   "))
             .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(service.isGitRepository(null)).isFalse();
+        assertThat(service.isGitRepository(tempDir.resolve("missing"))).isFalse();
+        assertThat(service.listWorktreeTaskIds(tempDir.resolve("no-worktrees"))).isEmpty();
+        service.removeWorktree(tempDir, "TASK-NO-BRANCH", true, "   ");
+        service.removeWorktree(tempDir, "TASK-NULL-BRANCH", true, null);
+
+        // Failing stash apply in hydration + non-stash isolation path
+        when(mocked.execute(eq(List.of("git", "rev-parse", "HEAD")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success("deadbeef"));
+        when(mocked.execute(eq(List.of("git", "worktree", "prune")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
+        when(mocked.execute(eq(List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/feature/TASK-HYD-1-slug")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.failure(1, "", ""));
+        when(mocked.execute(argThat(cmd -> nonNull(cmd) && cmd.size() >= 3 && "add".equals(cmd.get(2))), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(""));
+        when(mocked.execute(eq(List.of("git", "status", "--porcelain")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success(" M Dirty.java\n"));
+        when(mocked.execute(eq(List.of("git", "stash", "create")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.success("stashsha123\n"));
+        when(mocked.execute(eq(List.of("git", "stash", "apply", "stashsha123")), any(Path.class), any(Duration.class)))
+            .thenReturn(ProcessResultMother.failure(1, "", "conflict"));
+
+        assertThatThrownBy(() -> service.allocateWorktree(tempDir, "TASK-HYD-1", "slug", null, "target-agent"))
+            .isInstanceOf(WorkspaceException.class);
     }
 
     private static void initGitRepo(SubprocessExecutor executor, Path dir) {

@@ -202,14 +202,15 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         boolean autoPruneOnComplete
     ) {
         WorktreeState terminalState = taskExecutor.executeInWorktree(
-            repoRoot,
-            allocation.worktreePath(),
-            initialState,
-            allocation,
-            instruction,
-            TargetDir.of(targetDir),
-            autoPruneOnComplete,
-            null
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(repoRoot)
+                .executionRoot(allocation.worktreePath())
+                .initialState(initialState)
+                .allocation(allocation)
+                .instruction(instruction)
+                .targetDir(TargetDir.of(targetDir))
+                .autoPruneOnComplete(autoPruneOnComplete)
+                .build()
         );
         out.println("[dev-agent] Task " + allocation.taskId() + " finished with status: " + terminalState.status());
         if (terminalState.status() == TaskStatus.COMPLETED) {

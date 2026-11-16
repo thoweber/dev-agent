@@ -115,7 +115,8 @@ class AbortCommandTest {
     void testAbortTerminatesLiveProcessAndPreservesBranchByDefault() throws IOException {
         StateSocketService socketService = new StateSocketService();
         Process sleeper = new ProcessBuilder("sleep", "30").start();
-        try {
+        StringWriter out = new StringWriter();
+        try (AutoCloseable _ = sleeper::destroyForcibly; PrintWriter outWriter = new PrintWriter(out)) {
             WorktreeState active = WorktreeStateMother.active("TASK-KILL-1", sleeper.pid())
                 .toBuilder()
                 .branch("feature/TASK-KILL-1-demo")
@@ -135,8 +136,7 @@ class AbortCommandTest {
                 new StateSyncService()
             );
             CommandLine cmd = new CommandLine(command);
-            StringWriter out = new StringWriter();
-            cmd.setOut(new PrintWriter(out));
+            cmd.setOut(outWriter);
 
             int exitCode = cmd.execute("--dir=" + tempDir, "TASK-KILL-1");
 
@@ -151,8 +151,8 @@ class AbortCommandTest {
                 .isEqualTo(TaskStatus.ABORTED);
             assertThat(Files.readString(tempDir.resolve(".agents/runs/TASK-KILL-1.md")))
                 .contains("ABORTED");
-        } finally {
-            sleeper.destroyForcibly();
+        } catch (Exception e) {
+            throw new IOException(e);
         }
     }
 

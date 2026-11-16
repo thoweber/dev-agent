@@ -10,7 +10,6 @@ import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.node.AbstractVisitor;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.Code;
-import org.commonmark.node.CustomBlock;
 import org.commonmark.node.CustomNode;
 import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.HardLineBreak;
@@ -164,11 +163,6 @@ public class MarkdownParserService {
         public void visit(HardLineBreak hardLineBreak) {
             buffer.append("\n");
             super.visit(hardLineBreak);
-        }
-
-        @Override
-        public void visit(CustomBlock customBlock) {
-            super.visit(customBlock);
         }
 
         @Override

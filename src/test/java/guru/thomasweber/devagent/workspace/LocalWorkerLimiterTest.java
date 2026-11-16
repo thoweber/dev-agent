@@ -9,7 +9,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -96,23 +95,26 @@ class LocalWorkerLimiterTest {
         LocalWorkerLimiter.PermitGate gate = limiter.openGateForWorkspace(tempDir);
         AtomicInteger active = new AtomicInteger(0);
         AtomicInteger maxObserved = new AtomicInteger(0);
+        CountDownLatch overlapLatch = new CountDownLatch(2);
 
         List<LocalWorkerLimiter.QueuedTask<String>> tasks = List.of(
             new LocalWorkerLimiter.QueuedTask<>(WorktreeStateMother.builder("B-1").build(), () -> {
                 maxObserved.accumulateAndGet(active.incrementAndGet(), Math::max);
-                Thread.sleep(50);
+                overlapLatch.countDown();
+                overlapLatch.await(200, TimeUnit.MILLISECONDS);
                 active.decrementAndGet();
                 return "res-1";
             }),
             new LocalWorkerLimiter.QueuedTask<>(WorktreeStateMother.builder("B-2").build(), () -> {
                 maxObserved.accumulateAndGet(active.incrementAndGet(), Math::max);
-                Thread.sleep(50);
+                overlapLatch.countDown();
+                overlapLatch.await(200, TimeUnit.MILLISECONDS);
                 active.decrementAndGet();
                 return "res-2";
             }),
             new LocalWorkerLimiter.QueuedTask<>(WorktreeStateMother.builder("B-3").build(), () -> {
                 maxObserved.accumulateAndGet(active.incrementAndGet(), Math::max);
-                Thread.sleep(50);
+                overlapLatch.countDown();
                 active.decrementAndGet();
                 return "res-3";
             })
@@ -126,12 +128,13 @@ class LocalWorkerLimiterTest {
 
     @Test
     @DisplayName("Given failing task inside executeWithPermit - when exception thrown - then releases permit cleanly")
-    void givenFailingTask_whenExecuteWithPermit_thenReleasesPermit() throws IOException {
+    void givenFailingTask_whenExecuteWithPermit_thenReleasesPermit() {
         LocalWorkerLimiter limiter = new LocalWorkerLimiter();
         LocalWorkerLimiter.PermitGate gate = limiter.openGate(0); // Clamped to minimum 1
         assertThat(gate.maxPermits()).isEqualTo(1);
 
-        assertThatThrownBy(() -> gate.executeWithPermit(tempDir, WorktreeStateMother.builder("TASK-ERR").build(), () -> {
+        WorktreeState errState = WorktreeStateMother.builder("TASK-ERR").build();
+        assertThatThrownBy(() -> gate.executeWithPermit(tempDir, errState, () -> {
             throw new IllegalStateException("boom");
         })).isInstanceOf(WorkspaceException.class);
 
@@ -146,5 +149,34 @@ class LocalWorkerLimiterTest {
         );
         assertThatThrownBy(() -> gate.executeBatch(tempDir, failingBatch))
             .isInstanceOf(WorkspaceException.class);
+
+        // Null state heartbeat skip branch + interrupted awaitQueuedPermit branch
+        assertThat(gate.executeWithPermit(null, null, () -> "ok-no-socket")).isEqualTo("ok-no-socket");
+
+        LocalWorkerLimiter.PermitGate singleGate = limiter.openGate(1);
+        CountDownLatch acquired = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = Thread.ofVirtual().start(() -> singleGate.executeWithPermit(null, null, () -> {
+            acquired.countDown();
+            release.await(3, TimeUnit.SECONDS);
+            return "held";
+        }));
+        try {
+            assertThat(acquired.await(3, TimeUnit.SECONDS)).isTrue();
+            Thread.currentThread().interrupt();
+            assertThatThrownBy(() -> singleGate.executeWithPermit(null, null, () -> "never"))
+                .isInstanceOf(WorkspaceException.class)
+                .hasMessageContaining("Interrupted");
+        } catch (InterruptedException _) {
+            Thread.currentThread().interrupt();
+        } finally {
+            Thread.interrupted();
+            release.countDown();
+            try {
+                holder.join(3000L);
+            } catch (InterruptedException _) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 }

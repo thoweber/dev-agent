@@ -195,8 +195,9 @@ class MarkdownParserServiceTest {
         MarkdownParserService.ParsedMarkdown parsed = parserService.parse(markdown);
         assertThat(parsed.metadata().keySet()).containsExactly("first_key", "second_key");
         String body = parsed.sections().getFirst().content();
-        assertThat(body).contains("`WorkspaceJailValidator`.".replace("`", ""));
-        assertThat(body).doesNotContain("WorkspaceJailValidator .");
-        assertThat(body).contains("Val1", "Val2", "int indented = 42;");
+        assertThat(body)
+            .contains("WorkspaceJailValidator.")
+            .doesNotContain("WorkspaceJailValidator .")
+            .contains("Val1", "Val2", "int indented = 42;");
     }
 }

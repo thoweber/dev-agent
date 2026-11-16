@@ -18,7 +18,8 @@ class WorkerProcessTest {
     void givenInvalidPids_whenConstructed_thenRejectsOrReturnsEmpty() {
         assertThatThrownBy(() -> WorkerProcess.of(0L))
             .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> WorkerProcess.of(-5L, Instant.now()))
+        Instant now = Instant.now();
+        assertThatThrownBy(() -> WorkerProcess.of(-5L, now))
             .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(WorkerProcess.from(null, null)).isEmpty();

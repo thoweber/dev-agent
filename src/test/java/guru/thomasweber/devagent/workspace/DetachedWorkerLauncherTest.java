@@ -1,11 +1,13 @@
 package guru.thomasweber.devagent.workspace;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,8 +24,9 @@ class DetachedWorkerLauncherTest {
         DetachedWorkerLauncher launcher = new DetachedWorkerLauncher();
         List<String> command = launcher.buildWorkerCommand(tempDir, "TASK-701", "Add metrics");
 
-        assertThat(command).isNotEmpty();
-        assertThat(command).contains("--dir", tempDir.toString(), "worker", "--task-id", "TASK-701", "--instruction=Add metrics");
+        assertThat(command)
+            .isNotEmpty()
+            .contains("--dir", tempDir.toString(), "worker", "--task-id", "TASK-701", "--instruction=Add metrics");
     }
 
     @Test
@@ -37,11 +40,9 @@ class DetachedWorkerLauncherTest {
         long pid = launcher.launchCommand(shortLived, tempDir, logFile);
 
         assertThat(pid).isPositive();
-        long deadline = System.currentTimeMillis() + 3000L;
-        while (System.currentTimeMillis() < deadline && (!Files.exists(logFile) || Files.readString(logFile).isBlank())) {
-            Thread.sleep(25);
-        }
-        assertThat(Files.readString(logFile)).contains("detached-worker-hello");
+        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+            assertThat(Files.readString(logFile)).contains("detached-worker-hello")
+        );
     }
 
     @Test
@@ -55,7 +56,8 @@ class DetachedWorkerLauncherTest {
             .isInstanceOf(SecurityException.class);
 
         Path logFile = tempDir.resolve("worker.log");
-        assertThatThrownBy(() -> launcher.launchCommand(List.of("/nonexistent/binary/xyz-999"), tempDir, logFile))
+        List<String> missingCommand = List.of("/nonexistent/binary/xyz-999");
+        assertThatThrownBy(() -> launcher.launchCommand(missingCommand, tempDir, logFile))
             .isInstanceOf(WorkspaceException.class);
         assertThatThrownBy(() -> launcher.launchWorker(null, "TASK-1", "story"))
             .isInstanceOf(IllegalArgumentException.class);
@@ -80,6 +82,14 @@ class DetachedWorkerLauncherTest {
             System.setProperty("sun.java.command", "");
             List<String> fallbackMainCmd = launcher.buildWorkerCommand(tempDir, "TASK-704", "inst");
             assertThat(fallbackMainCmd).contains("-cp", "/opt/a:/opt/b", "io.quarkus.runner.GeneratedMain");
+
+            System.setProperty("sun.java.command", "quarkus-run.jar --verbose");
+            List<String> jarMainFallback = launcher.buildWorkerCommand(tempDir, "TASK-705", "inst");
+            assertThat(jarMainFallback).contains("-cp", "/opt/a:/opt/b", "io.quarkus.runner.GeneratedMain");
+
+            System.setProperty("sun.java.command", "guru.thomasweber.devagent.Main arg1");
+            List<String> mainClassCmd = launcher.buildWorkerCommand(tempDir, "TASK-706", "inst");
+            assertThat(mainClassCmd).contains("-cp", "/opt/a:/opt/b", "guru.thomasweber.devagent.Main");
         } finally {
             if (originalClasspath != null) {
                 System.setProperty("java.class.path", originalClasspath);
@@ -115,10 +125,9 @@ class DetachedWorkerLauncherTest {
         long pid = spyLauncher.launchWorker(tempDir, "TASK-CWD", "cwd test");
         assertThat(pid).isPositive();
         Path logFile = new StateSocketService().resolveWorkerLogFile(tempDir, "TASK-CWD");
-        long deadline = System.currentTimeMillis() + 3000L;
-        while (System.currentTimeMillis() < deadline && (!Files.exists(logFile) || Files.readString(logFile).isBlank())) {
-            Thread.sleep(25);
-        }
-        assertThat(Files.readString(logFile).trim()).isEqualTo(worktreeDir.toRealPath().toString());
+        Path expectedWorktree = worktreeDir.toRealPath();
+        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+            assertThat(Files.readString(logFile).trim()).isEqualTo(expectedWorktree.toString())
+        );
     }
 }

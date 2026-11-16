@@ -66,47 +66,22 @@ public class LoopCircuitBreaker {
         TaskBreakerState taskState = taskStates.computeIfAbsent(effectiveTaskId, _ -> new TaskBreakerState());
         String sig = signatureExtractor.extractSignature(rawOutput);
 
-        boolean needsRollback = false;
+        LockDecision decision;
         synchronized (taskState) {
-            if (taskState.state == CircuitBreakerState.TRIPPED) {
+            decision = evaluateFailureUnderLock(taskState, sig);
+        }
+        switch (decision) {
+            case TRIP_AND_HALT -> {
                 return LoopAction.TRIP_AND_HALT;
             }
-
-            if (taskState.state == CircuitBreakerState.PIVOT_ACTIVE) {
-                taskState.postPivotFailures++;
-                if (taskState.postPivotFailures >= MAX_POST_PIVOT_FAILURES) {
-                    taskState.state = CircuitBreakerState.TRIPPED;
-                    return LoopAction.TRIP_AND_HALT;
-                }
-                appendHistory(taskState, sig);
+            case INJECT_WARNING -> {
+                return LoopAction.INJECT_WARNING;
+            }
+            case CONTINUE -> {
                 return LoopAction.CONTINUE;
             }
-
-            if (!taskState.history.isEmpty()) {
-                String lastSig = taskState.history.getLast();
-                if (Objects.equals(lastSig, sig)) {
-                    taskState.consecutiveRepeatCount++;
-                    if (taskState.consecutiveRepeatCount < 2) {
-                        taskState.state = CircuitBreakerState.WARNING;
-                        appendHistory(taskState, sig);
-                        return LoopAction.INJECT_WARNING;
-                    }
-                    appendHistory(taskState, sig);
-                    needsRollback = true;
-                } else {
-                    taskState.consecutiveRepeatCount = 0;
-                }
-
-                if (!needsRollback && isOscillatingSequence(taskState.history, sig)) {
-                    appendHistory(taskState, sig);
-                    needsRollback = true;
-                }
-            }
-
-            if (!needsRollback) {
-                taskState.state = CircuitBreakerState.NORMAL;
-                appendHistory(taskState, sig);
-                return LoopAction.CONTINUE;
+            case NEEDS_ROLLBACK -> {
+                // Proceed outside the synchronized monitor before invoking subprocess rollback
             }
         }
 
@@ -121,6 +96,49 @@ public class LoopCircuitBreaker {
             taskState.state = CircuitBreakerState.TRIPPED;
             return LoopAction.TRIP_AND_HALT;
         }
+    }
+
+    private enum LockDecision {
+        CONTINUE,
+        INJECT_WARNING,
+        NEEDS_ROLLBACK,
+        TRIP_AND_HALT
+    }
+
+    private LockDecision evaluateFailureUnderLock(TaskBreakerState taskState, String sig) {
+        if (taskState.state == CircuitBreakerState.TRIPPED) {
+            return LockDecision.TRIP_AND_HALT;
+        }
+        if (taskState.state == CircuitBreakerState.PIVOT_ACTIVE) {
+            return evaluatePostPivotUnderLock(taskState, sig);
+        }
+        if (!taskState.history.isEmpty() && Objects.equals(taskState.history.getLast(), sig)) {
+            taskState.consecutiveRepeatCount++;
+            appendHistory(taskState, sig);
+            if (taskState.consecutiveRepeatCount < 2) {
+                taskState.state = CircuitBreakerState.WARNING;
+                return LockDecision.INJECT_WARNING;
+            }
+            return LockDecision.NEEDS_ROLLBACK;
+        }
+        taskState.consecutiveRepeatCount = 0;
+        boolean oscillating = !taskState.history.isEmpty() && isOscillatingSequence(taskState.history, sig);
+        appendHistory(taskState, sig);
+        if (oscillating) {
+            return LockDecision.NEEDS_ROLLBACK;
+        }
+        taskState.state = CircuitBreakerState.NORMAL;
+        return LockDecision.CONTINUE;
+    }
+
+    private LockDecision evaluatePostPivotUnderLock(TaskBreakerState taskState, String sig) {
+        taskState.postPivotFailures++;
+        if (taskState.postPivotFailures >= MAX_POST_PIVOT_FAILURES) {
+            taskState.state = CircuitBreakerState.TRIPPED;
+            return LockDecision.TRIP_AND_HALT;
+        }
+        appendHistory(taskState, sig);
+        return LockDecision.CONTINUE;
     }
 
     private boolean isOscillatingSequence(List<String> history, String currentSig) {

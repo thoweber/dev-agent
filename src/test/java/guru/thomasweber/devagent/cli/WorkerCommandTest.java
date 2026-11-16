@@ -86,7 +86,7 @@ class WorkerCommandTest {
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
         when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
         when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
-        when(buildService.compile(eq(worktreeDir), eq(null), eq("target-agent")))
+        when(buildService.compile(worktreeDir, null, "target-agent"))
             .thenReturn(SanitizedLog.builder().exitCode(1).errorCount(1).build());
 
         WorkerCommand command = new WorkerCommand(
@@ -128,7 +128,8 @@ class WorkerCommandTest {
         BackendBuildService buildService = mock(BackendBuildService.class);
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
         when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(buildService.compile(eq(worktreeDir), eq(null), eq("target-custom")))
+        when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
+        when(buildService.compile(worktreeDir, null, "target-custom"))
             .thenReturn(SanitizedLog.builder().exitCode(0).errorCount(0).build());
 
         WorkerCommand command = new WorkerCommand(
@@ -163,7 +164,7 @@ class WorkerCommandTest {
         BackendBuildService buildService = mock(BackendBuildService.class);
         TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
         when(buildService.hasApplicableBuildSystem(worktreeDir)).thenReturn(true);
-        when(buildService.compile(eq(worktreeDir), eq(null), eq("target-agent")))
+        when(buildService.compile(worktreeDir, null, "target-agent"))
             .thenThrow(new IllegalStateException("build crash"));
 
         WorkerCommand command = new WorkerCommand(

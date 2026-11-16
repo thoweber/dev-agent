@@ -6,8 +6,10 @@ import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import lombok.Builder;
 
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -61,7 +63,9 @@ public class WorktreeTaskExecutor {
         );
     }
 
-    public WorktreeState executeInWorktree(
+    @RegisterForReflection
+    @Builder(toBuilder = true)
+    public record ExecutionRequest(
         Path repoRoot,
         Path executionRoot,
         WorktreeState initialState,
@@ -71,7 +75,17 @@ public class WorktreeTaskExecutor {
         boolean autoPruneOnComplete,
         PrintWriter err
     ) {
-        TargetDir effectiveTarget = Objects.requireNonNullElse(targetDir, TargetDir.DEFAULT);
+    }
+
+    public WorktreeState executeInWorktree(ExecutionRequest request) {
+        Path repoRoot = request.repoRoot();
+        Path executionRoot = request.executionRoot();
+        WorktreeState initialState = request.initialState();
+        WorktreeAllocation allocation = request.allocation();
+        String instruction = request.instruction();
+        TargetDir effectiveTarget = Objects.requireNonNullElse(request.targetDir(), TargetDir.DEFAULT);
+        boolean autoPruneOnComplete = request.autoPruneOnComplete();
+        PrintWriter err = request.err();
         WorktreeState terminalState;
         try {
             terminalState = WorktreeExecutionContext.runInWorktree(

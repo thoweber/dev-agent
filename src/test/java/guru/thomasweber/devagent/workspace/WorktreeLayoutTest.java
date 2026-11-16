@@ -61,10 +61,12 @@ class WorktreeLayoutTest {
         Path repoWithSymGit = Files.createDirectories(tempDir.resolve("repo-sym"));
         Files.createSymbolicLink(repoWithSymGit.resolve(".git"), external);
         WorktreeLayout layout = WorktreeLayout.forRoot(repoWithSymGit);
+        TaskId symTask = TaskId.of("TASK-SYM");
 
-        assertThatThrownBy(() -> layout.stateFile(TaskId.of("TASK-SYM")))
+        assertThatThrownBy(() -> layout.stateFile(symTask))
             .isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> WorktreeLayout.forRoot(null))
             .isInstanceOf(IllegalArgumentException.class);
+        assertThat(WorktreeLayout.detectWorktreeRoot(Path.of("/.git/dev-agent-worktrees/TASK-ROOT/src"))).isPresent();
     }
 }

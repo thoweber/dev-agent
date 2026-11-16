@@ -26,6 +26,7 @@ import static java.util.Objects.nonNull;
 public class GitWorktreeService {
 
     private static final Duration GIT_TIMEOUT = Duration.ofSeconds(30);
+    private static final String SUBCOMMAND_WORKTREE = "worktree";
 
     private final SubprocessExecutor subprocessExecutor;
     private final GitExcludeManager gitExcludeManager;
@@ -156,13 +157,13 @@ public class GitWorktreeService {
 
         if (Files.exists(worktreeDir)) {
             subprocessExecutor.execute(
-                List.of("git", "worktree", "remove", "--force", worktreeDir.toString()),
+                List.of("git", SUBCOMMAND_WORKTREE, "remove", "--force", worktreeDir.toString()),
                 canonicalRoot,
                 GIT_TIMEOUT
             );
             deleteDirectoryQuietly(worktreeDir);
         }
-        subprocessExecutor.execute(List.of("git", "worktree", "prune"), canonicalRoot, GIT_TIMEOUT);
+        subprocessExecutor.execute(List.of("git", SUBCOMMAND_WORKTREE, "prune"), canonicalRoot, GIT_TIMEOUT);
 
         if (deleteBranch && nonNull(branchName) && !branchName.isBlank()) {
             String safeBranch = BranchName.of(branchName).value();
@@ -208,7 +209,7 @@ public class GitWorktreeService {
             throw new WorkspaceException("Failed to create worktrees parent directory", e);
         }
 
-        subprocessExecutor.execute(List.of("git", "worktree", "prune"), repoRoot, GIT_TIMEOUT);
+        subprocessExecutor.execute(List.of("git", SUBCOMMAND_WORKTREE, "prune"), repoRoot, GIT_TIMEOUT);
 
         ProcessResult branchCheck = subprocessExecutor.execute(
             List.of("git", "show-ref", "--verify", "--quiet", "refs/heads/" + branchName),
@@ -218,9 +219,9 @@ public class GitWorktreeService {
 
         List<String> cmd;
         if (branchCheck.isSuccess()) {
-            cmd = List.of("git", "worktree", "add", worktreeDir.toString(), branchName);
+            cmd = List.of("git", SUBCOMMAND_WORKTREE, "add", worktreeDir.toString(), branchName);
         } else {
-            cmd = List.of("git", "worktree", "add", "-b", branchName, worktreeDir.toString(), baseCommit);
+            cmd = List.of("git", SUBCOMMAND_WORKTREE, "add", "-b", branchName, worktreeDir.toString(), baseCommit);
         }
 
         ProcessResult addResult = subprocessExecutor.execute(cmd, repoRoot, GIT_TIMEOUT);

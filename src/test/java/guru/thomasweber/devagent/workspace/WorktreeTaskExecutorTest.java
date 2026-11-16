@@ -79,14 +79,15 @@ class WorktreeTaskExecutorTest {
             .build();
 
         WorktreeState result = executor.executeInWorktree(
-            tempDir,
-            worktreeDir,
-            initial,
-            allocation,
-            "  ",
-            TargetDir.of("target-custom"),
-            true,
-            null
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(tempDir)
+                .executionRoot(worktreeDir)
+                .initialState(initial)
+                .allocation(allocation)
+                .instruction("  ")
+                .targetDir(TargetDir.of("target-custom"))
+                .autoPruneOnComplete(true)
+                .build()
         );
 
         assertThat(result.status()).isEqualTo(TaskStatus.COMPLETED);
@@ -143,27 +144,28 @@ class WorktreeTaskExecutorTest {
         PrintWriter err = new PrintWriter(errWriter);
 
         WorktreeState failedCompile = executor.executeInWorktree(
-            tempDir,
-            worktreeDir,
-            initial,
-            null,
-            "Build check",
-            null,
-            true,
-            err
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(tempDir)
+                .executionRoot(worktreeDir)
+                .initialState(initial)
+                .instruction("Build check")
+                .autoPruneOnComplete(true)
+                .err(err)
+                .build()
         );
         assertThat(failedCompile.status()).isEqualTo(TaskStatus.FAILED);
         assertThat(failedCompile.lastMessage()).contains("exit code 1");
 
         WorktreeState failedException = executor.executeInWorktree(
-            tempDir,
-            worktreeDir,
-            initial,
-            null,
-            "Build check",
-            TargetDir.DEFAULT,
-            true,
-            err
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(tempDir)
+                .executionRoot(worktreeDir)
+                .initialState(initial)
+                .instruction("Build check")
+                .targetDir(TargetDir.DEFAULT)
+                .autoPruneOnComplete(true)
+                .err(err)
+                .build()
         );
         assertThat(failedException.status()).isEqualTo(TaskStatus.FAILED);
         assertThat(failedException.lastMessage()).contains("compile exploded");
@@ -209,26 +211,26 @@ class WorktreeTaskExecutorTest {
             .build();
 
         WorktreeState failedByErrors = executor.executeInWorktree(
-            tempDir,
-            worktreeDir,
-            initial,
-            null,
-            "Custom SPI compile",
-            TargetDir.DEFAULT,
-            false,
-            null
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(tempDir)
+                .executionRoot(worktreeDir)
+                .initialState(initial)
+                .instruction("Custom SPI compile")
+                .targetDir(TargetDir.DEFAULT)
+                .autoPruneOnComplete(false)
+                .build()
         );
         assertThat(failedByErrors.status()).isEqualTo(TaskStatus.FAILED);
 
         WorktreeState nullLogPasses = executor.executeInWorktree(
-            tempDir,
-            worktreeDir,
-            initial,
-            null,
-            "Custom SPI null log",
-            TargetDir.DEFAULT,
-            false,
-            null
+            WorktreeTaskExecutor.ExecutionRequest.builder()
+                .repoRoot(tempDir)
+                .executionRoot(worktreeDir)
+                .initialState(initial)
+                .instruction("Custom SPI null log")
+                .targetDir(TargetDir.DEFAULT)
+                .autoPruneOnComplete(false)
+                .build()
         );
         assertThat(nullLogPasses.status()).isEqualTo(TaskStatus.COMPLETED);
     }
