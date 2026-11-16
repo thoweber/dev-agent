@@ -2,12 +2,12 @@
 
 ## Goal Description
 
-Implement **Cycle 4 (Async Isolation & Detached Workers)** as specified in [ARCHITECTURE.md](ARCHITECTURE.md), transforming the current CLI stubs (`feature`, `status`, `logs`, `abort`, `resume`) and workspace services into a concurrent, non-blocking execution engine.
+Implement **Cycle 4 (Async Isolation & Detached Workers)** as specified in [ARCHITECTURE.md](../../ARCHITECTURE.md), transforming the current CLI stubs (`feature`, `status`, `logs`, `abort`, `resume`) and workspace services into a concurrent, non-blocking execution engine.
 
 Specifically, Cycle 4 delivers:
 1. **Dedicated Git Worktrees (`GitWorktreeService`)**: Isolated checkouts under `.git/dev-agent-worktrees/<task-id>/` on dedicated branches (`feature/{task-id}-{story-slug}`), automatic working-tree hydration (`git stash create` + `git stash apply`), checkpoint/rollback, worktree pruning, and `WorktreeExecutionContext` separation between primary `repoRoot` and active `executionRoot`.
 2. **Maven Build Target Slicing (`target-agent/`) & `.git/info/exclude` Governance**: Automatic `.git/info/exclude` injection for the configured `target-dir` (`target-agent/`), `.cache-agent/`, `state.json`, and `worker.log`, plus config-driven `target-dir` and active worktree-root propagation across `BackendBuildService` and `WorkspaceContextResolver`.
-3. **Non-Locking `state.json` Heartbeats & Telemetry CLI (`StateSocketService`)**: Atomic JSON heartbeat sockets inside each worktree read directly with 0 ms lock overhead by `status` and `logs` without opening JDBC H2 connections ([ADR-006](docs/adr/ADR-006-non-locking-state-sockets.md)). Includes live/follow log tailing (`logs -f`) and clean process/worktree termination (`abort`).
+3. **Non-Locking `state.json` Heartbeats & Telemetry CLI (`StateSocketService`)**: Atomic JSON heartbeat sockets inside each worktree read directly with 0 ms lock overhead by `status` and `logs` without opening JDBC H2 connections ([ADR-006](../../docs/adr/ADR-006-non-locking-state-sockets.md)). Includes live/follow log tailing (`logs -f`) and clean process/worktree termination (`abort`).
 4. **In-Invocation Worker Concurrency Gate (`LocalWorkerLimiter`) & Detached Workers**: Per-CLI-invocation concurrency gate capped at `maxConcurrentWorkers = 2` (configurable via `agent.max-concurrent-workers` in `.agents/dev-agent.yaml`), queuing excess concurrent tasks in `TaskStatus.QUEUED` until a slot opens within that invocation, plus detached OS worker execution (`DetachedWorkerLauncher` + hidden `WorkerCommand`).
 5. **Desktop Alerts (`DesktopAlertService`)**: Cross-platform, zero-JNI, native-image-safe OS notifications (`notify-send`, `osascript`, PowerShell toast) routed through `SubprocessExecutor` with secret redaction and headless/CI graceful no-op.
 
@@ -37,7 +37,7 @@ flowchart TD
 ## User Review Required
 
 > [!IMPORTANT]
-> **Strict Zero-JDBC Boundary for `status` and `logs` ([ADR-006](docs/adr/ADR-006-non-locking-state-sockets.md)):**
+> **Strict Zero-JDBC Boundary for `status` and `logs` ([ADR-006](../../docs/adr/ADR-006-non-locking-state-sockets.md)):**
 > `StatusCommand` and `LogsCommand` must inject `StateSocketService` (pure filesystem JSON + Jackson) and **must never** inject `TaskPersistenceService`, `StateSyncService`, or any JPA/Panache bean. An ArchUnit rule (`areAssignableTo`) will enforce this invariant. For `status --all`, historical runs will be read from `.agents/runs/*.md` journals via `MarkdownParserService` so even `--all` remains 100% lock-free. *(Note: Quarkus `quarkus.hibernate-orm.schema-management.strategy=update` in `application.properties` remains active for `TaskPersistenceService`-using commands; Cycle 6 native cold-boot hardening will evaluate lazy datasource initialization.)*
 
 > [!IMPORTANT]
@@ -62,7 +62,7 @@ flowchart TD
 
 Define immutable, reflection-registered domain models for `state.json` sockets, status JSON output, and worktree allocations, add `TaskStatus.QUEUED`, expose `max-concurrent-workers` and `notifications` config in `.agents/dev-agent.yaml`, and enforce ADR-006 at the ArchUnit level.
 
-#### [MODIFY] [TaskStatus.java](src/main/java/guru/thomasweber/devagent/model/TaskStatus.java)
+#### [MODIFY] [TaskStatus.java](../../src/main/java/guru/thomasweber/devagent/model/TaskStatus.java)
 Add `QUEUED` as a non-terminal lifecycle state (before `PLANNING`):
 ```java
 @RegisterForReflection
@@ -126,7 +126,7 @@ Immutable record (`@RegisterForReflection`, `@Builder(toBuilder = true)`) return
 Immutable record (`@RegisterForReflection`) for `dev-agent status --json` so Jackson serialization works cleanly in GraalVM Mandrel native builds:
 - Fields: `List<WorktreeState> activeTasks`, `String message` (compact constructor ensures `activeTasks` defaults to `List.of()` when null).
 
-#### [MODIFY] [DevAgentConfig.java](src/main/java/guru/thomasweber/devagent/config/DevAgentConfig.java)
+#### [MODIFY] [DevAgentConfig.java](../../src/main/java/guru/thomasweber/devagent/config/DevAgentConfig.java)
 Add `maxConcurrentWorkers()` at root (`agent.max-concurrent-workers`, default `2`) and `NotificationsConfig` (`agent.notifications`), ensuring every method has `@WithDefault` so empty `.agents/dev-agent.yaml` loading never fails:
 ```java
 @WithDefault("2")
@@ -150,10 +150,10 @@ interface NotificationsConfig {
 }
 ```
 
-#### [MODIFY] [InitCommand.java](src/main/java/guru/thomasweber/devagent/cli/InitCommand.java)
+#### [MODIFY] [InitCommand.java](../../src/main/java/guru/thomasweber/devagent/cli/InitCommand.java)
 Include `max-concurrent-workers: 2` in the generated `.agents/dev-agent.yaml` template under `agent:` so users can discover and adjust the concurrency limit directly in `dev-agent.yaml`.
 
-#### [MODIFY] [AgentArchitectureTest.java](src/test/java/guru/thomasweber/devagent/AgentArchitectureTest.java)
+#### [MODIFY] [AgentArchitectureTest.java](../../src/test/java/guru/thomasweber/devagent/AgentArchitectureTest.java)
 Add an ArchUnit invariant guaranteeing ADR-006 using valid ArchUnit `areAssignableTo` syntax:
 ```java
 @ArchTest
@@ -176,7 +176,7 @@ public static final ArchRule statusAndLogsCommandsMustNotAccessPersistenceOrJpa 
 Implement isolated Git worktree provisioning, ephemeral stash hydration, `.git/info/exclude` automation, `ScopedValue`-backed active worktree binding, and worktree-aware Maven build slicing (`target-agent/`).
 
 #### [NEW] `src/main/java/guru/thomasweber/devagent/workspace/WorkspaceException.java`
-Strongly-typed domain exception (per [02-coding-standards.md](.agents/rules/02-coding-standards.md)) for Git worktree, exclude-file, and detached launcher failures (`WorkspaceException(String message)` and `WorkspaceException(String message, Throwable cause)`).
+Strongly-typed domain exception (per [02-coding-standards.md](../../.agents/rules/02-coding-standards.md)) for Git worktree, exclude-file, and detached launcher failures (`WorkspaceException(String message)` and `WorkspaceException(String message, Throwable cause)`).
 
 #### [NEW] `src/main/java/guru/thomasweber/devagent/workspace/WorktreeExecutionContext.java`
 Java 25 `ScopedValue`-backed execution context isolating the **active execution root** (worktree path) from the **primary repository root**:
@@ -229,14 +229,14 @@ Validates against symlinks (`Files.isSymbolicLink`) on `.git`, `.git/info`, and 
 - **`removeWorktree(Path repoRoot, String taskId, boolean deleteBranch, String branchName)`**: executes `git worktree remove --force <worktreePath>`, `git worktree prune`, cleans residual directory if needed, and deletes `<branchName>` via `git branch -D` only when `deleteBranch == true`.
 - **`listWorktreeTaskIds(Path repoRoot)`**: scans `.git/dev-agent-worktrees/` safely.
 
-#### [MODIFY] [WorkspaceContextResolver.java](src/main/java/guru/thomasweber/devagent/workspace/WorkspaceContextResolver.java)
+#### [MODIFY] [WorkspaceContextResolver.java](../../src/main/java/guru/thomasweber/devagent/workspace/WorkspaceContextResolver.java)
 - Update `resolveRepoRoot()` so if `workingDir` lies inside `.git/dev-agent-worktrees/<task-id>/` (where `.git` is a regular file rather than a directory), traversal continues upward to the primary repository root (where `.git` is a directory) so `.agents/runs/` and `.git/dev-agent-worktrees/` never nest inside a worktree.
 - Add `resolveExecutionRoot()` returning `WorktreeExecutionContext.currentWorktreeRoot().orElseGet(this::resolveRepoRoot)`.
 - Add `resolveAgentCacheDir()` returning `resolveExecutionRoot().resolve(".cache-agent")`.
 - Add `resolveWorktreesRoot()` returning `resolveRepoRoot().resolve(".git").resolve("dev-agent-worktrees")`.
 - Update `getJailValidator()` to anchor `WorkspaceJailValidator` on `resolveExecutionRoot()` so write tools operate safely inside the active worktree when bound.
 
-#### [MODIFY] [BackendBuildService.java](src/main/java/guru/thomasweber/devagent/workspace/BackendBuildService.java)
+#### [MODIFY] [BackendBuildService.java](../../src/main/java/guru/thomasweber/devagent/workspace/BackendBuildService.java)
 - Inject `DevAgentConfigLoader` and `GitExcludeManager` (keeping backward-compatible constructor overload for existing tests).
 - Resolve `effectiveRoot` via `contextResolver.resolveExecutionRoot()` in `compile(String)` and `test(String, String)` so builds inside `WorktreeExecutionContext` automatically target the isolated worktree.
 - Resolve `target-dir` from `.agents/dev-agent.yaml` via `DevAgentConfigLoader` (defaulting to `target-agent`).
@@ -259,7 +259,7 @@ Provide zero-JDBC atomic `state.json` reads/writes and decouple socket telemetry
 - `readAllStates(Path repoRoot)` -> `List<WorktreeState>` sorted by `updatedAt` descending (0 ms filesystem read across `.git/dev-agent-worktrees/*/state.json`).
 - `isProcessAlive(WorktreeState state)` -> checks `state.pid() != null && ProcessHandle.of(state.pid()).isPresent()`.
 
-#### [MODIFY] [StateSyncService.java](src/main/java/guru/thomasweber/devagent/workspace/StateSyncService.java)
+#### [MODIFY] [StateSyncService.java](../../src/main/java/guru/thomasweber/devagent/workspace/StateSyncService.java)
 Inject optional `StateSocketService` (preserving existing constructors for unit tests). When `projectToMarkdown(TaskRun)` runs and a worktree directory exists for `taskRun.taskId()`, mirror the transition into `state.json` via `StateSocketService.writeHeartbeat(...)` so H2 phase transitions and `state.json` stay aligned.
 
 ---
@@ -327,10 +327,10 @@ sequenceDiagram
 - Options: `--task-id`, `--instruction`.
 - Binds `WorktreeExecutionContext.runInWorktree(worktreePath, ...)` so builds/jail checks run inside the allocated worktree directory, updates `state.json` heartbeats (`PLANNING` -> `VERIFYING` -> `COMPLETED`/`FAILED`), executes `BackendBuildService` compilation/verification when an applicable build system exists, persists major lifecycle transitions via `StateSyncService` / `TaskPersistenceService`, and emits `DesktopAlertService` notification on terminal state.
 
-#### [MODIFY] [DevAgentCommand.java](src/main/java/guru/thomasweber/devagent/DevAgentCommand.java)
+#### [MODIFY] [DevAgentCommand.java](../../src/main/java/guru/thomasweber/devagent/DevAgentCommand.java)
 Register `WorkerCommand.class` in `@Command(subcommands = { ... })` (hidden from `--help` output).
 
-#### [MODIFY] [FeatureCommand.java](src/main/java/guru/thomasweber/devagent/cli/FeatureCommand.java)
+#### [MODIFY] [FeatureCommand.java](../../src/main/java/guru/thomasweber/devagent/cli/FeatureCommand.java)
 Implement `Callable<Integer>` with `@Inject` constructor + no-arg fallback constructor:
 - Preserves existing output banner (`[dev-agent] Initiating full-stack TDD execution: <instruction>`) and blank-instruction warning.
 - Loads `DevAgentConfig` from `.agents/dev-agent.yaml` via `DevAgentConfigLoader` (`isolation.useWorktrees()`, `maxConcurrentWorkers()`, `build.backend().targetDir()`).
@@ -340,10 +340,10 @@ Implement `Callable<Integer>` with `@Inject` constructor + no-arg fallback const
   - If `--detach`: spawns `WorkerCommand` via `DetachedWorkerLauncher`, writes `pid` to `state.json` and `TaskRun`, and prints task ID, branch, worktree path, and PID.
   - If foreground: binds `WorktreeExecutionContext.runInWorktree(...)`, emits `state.json` heartbeats, runs `BackendBuildService` verification if a build system is present, and notifies via `DesktopAlertService` on completion.
 
-#### [MODIFY] [ResumeCommand.java](src/main/java/guru/thomasweber/devagent/cli/ResumeCommand.java)
+#### [MODIFY] [ResumeCommand.java](../../src/main/java/guru/thomasweber/devagent/cli/ResumeCommand.java)
 Wire `DetachedWorkerLauncher` (with `--detach` option or foreground resume inside `WorktreeExecutionContext`) so confirmed/explicit `resume <taskId>` re-attaches the worker to the existing worktree and updates `pid` in both `state.json` and `TaskRun` (preserving existing test contracts when launcher/worktree is mocked or non-detached).
 
-#### [MODIFY] [StatusCommand.java](src/main/java/guru/thomasweber/devagent/cli/StatusCommand.java)
+#### [MODIFY] [StatusCommand.java](../../src/main/java/guru/thomasweber/devagent/cli/StatusCommand.java)
 Inject `StateSocketService` and `MarkdownParserService` (zero JDBC!):
 - Preserves `[dev-agent] Checking active task sockets...` and `[dev-agent] No active background tasks detected.` (and exact JSON `{"activeTasks":[],"message":"No active background tasks detected."}`) when no active tasks exist.
 - Reads active `state.json` sockets via `StateSocketService.readAllStates(workspaceRoot)`.
@@ -351,14 +351,14 @@ Inject `StateSocketService` and `MarkdownParserService` (zero JDBC!):
 - With `--all`: also parses `.agents/runs/*.md` historical journals for tasks no longer in `.git/dev-agent-worktrees/`.
 - With `--json`: serializes `StatusPayload` via Jackson `ObjectMapper` when tasks exist.
 
-#### [MODIFY] [LogsCommand.java](src/main/java/guru/thomasweber/devagent/cli/LogsCommand.java)
+#### [MODIFY] [LogsCommand.java](../../src/main/java/guru/thomasweber/devagent/cli/LogsCommand.java)
 Inject `StateSocketService` (zero JDBC!):
 - Preserves `[dev-agent] Streaming logs for task: <taskId>` header and missing-taskId prompt.
 - Validates `taskId` against path traversal.
 - Reads `.git/dev-agent-worktrees/<taskId>/worker.log` (falling back to `.agents/runs/<taskId>.md` if worktree was already pruned).
 - With `-f` / `--follow`: tails newly appended lines using `SeekableByteChannel` / file offset polling (200 ms interval) until `StateSocketService.readState` reports a terminal status and PID has exited (or thread interrupted).
 
-#### [MODIFY] [AbortCommand.java](src/main/java/guru/thomasweber/devagent/cli/AbortCommand.java)
+#### [MODIFY] [AbortCommand.java](../../src/main/java/guru/thomasweber/devagent/cli/AbortCommand.java)
 Inject `StateSocketService`, `GitWorktreeService`, and `TaskPersistenceService`, adding `@Option(names = {"--delete-branch"}, description = "Delete the task feature branch after unlinking the worktree") boolean deleteBranch`:
 - Preserves `[dev-agent] Aborting background task: <taskId>` output and missing-taskId prompt.
 - Validates `taskId` against traversal.
@@ -387,7 +387,7 @@ Inject `StateSocketService`, `GitWorktreeService`, and `TaskPersistenceService`,
 
 ### Component 6: Canonical Test Fixtures & Multi-Tier Verification
 
-All tests adhere strictly to [05-testing-standards.md](.agents/rules/05-testing-standards.md): zero reflection (`setAccessible`), zero synthetic production seams, AssertJ assertions exclusively, `@DisplayName("Given ... - when ... - then ...")`, and 1-to-1 `*Test.java` coverage.
+All tests adhere strictly to [05-testing-standards.md](../../.agents/rules/05-testing-standards.md): zero reflection (`setAccessible`), zero synthetic production seams, AssertJ assertions exclusively, `@DisplayName("Given ... - when ... - then ...")`, and 1-to-1 `*Test.java` coverage.
 
 #### [NEW] `src/test/java/guru/thomasweber/devagent/testutil/WorktreeStateMother.java`
 Object Mother factory supplying canonical `WorktreeState` fixtures (`active(...)`, `queued(...)`, `crashed(...)`, `completed(...)`) so tests avoid repetitive inline builder plumbing, paired with `WorktreeStateMotherTest.java`.
@@ -415,60 +415,60 @@ Synchronize repository documentation, ADRs, and the autonomous agent harness (`A
 
 #### Part A: Repository & Architecture Documentation
 
-##### [MODIFY] [ARCHITECTURE.md](ARCHITECTURE.md)
+##### [MODIFY] [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - **Section 6 (`Concurrency & Host Resource Guardrails (LocalWorkerLimiter)`)**: Update `LocalWorkerLimiter` specification to reflect the **per-CLI-invocation** `PermitGate` (`Semaphore`) configured via `agent.max-concurrent-workers` in `.agents/dev-agent.yaml` (default `2`), and document `WorktreeExecutionContext` (`ScopedValue` primary vs. active worktree root separation).
 - **Section 7 (`Complete Schema Specification (.agents/dev-agent.yaml)`)**: Document root `agent.max-concurrent-workers: 2` and `agent.notifications` (`desktop-enabled`, `on-success`, `on-failure`).
 - **Section 10 (`ArchUnit Architecture Governance Rules`)**: Add `statusAndLogsCommandsMustNotAccessPersistenceOrJpa` (`areAssignableTo(StatusCommand.class)` / `LogsCommand.class`) enforcing ADR-006.
 - **Section 10 (`Evolutionary Walking Skeleton Roadmap`)**: Mark **Cycle 4 (`Async Isolation & Detached Workers`)** validation status as `DONE` upon completion and full gate verification.
 
-##### [MODIFY] [README.md](README.md)
+##### [MODIFY] [README.md](../../README.md)
 - **CLI Command Reference**: Document `dev-agent feature [--detach]`, `dev-agent status [--all] [--json]`, `dev-agent logs [-f|--follow] <task-id>`, and `dev-agent abort [--delete-branch] <task-id>`.
 - **Documentation & ADR Register**: Update the ADR range summary from `ADR-001 through ADR-010` to `ADR-001 through ADR-013`.
 
-##### [MODIFY] [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
+##### [MODIFY] [PROJECT_CONTEXT.md](../../PROJECT_CONTEXT.md)
 - **Section 2 (`Package Layout & Boundary Rules`)**:
   - Under `cli/`: document `AbortCommand` and hidden `WorkerCommand`.
   - Under `workspace/`: document `GitWorktreeService`, `GitExcludeManager`, `WorktreeExecutionContext`, `StateSocketService`, `LocalWorkerLimiter`, `DetachedWorkerLauncher`, `DesktopAlertService`, and `WorkspaceException`.
   - Under `model/`: document `WorktreeState`, `WorktreeAllocation`, and `StatusPayload`.
 - **Critical Boundary Constraints**: Document the ADR-006 ArchUnit zero-JDBC rule (`StatusCommand` and `LogsCommand`) and `WorktreeExecutionContext` primary-vs-worktree root isolation.
 
-##### [MODIFY] [ADR-004-git-worktree-isolation.md](docs/adr/ADR-004-git-worktree-isolation.md) & [ADR-006-non-locking-state-sockets.md](docs/adr/ADR-006-non-locking-state-sockets.md)
+##### [MODIFY] [ADR-004-git-worktree-isolation.md](../../docs/adr/ADR-004-git-worktree-isolation.md) & [ADR-006-non-locking-state-sockets.md](../../docs/adr/ADR-006-non-locking-state-sockets.md)
 - **ADR-004**: Document automated `.git/info/exclude` injection (`target-agent/`, `.cache-agent/`, `state.json`, `worker.log`), branch preservation by default on `abort` (`--delete-branch` opt-in), and `WorktreeExecutionContext` (`ScopedValue`) isolation.
 - **ADR-006**: Document the `WorktreeState` JSON contract in `state.json`, `worker.log` tailing (`logs -f`), and compile/ArchUnit enforcement (`statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
 
 #### Part B: Autonomous Agent Harness (`AGENTS.md` & `.agents/`)
 
-##### [MODIFY] [AGENTS.md](AGENTS.md)
+##### [MODIFY] [AGENTS.md](../../AGENTS.md)
 - **Section 4 (`Autonomous Agent Directives`)**:
   - Update **Directive 3 (`Workspace Concurrency & Physical Isolation`)**: document `WorktreeExecutionContext` separation between primary `repoRoot` and active worktree `executionRoot`, `.git/info/exclude` governance (`target-agent/`, `.cache-agent/`, `state.json`, `worker.log`), and branch preservation on `abort` unless `--delete-branch` is passed.
   - Update **Directive 6 (`Non-Locking Ephemeral State Sockets`)**: document `StateSocketService` zero-JDBC isolation enforced via ArchUnit and `worker.log` streaming.
   - Clarify **Directive 14 (`Subprocess Lifetime & Timeout Governance`)**: note that `DetachedWorkerLauncher` intentionally spawns out-of-process detached background workers (via hidden `WorkerCommand`) that outlive the parent CLI process and redirect output to `worker.log`, while all synchronous external commands (`git`, `mvnw`, `notify-send`, `osascript`, PowerShell) MUST execute through `SubprocessExecutor`.
   - Document the per-invocation `LocalWorkerLimiter` (`agent.max-concurrent-workers`, default `2`).
 
-##### [MODIFY] [01-architecture-invariants.md](.agents/rules/01-architecture-invariants.md)
+##### [MODIFY] [01-architecture-invariants.md](../../.agents/rules/01-architecture-invariants.md)
 - **Section 4 (`Worktree Concurrency & Build Slicing`)**: add `state.json` and `worker.log` to `.git/info/exclude` invariants and document `WorktreeExecutionContext` primary-vs-worktree root separation.
 - **Section 6 (`Non-Locking Ephemeral State Sockets`)**: add ArchUnit enforcement (`StatusCommand` and `LogsCommand` must not depend on `entity`, `jakarta.persistence`, or `javax.sql`).
 
-##### [MODIFY] [03-quality-and-slas.md](.agents/rules/03-quality-and-slas.md)
+##### [MODIFY] [03-quality-and-slas.md](../../.agents/rules/03-quality-and-slas.md)
 - **Section 1 (`Boot Timing & Resource Guardrails`)**: clarify that `maxConcurrentWorkers = 2` (configured via `agent.max-concurrent-workers` in `.agents/dev-agent.yaml`) bounds concurrent worker execution **per CLI invocation** via `LocalWorkerLimiter.PermitGate`, with waiting tasks entering `TaskStatus.QUEUED`. Note that desktop notifications (`DesktopAlertService`) use zero-AWT/zero-JNI `SubprocessExecutor` commands and silently no-op in headless/CI environments.
 
-##### [MODIFY] [05-testing-standards.md](.agents/rules/05-testing-standards.md)
+##### [MODIFY] [05-testing-standards.md](../../.agents/rules/05-testing-standards.md)
 - **Section 2.4 (`Canonical Test Data Builders & Object Mother Pattern`)**: register `WorktreeStateMother` alongside `TaskRunMother`, `StepAuditMother`, and `WorktreeTestFixture`.
 - **Section 3 (`Subsystem Boundary Testing Standards`)**: add a **Worktree Isolation, State Sockets & Desktop Alerts** subsection covering atomic `state.json` writes, `WorktreeExecutionContext` scope cleanup, real `@TempDir` `git init` hydration/exclusion tests, and headless-safe `DesktopAlertService` assertions.
 
-##### [MODIFY] [backend-engineer/SKILL.md](.agents/skills/backend-engineer/SKILL.md)
+##### [MODIFY] [backend-engineer/SKILL.md](../../.agents/skills/backend-engineer/SKILL.md)
 - **Section 1 (`Picocli & CLI Conventions`)**: document hidden `WorkerCommand` (`hidden = true`), `AbortCommand` (`--delete-branch`), and zero-JDBC constraints on `StatusCommand`/`LogsCommand`.
 - **Section 2 (`Workspace & Sandboxing Invariants`)**: document `GitWorktreeService`, `GitExcludeManager`, `WorktreeExecutionContext`, `StateSocketService`, `LocalWorkerLimiter`, `DetachedWorkerLauncher`, and `DesktopAlertService`.
 - **Section 4 (`Test Engineering & Fixture Invariants`)**: add `WorktreeStateMother`.
 
-##### [MODIFY] [lead-architect/SKILL.md](.agents/skills/lead-architect/SKILL.md)
+##### [MODIFY] [lead-architect/SKILL.md](../../.agents/skills/lead-architect/SKILL.md)
 - **Section 2 (`ArchUnit Native Compliance Rules`)**: add Rule 6 (`Zero-JDBC Telemetry`: `StatusCommand` and `LogsCommand` must not depend on `entity`, `jakarta.persistence`, or `javax.sql`).
 
-##### [MODIFY] [test-engineer/SKILL.md](.agents/skills/test-engineer/SKILL.md) & [test-manager/SKILL.md](.agents/skills/test-manager/SKILL.md)
+##### [MODIFY] [test-engineer/SKILL.md](../../.agents/skills/test-engineer/SKILL.md) & [test-manager/SKILL.md](../../.agents/skills/test-manager/SKILL.md)
 - Update `test-engineer/SKILL.md` Section 2 (`ArchUnit Native Compliance Rules`) with `statusAndLogsCommandsMustNotAccessPersistenceOrJpa` and Section 5 with `WorktreeStateMother`.
 - Update `test-manager/SKILL.md` Section 3 (`Canonical Fixtures`) with `WorktreeStateMother`.
 
-##### [MODIFY] [mermaid-templates.md](.agents/templates/mermaid-templates.md) & Verify [config.json](.agents/config.json)
+##### [MODIFY] [mermaid-templates.md](../../.agents/templates/mermaid-templates.md) & Verify [config.json](../../.agents/config.json)
 - Update the `sequenceDiagram` template in `mermaid-templates.md` to include `LocalWorkerLimiter`, `StateSocketService`, and `DesktopAlertService` in the worktree lifecycle flow.
 - Confirm `.agents/config.json` `qualityGoalsAndSLA.maxConcurrentWorkers` (`2`) remains aligned with `DevAgentConfig` defaults.
 

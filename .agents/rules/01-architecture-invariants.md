@@ -12,9 +12,9 @@
 * **Framework Conventions (Axis 2):** Quarkus and Angular are decoupled into isolated SPI providers (`BackendFrameworkConvention`, `FrontendFrameworkConvention`). New frameworks (Spring Boot, React, Vue) implement isolated SPI beans.
 
 ## 3. Workspace Sandboxing & Path Jail (ADR-003)
-* Every file path handled by tools must pass through `WorkspaceJailValidator.validateAndResolve(untrustedPath)`.
+* Every agent/LLM file access tool must pass through `WorkspaceJailValidator.validateAndResolve(untrustedPath)` and consume `RepoPath` for writes.
 * Paths must resolve strictly within `activeWorkingRoot.toRealPath()`. Any directory traversal attempt outside this root throws a `SecurityException`.
-* Direct write access to `.git/**`, `~/.config/dev-agent/**`, or the CLI binary itself is strictly forbidden.
+* Agent tools may never write to `.git/**`, `~/.config/dev-agent/**`, or the CLI binary. Trusted engine lifecycle services (`GitWorktreeService`, `GitExcludeManager`, `StateSocketService`, `DetachedWorkerLauncher`, `LogsCommand`) are strictly bounded to `.git/info/exclude` and `.git/dev-agent-worktrees/<task-id>/{state.json,state.json.tmp,worker.log}` after strict `taskId` allowlist (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, no `..`) and full-ancestor symlink validation.
 
 ## 4. Worktree Concurrency & Build Slicing (ADR-004)
 * Isolated and background task execution runs inside dedicated Git worktrees allocated at `.git/dev-agent-worktrees/<task-id>/` and bound via `WorktreeExecutionContext` (`ScopedValue<Path>`).
@@ -29,14 +29,14 @@
 * Native C++ ONNX runtime JNI bindings are strictly forbidden in core search pipelines to ensure flawless GraalVM native binary portability.
 
 ## 6. Non-Locking Ephemeral State Sockets (ADR-006)
-* Active tasks write atomic `state.json` heartbeats inside their isolated worktree via `StateSocketService` (temp file + `ATOMIC_MOVE` + `SecretRedactionFilter`), mirrored by `StateSyncService`.
-* Foreground CLI read commands (`StatusCommand`, `LogsCommand`) read `state.json` (and `worker.log` / `.agents/runs/`) directly without accessing `..entity..`, `jakarta.persistence..`, or `javax.sql..` (enforced by ArchUnit `statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
-* Detached runs spawn hidden `worker` OS subprocesses via `DetachedWorkerLauncher` with stdin closed immediately and stdout/stderr redirected to `worker.log`. `DesktopAlertService` sends non-blocking OS notifications using secret-redacted text.
+* Active tasks write atomic `state.json` heartbeats inside their isolated worktree via `StateSocketService` (temp file + `ATOMIC_MOVE` + `SecretRedactionFilter` on `lastMessage` and `branch`, plus `pidStartedAt` PID-reuse verification), mirrored by `StateSyncService`.
+* Foreground CLI read commands (`StatusCommand`, `LogsCommand`) read `state.json` (and `worker.log` in secret-redacted 8 KB chunks / `.agents/runs/`) without static dependencies on `..entity..`, `jakarta.persistence..`, or `javax.sql..` (`AgentArchitectureTest.statusAndLogsCommandsMustNotAccessPersistenceOrJpa`). Full suppression of Quarkus eager datasource bootstrap for read commands is tracked in Cycle 6 (`ADR-001`, `ADR-006`).
+* Detached runs spawn hidden `worker` OS subprocesses inside the worktree via `DetachedWorkerLauncher` with stdin closed immediately and stdout/stderr redirected to `worker.log`. `DesktopAlertService` sends non-blocking OS alerts using secret-redacted text.
 
 ## 7. Context-Aware Secret Redaction Quarantine (ADR-008)
 * Secret scrubbing is strictly quarantined:
   * **Never applied** to raw Java/TypeScript source code or test files.
-  * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity` (via strongly-typed `SanitizedOutput`), HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
+  * **Strictly applied** to tool outputs before writing to H2 `StepAuditEntity` (`SanitizedOutput`), `state.json` sockets (`lastMessage`, `branch`), `LogsCommand` streamed output, `DesktopAlertService` payloads, HTTP Authorization headers sent to remote APIs, and exported Markdown runbook metadata.
 
 ## 8. Panache Entity Encapsulation & Domain Decoupling (ADR-012)
 * Panache entities (`@Entity`) are strictly quarantined within `guru.thomasweber.devagent.entity` and must never be accessed by classes outside this package.

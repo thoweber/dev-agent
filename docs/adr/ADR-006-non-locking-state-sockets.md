@@ -18,7 +18,7 @@ Active background tasks emit atomic `state.json` heartbeats within their dedicat
 * Requires maintaining state synchronization between filesystem heartbeats and relational storage.
 
 ## Non-Negotiable Invariants
-* CLI `status` and `logs` commands must read `state.json` (and `worker.log` / `.agents/runs/` fallbacks) without opening JDBC database connections (`AgentArchitectureTest.statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
-* `StateSocketService` writes `state.json` atomically using temp files + `StandardCopyOption.REPLACE_EXISTING` / `ATOMIC_MOVE` with `SecretRedactionFilter` applied to `lastMessage`, `worktreePath`, and `branch`.
-* `DetachedWorkerLauncher` spawns hidden `worker` subprocesses with stdin closed immediately (no child hangs) and stdout/stderr redirected to `.git/dev-agent-worktrees/<task-id>/worker.log`.
-* `DesktopAlertService` sends non-blocking desktop alerts (`notify-send`, `osascript`, or PowerShell Toast) using secret-redacted messages, respecting `agent.notifications.*` config toggles.
+* CLI `status` and `logs` commands are statically decoupled from `..entity..`, `jakarta.persistence..`, and `javax.sql..` (`AgentArchitectureTest.statusAndLogsCommandsMustNotAccessPersistenceOrJpa`), reading `state.json` (and `worker.log` / `.agents/runs/` fallbacks) directly. Note: full suppression of Quarkus eager Hibernate/H2 bootstrap during read-only CLI invocations is tracked alongside native H2 hardening in Cycle 6 (`ADR-001`).
+* `StateSocketService` writes `state.json` atomically using temp files + `StandardCopyOption.ATOMIC_MOVE` / `REPLACE_EXISTING` with `SecretRedactionFilter` applied to both `lastMessage` and `branch`, plus `pidStartedAt` kernel start timestamps to guard against OS PID reuse in `isProcessAlive` and `AbortCommand`.
+* `DetachedWorkerLauncher` spawns hidden `worker` subprocesses inside the worktree directory with stdin closed immediately, `--instruction=<val>` flag safety, and stdout/stderr redirected to `.git/dev-agent-worktrees/<task-id>/worker.log`. `LogsCommand` streams chunks using bounded 8 KB reads filtered through `SecretRedactionFilter`.
+* `DesktopAlertService` sends non-blocking OS alerts (`notify-send`, `osascript`, or Windows PowerShell Toast) using secret-redacted XML/script-escaped messages, respecting `agent.notifications.desktop-enabled` / `on-success` / `on-failure` toggles.

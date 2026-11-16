@@ -414,14 +414,14 @@ Main Workspace (Branch: main)             Isolated Worktree (Branch: feature/US-
 ### Non-Locking Ephemeral State Sockets (`state.json` & `StateSocketService`)
 To avoid H2 MVStore database lock crashes (`Database may be already in use`) when running status queries while a background worker is compiling:
 1. Active background workers write an atomic JSON heartbeat file into their worktree:
-   `.git/dev-agent-worktrees/<task-id>/state.json` (written via temp file + `ATOMIC_MOVE` with secret redaction via `SecretRedactionFilter`) containing `taskId`, `projectId`, `status`, `phase`, `tokens`, `cost`, `pid`, `branch`, `worktreePath`, `startedAt`, `updatedAt`, and `lastMessage`.
-2. CLI read commands (`dev-agent status`, `dev-agent logs`) read these JSON heartbeats and `worker.log` / `.agents/runs/<task-id>.md` directly without opening JDBC database connections (enforced by ArchUnit `statusAndLogsCommandsMustNotAccessPersistenceOrJpa`).
-3. Central H2 database writes (`~/.config/dev-agent/data/agent.mv.db`) occur strictly at major phase boundaries and task completion, fully namespaced by `project_id`, with `StateSyncService` mirroring phase transitions into `state.json`.
-4. Detached execution spawns OS background processes via `DetachedWorkerLauncher` invoking the hidden `worker` subcommand, closing stdin immediately and redirecting stdout/stderr to `.git/dev-agent-worktrees/<task-id>/worker.log`.
-5. Native desktop notifications (`DesktopAlertService`) alert developers asynchronously on terminal task outcomes (`notify-send`, `osascript`, or PowerShell Toast) with secret-scrubbed summaries.
+   `.git/dev-agent-worktrees/<task-id>/state.json` (written via temp file + `ATOMIC_MOVE` with `SecretRedactionFilter` on `lastMessage` and `branch`) containing `taskId`, `projectId`, `status`, `phase`, `tokens`, `cost`, `pid`, `pidStartedAt`, `branch`, `worktreePath`, `startedAt`, `updatedAt`, and `lastMessage`.
+2. CLI read commands (`dev-agent status`, `dev-agent logs`) read these JSON heartbeats and `worker.log` (streamed in bounded 8 KB redacted chunks) / `.agents/runs/<task-id>.md` directly without accessing persistence packages (`AgentArchitectureTest.statusAndLogsCommandsMustNotAccessPersistenceOrJpa`); full runtime suppression of Quarkus eager Hibernate/H2 initialization is deferred to Cycle 6 native hardening (`ADR-001`, `ADR-006`).
+3. Central H2 database writes (`~/.config/dev-agent/data/agent.mv.db`) occur strictly at major phase boundaries and task completion, fully namespaced by `project_id`, with `StateSyncService` mirroring phase transitions into `state.json` and `WorkerCommand` preserving prior `baseCommit`/`checkpointStash` fields on update.
+4. Detached execution spawns OS background processes via `DetachedWorkerLauncher` inside the task's isolated worktree invoking the hidden `worker` subcommand, closing stdin immediately and redirecting stdout/stderr to `.git/dev-agent-worktrees/<task-id>/worker.log`.
+5. Native desktop notifications (`DesktopAlertService`) alert developers asynchronously on terminal task outcomes (`notify-send`, `osascript`, or Windows PowerShell Toast) with secret-scrubbed summaries.
 
 ### Concurrency & Host Resource Guardrails (`LocalWorkerLimiter`)
-* **Single-Invocation Worker Gate**: Enforces a per-CLI-invocation in-memory `Semaphore` (`LocalWorkerLimiter.PermitGate`) bounded by `agent.max-concurrent-workers` in `.agents/dev-agent.yaml` (default **2**). Overflowing tasks within that invocation write `TaskStatus.QUEUED` to `state.json` until a permit opens.
+* **Single-Invocation Worker Gate**: Enforces a per-CLI-invocation in-memory `Semaphore` (`LocalWorkerLimiter.PermitGate`, primarily `executeBatch`) bounded by `agent.max-concurrent-workers` in `.agents/dev-agent.yaml` (default **2**). Overflowing tasks within that invocation write `TaskStatus.QUEUED` to `state.json` until a permit opens; independent shell CLI invocations remain separate OS processes.
 * **Surefire Heap Slicing**: Inner Maven test forks are bounded with `-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1`, preventing workstation memory exhaustion.
 
 ### Subprocess Lifetime & Timeout Governance (`SubprocessExecutor` & `BoundedOverflowBuffer`)
@@ -593,7 +593,7 @@ agent:
 
   # 10. Desktop Notifications
   notifications:
-    enabled: true
+    desktop-enabled: true
     on-success: true
     on-failure: true
 ```
@@ -761,7 +761,7 @@ Following systematic reviews across Cycle 1 and Cycle 2, all 10 high-priority ar
 | **Cycle 1** | **Standalone Maven Walking Skeleton** | Standalone repo, Maven build SPI (`MavenBuildSystem`, `MavenOutputParser`, `BackendBuildTool`), workspace auto-detection, canonical path jail, secret scrubber, transactional Git rollback. | **DONE** |
 | **Cycle 2** | **Multi-Tenant State & Memory Hardening** | Central H2 database (`~/.config/dev-agent/`), deterministic `ProjectId` isolation, Markdown projection sync, 3-tier memory store, context-aware secret scrubbing. | **DONE** |
 | **Cycle 3** | **Pure-Java Lexical RAG & Caching** | Dynamic ADR discovery, pure-Java BM25 search, Caffeine gatekeeper cache (`@CacheResult`), normalized error loop circuit breaker. | **DONE** |
-| **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, Maven build target slicing (`target-agent/`), non-locking `state.json` heartbeats, single-invocation worker concurrency gate (default 2), detached `worker`, `abort`/`status`/`logs`, desktop alerts. | **DONE** |
+| **Cycle 4** | **Async Isolation & Detached Workers** | Dedicated Git worktrees, Maven build target slicing (`target-agent/`), non-locking `state.json` heartbeats, single-invocation worker concurrency gate (default 2), detached `worker`, `abort`/`status`/`logs`, desktop alerts (`FeatureCommand`/`WorkerCommand` cognitive loop wiring deferred cleanly). | **DONE** |
 | **Cycle 5** | **Remote Quality Gates & Automated Review** | Draft PR lifecycle, remote Maven CI self-healing, SonarCloud auto-patcher, CodeRabbit triage state machine. | Week 5 |
 | **Cycle 6** | **Native Hardening, CLI Packaging & v1.0 Release** | Sub-50ms GraalVM Mandrel Ahead-of-Time native binary, financial budget stops ($2.00 limit), global CLI installation (`~/.local/bin/dev-agent`). | Week 6 |
 | *Future* | *Frontend Subsystem (Optional)* | `NpmBuildSystem`, `FrontendBuildTool`, `AngularConvention`, OpenAPI $\rightarrow$ TypeScript generator, headless testing (`ChromeHeadless`), Storybook review. | Backlog |

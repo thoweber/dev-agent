@@ -26,6 +26,7 @@ When an autonomous agent runs extensive full-stack TDD cycles in the background,
 * Background workers must never modify the primary workspace `user.dir` or write to root `node_modules` during active runs.
 * Symlinks linking the isolated worktree to root `node_modules` are strictly forbidden.
 * Active worktree execution roots must bind via `WorktreeExecutionContext` (`ScopedValue<Path>`) while `resolveRepoRoot()` continues returning the primary Git root (detecting worktree `.git` pointer files).
-* `GitExcludeManager` must register configured build slice directories (e.g. `target-agent/`) inside `.git/info/exclude` rather than mutating tracked `.gitignore`.
-* `dev-agent abort` must preserve `feature/{task-id}-...` branches by default unless `--delete-branch` is specified.
-* `LocalWorkerLimiter` enforces per-CLI-invocation worker concurrency via `agent.max-concurrent-workers` (default `2`), placing overflowing tasks into `TaskStatus.QUEUED`.
+* `GitExcludeManager` must register configured build slice directories (e.g. `target-agent/`) inside `.git/info/exclude` rather than mutating tracked `.gitignore`, rejecting symlinks across `.git`, `gitdir`, `commondir`, `.git/info`, and `exclude`.
+* `GitWorktreeService.resetToBase` must preserve configured build slice directories (`targetDir`), `.cache-agent`, `state.json`, and `worker.log` during `git clean -fd`.
+* `dev-agent abort` and `isolation.auto-prune-on-complete` must preserve `feature/{task-id}-...` branches by default unless `--delete-branch` is explicitly specified.
+* `LocalWorkerLimiter` enforces worker concurrency **within a single CLI invocation** (`PermitGate.executeBatch(...)`, configured by `agent.max-concurrent-workers`, default `2`), placing overflowing tasks into `TaskStatus.QUEUED`. Separate CLI shell invocations do not share an OS-wide cross-process queue.

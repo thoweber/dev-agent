@@ -21,6 +21,7 @@ File write sinks must strictly consume `RepoPath`, making un-jailed or symlinked
 * Requires resolving canonical paths for all file operations.
 
 ## Non-Negotiable Invariants
-* Every file access tool must call `WorkspaceJailValidator.validateAndResolve()` or `validateForWrite()`.
-* File write operations must strictly consume `RepoPath`.
-* Symbolic links within repository paths are strictly forbidden and immediately rejected.
+* Every LLM/agent file access tool must call `WorkspaceJailValidator.validateAndResolve()` or `validateForWrite()`.
+* Agent file write operations must strictly consume `RepoPath`, blocking writes to `.git/**`, `~/.config/dev-agent/**`, or symbolic links.
+* Trusted internal engine lifecycle services (`GitWorktreeService`, `GitExcludeManager`, `StateSocketService`, `DetachedWorkerLauncher`, `LogsCommand`) are the sole bounded exception permitted to touch `.git/info/exclude` or `.git/dev-agent-worktrees/<task-id>/{state.json,state.json.tmp,worker.log}`, and MUST enforce strict `taskId` allowlist validation (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, no `..`) plus full-ancestor symlink rejection via `StateSocketService.validateWorktreePathSymlinks(...)`.
+* Symbolic links within repository or worktree metadata paths (`gitdir`, `commondir`, `.git`, `.git/info/exclude`, `.agents/runs/*.md`) are strictly forbidden and immediately rejected with `SecurityException`.
