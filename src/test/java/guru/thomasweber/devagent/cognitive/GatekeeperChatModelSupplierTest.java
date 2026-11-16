@@ -44,6 +44,9 @@ class GatekeeperChatModelSupplierTest {
         ChatResponse response = testFallback.doChat(request);
         assertThat(response).isNotNull();
         assertThat(response.aiMessage().text()).contains("\"approved\":true");
+
+        ChatModel devFallback = GatekeeperChatModelSupplier.createFallbackChatModel(LaunchMode.DEVELOPMENT);
+        assertThat(devFallback.doChat(request).aiMessage().text()).contains("\"approved\":false");
     }
 
     @Test

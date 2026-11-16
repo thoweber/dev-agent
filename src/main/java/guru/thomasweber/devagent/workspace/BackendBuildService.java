@@ -71,10 +71,11 @@ public class BackendBuildService {
     public SanitizedLog compile(Path projectRoot, String modulePath, String targetDir) {
         Path effectiveRoot = Objects.requireNonNullElseGet(projectRoot, this::resolveActiveRoot);
         String effectiveTarget = TargetDir.of(targetDir).value();
+        String safeModule = BackendBuildSystem.normalizeModulePath(effectiveRoot, modulePath).orElse(null);
         ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
-        List<String> command = buildSystem.buildCompileCommand(effectiveRoot, modulePath, effectiveTarget);
+        List<String> command = buildSystem.buildCompileCommand(effectiveRoot, safeModule, effectiveTarget);
 
         return executeAndSanitize(buildSystem, command, effectiveRoot);
     }
@@ -102,10 +103,12 @@ public class BackendBuildService {
     public SanitizedLog test(Path projectRoot, String modulePath, String testPattern, String targetDir) {
         Path effectiveRoot = Objects.requireNonNullElseGet(projectRoot, this::resolveActiveRoot);
         String effectiveTarget = TargetDir.of(targetDir).value();
+        String safeModule = BackendBuildSystem.normalizeModulePath(effectiveRoot, modulePath).orElse(null);
+        String safePattern = BackendBuildSystem.normalizeTestPattern(testPattern).orElse(null);
         ensureExcludes(effectiveRoot, effectiveTarget);
 
         BackendBuildSystem buildSystem = resolveBuildSystem(effectiveRoot);
-        List<String> command = buildSystem.buildTestCommand(effectiveRoot, modulePath, testPattern, effectiveTarget);
+        List<String> command = buildSystem.buildTestCommand(effectiveRoot, safeModule, safePattern, effectiveTarget);
 
         return executeAndSanitize(buildSystem, command, effectiveRoot);
     }

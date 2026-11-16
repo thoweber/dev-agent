@@ -116,6 +116,33 @@ class SecretRedactionFilterTest {
         assertThat(filter.scrub(anthropicKey))
             .doesNotContain("sk-ant-api03-abcdef1234567890_ghijklmnop-1234567890")
             .contains("***REDACTED_CREDENTIAL***");
+
+        String urlCreds = "git clone https://oauth2:mySecretPass99@github.com/org/repo.git";
+        assertThat(filter.scrub(urlCreds))
+            .doesNotContain("mySecretPass99")
+            .contains("https://***REDACTED_CREDENTIAL***@github.com/org/repo.git");
+
+        String base64Bearer = "Authorization: Bearer abc+def/1234567890==";
+        assertThat(filter.scrub(base64Bearer))
+            .doesNotContain("abc+def/1234567890==")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String encryptedPem = """
+            -----BEGIN PKCS8 PRIVATE KEY-----
+            Proc-Type: 4,ENCRYPTED
+            DEK-Info: AES-128-CBC,123
+            ABCD+EF==
+            -----END PKCS8 PRIVATE KEY-----
+            """;
+        assertThat(filter.scrub(encryptedPem))
+            .doesNotContain("ABCD+EF==")
+            .contains("***REDACTED_CREDENTIAL***");
+
+        String extraKeys = "dsn=\"postgres://u:p@h/db\" jwt='eyJhbGci' pwd=hidden";
+        assertThat(filter.scrub(extraKeys))
+            .doesNotContain("postgres://u:p@h/db")
+            .doesNotContain("eyJhbGci")
+            .doesNotContain("hidden");
     }
 
     @Test

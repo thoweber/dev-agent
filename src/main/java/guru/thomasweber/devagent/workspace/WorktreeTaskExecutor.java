@@ -31,6 +31,7 @@ public class WorktreeTaskExecutor {
     private final DesktopAlertService alertService;
     private final TaskPersistenceService persistenceService;
     private final GitWorktreeService worktreeService;
+    private final SecretRedactionFilter secretFilter = new SecretRedactionFilter();
 
     @Inject
     public WorktreeTaskExecutor(
@@ -78,14 +79,15 @@ public class WorktreeTaskExecutor {
                 () -> verifyWorkspaceBuild(repoRoot, executionRoot, initialState, effectiveTarget)
             );
         } catch (Exception e) {
+            String redactedError = secretFilter.sanitize(Objects.toString(e.getMessage(), e.getClass().getSimpleName())).value();
             if (nonNull(err)) {
-                err.println("[dev-agent] Worker execution failed for task " + initialState.taskId() + ": " + e.getMessage());
+                err.println("[dev-agent] Worker execution failed for task " + initialState.taskId() + ": " + redactedError);
             }
             terminalState = initialState.toBuilder()
                 .status(TaskStatus.FAILED)
                 .phase(TaskStatus.FAILED.name())
                 .updatedAt(Instant.now())
-                .lastMessage("Execution failed: " + e.getMessage())
+                .lastMessage("Execution failed: " + redactedError)
                 .build();
         }
 

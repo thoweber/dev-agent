@@ -100,8 +100,8 @@ public class DesktopAlertService {
             return List.of("osascript", "-e", script);
         }
         if (osName.contains("win")) {
-            String safeTitle = escapePowerShellSingleQuoted(escapeXml(title));
-            String safeBody = escapePowerShellSingleQuoted(escapeXml(body));
+            String safeTitle = escapePowerShellSingleQuoted(title);
+            String safeBody = escapePowerShellSingleQuoted(body);
             String psScript = "$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
                 + "[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
                 + "$nodes = $xml.GetElementsByTagName('text'); "
@@ -119,7 +119,7 @@ public class DesktopAlertService {
         if (status == TaskStatus.COMPLETED) {
             urgency = "normal";
         }
-        return List.of("notify-send", "--app-name=dev-agent", "--urgency=" + urgency, title, body);
+        return List.of("notify-send", "--app-name=dev-agent", "--urgency=" + urgency, "--", title, body);
     }
 
     private boolean hasLinuxDisplaySession() {
@@ -136,13 +136,11 @@ public class DesktopAlertService {
     }
 
     private String escapePowerShellSingleQuoted(String value) {
-        return value.replace("'", "''");
-    }
-
-    private String escapeXml(String value) {
         return value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;");
+            .replace("\u2018", "'")
+            .replace("\u2019", "'")
+            .replace("\u201A", "'")
+            .replace("\u201B", "'")
+            .replace("'", "''");
     }
 }

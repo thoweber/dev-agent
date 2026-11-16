@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -74,9 +75,19 @@ class DesktopAlertServiceTest {
                 "notify-send",
                 "--app-name=dev-agent",
                 "--urgency=normal",
+                "--",
                 "dev-agent: TASK-601 COMPLETED",
                 "Done with token ***REDACTED_CREDENTIAL***"
             );
+
+        WorktreeState dashMsg = WorktreeStateMother.completed("TASK-601")
+            .toBuilder()
+            .lastMessage("--expire-time=9999999")
+            .build();
+        service.notifyTaskOutcome(tempDir, dashMsg);
+        verify(executor, times(2)).execute(cmdCaptor.capture(), eq(tempDir), eq(Duration.ofSeconds(3)));
+        assertThat(cmdCaptor.getValue().get(3)).isEqualTo("--");
+        assertThat(cmdCaptor.getValue().get(5)).isEqualTo("--expire-time=9999999");
     }
 
     @Test
@@ -144,7 +155,7 @@ class DesktopAlertServiceTest {
 
         WorktreeState failed = WorktreeStateMother.builder("TASK-604")
             .status(TaskStatus.ABORTED)
-            .lastMessage("User's abort request")
+            .lastMessage("User's \u2019abort <tag> & request")
             .build();
         service.notifyTaskOutcome(tempDir, failed);
 
@@ -153,7 +164,8 @@ class DesktopAlertServiceTest {
         assertThat(cmdCaptor.getValue().get(0)).isEqualTo("powershell");
         assertThat(cmdCaptor.getValue().get(2)).isEqualTo("-Command");
         assertThat(cmdCaptor.getValue().get(3))
-            .contains("User''s abort request", "CreateToastNotifier", ".Show(");
+            .contains("User''s ''abort <tag> & request", "CreateToastNotifier", ".Show(")
+            .doesNotContain("\u2019", "&lt;", "&amp;");
     }
 
     @Test

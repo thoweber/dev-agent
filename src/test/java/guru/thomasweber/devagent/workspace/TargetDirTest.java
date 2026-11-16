@@ -34,5 +34,13 @@ class TargetDirTest {
         assertThatThrownBy(() -> TargetDir.of("/")).isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> TargetDir.of("C:\\target")).isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> TargetDir.of("~/target")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of(".")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("-flag")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("target agent")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("target*")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("target?")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("target[0]")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("a//b")).isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> TargetDir.of("target:/bad")).isInstanceOf(SecurityException.class);
     }
 }

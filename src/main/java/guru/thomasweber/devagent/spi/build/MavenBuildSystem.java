@@ -13,9 +13,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 import static java.util.Objects.isNull;
-import static java.util.Objects.nonNull;
 
 /**
  * Axis 1 SPI implementation for Maven backend build tooling execution, command synthesis,
@@ -30,7 +30,6 @@ public class MavenBuildSystem implements BackendBuildSystem {
     public static final String SUREFIRE_MEMORY_ARGS = "-DargLine=-Xmx512m -XX:+TieredCompilation -XX:TieredStopAtLevel=1";
     public static final String POM_XML = "pom.xml";
 
-    private static final String MVNW_UNIX = "./mvnw";
     private static final String MVNW_WIN = "mvnw.cmd";
     private static final String MVNW_BAT = "mvnw.bat";
     private static final String MVN_FALLBACK = "mvn";
@@ -53,7 +52,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
 
     @Override
     public boolean isApplicable(Path projectRoot) {
-        if (projectRoot == null) {
+        if (isNull(projectRoot)) {
             return false;
         }
         Path pom = projectRoot.resolve(POM_XML);
@@ -62,11 +61,14 @@ public class MavenBuildSystem implements BackendBuildSystem {
 
     @Override
     public String resolveExecutable(Path projectRoot) {
-        if (projectRoot == null) {
+        if (isNull(projectRoot)) {
             return MVN_FALLBACK;
         }
         boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        return isWindows ? resolveWindowsWrapper(projectRoot) : resolveUnixWrapper(projectRoot);
+        if (isWindows) {
+            return resolveWindowsWrapper(projectRoot);
+        }
+        return resolveUnixWrapper(projectRoot);
     }
 
     private String resolveWindowsWrapper(Path projectRoot) {
@@ -88,7 +90,7 @@ public class MavenBuildSystem implements BackendBuildSystem {
                 return MVN_FALLBACK;
             }
             if (Files.isExecutable(unixWrapper)) {
-                return MVNW_UNIX;
+                return unixWrapper.toAbsolutePath().toString();
             }
         }
         return MVN_FALLBACK;
@@ -107,9 +109,10 @@ public class MavenBuildSystem implements BackendBuildSystem {
         String effectiveTargetDir = TargetDir.of(targetDir).value();
         command.add("-Dproject.build.directory=" + effectiveTargetDir);
 
-        if (isNotBlankModule(modulePath)) {
+        Optional<String> safeModule = BackendBuildSystem.normalizeModulePath(projectRoot, modulePath);
+        if (safeModule.isPresent()) {
             command.add("-pl");
-            command.add(modulePath.trim());
+            command.add(safeModule.get());
             command.add("-am");
         }
 
@@ -127,17 +130,17 @@ public class MavenBuildSystem implements BackendBuildSystem {
         command.add("-Dproject.build.directory=" + effectiveTargetDir);
         command.add(SUREFIRE_MEMORY_ARGS);
 
-        if (isNotBlankModule(modulePath)) {
+        Optional<String> safeModule = BackendBuildSystem.normalizeModulePath(projectRoot, modulePath);
+        if (safeModule.isPresent()) {
             command.add("-pl");
-            command.add(modulePath.trim());
+            command.add(safeModule.get());
             command.add("-am");
         }
 
         command.add("test");
 
-        if (nonNull(testPattern) && !testPattern.isBlank()) {
-            command.add("-Dtest=" + testPattern.trim());
-        }
+        Optional<String> safeTestPattern = BackendBuildSystem.normalizeTestPattern(testPattern);
+        safeTestPattern.ifPresent(pattern -> command.add("-Dtest=" + pattern));
 
         return Collections.unmodifiableList(command);
     }
@@ -150,13 +153,5 @@ public class MavenBuildSystem implements BackendBuildSystem {
     @Override
     public SanitizedLog sanitizeOutput(int exitCode, String rawStdout, String rawStderr) {
         return outputParser.parse(exitCode, rawStdout, rawStderr);
-    }
-
-    private static boolean isNotBlankModule(String modulePath) {
-        if (isNull(modulePath) || modulePath.isBlank()) {
-            return false;
-        }
-        String trimmed = modulePath.trim();
-        return !trimmed.equals(".") && !trimmed.equals("./") && !trimmed.equals(".\\");
     }
 }

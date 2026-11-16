@@ -261,6 +261,22 @@ class GitWorktreeServiceTest {
         );
     }
 
+    @Test
+    @DisplayName("Given flag-like baseCommit or null commit message - when git operations called - then throws SecurityException or IllegalArgumentException")
+    void givenUnsafeBaseCommitOrNullMessage_whenCalled_thenRejectsInputs() {
+        SubprocessExecutor mocked = mock(SubprocessExecutor.class);
+        GitWorktreeService service = new GitWorktreeService(mocked, new GitExcludeManager());
+
+        assertThatThrownBy(() -> service.resetToBase(tempDir, "-bad-ref"))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> service.resetToBase(tempDir, "   "))
+            .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> service.commitChanges(tempDir, null))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.commitChanges(tempDir, "   "))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static void initGitRepo(SubprocessExecutor executor, Path dir) {
         runGit(executor, dir, "init");
         runGit(executor, dir, "config", "user.email", "test@dev-agent.local");

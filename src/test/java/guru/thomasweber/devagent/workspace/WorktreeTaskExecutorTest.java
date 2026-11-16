@@ -121,7 +121,7 @@ class WorktreeTaskExecutorTest {
 
         when(buildService.compile(worktreeDir, null, "target-agent"))
             .thenReturn(SanitizedLog.builder().exitCode(1).errorCount(2).build())
-            .thenThrow(new IllegalStateException("compile exploded"));
+            .thenThrow(new IllegalStateException("compile exploded token=ghp_1234567890abcdefghijklmnopqrstuvwxyz1234"));
         when(persistenceService.findByProjectAndTask("proj-1", "TASK-EX-2")).thenReturn(Optional.empty());
         when(persistenceService.saveTask(any(TaskRun.class))).thenThrow(new IllegalStateException("db offline"));
 
@@ -165,7 +165,9 @@ class WorktreeTaskExecutorTest {
         );
         assertThat(failedException.status()).isEqualTo(TaskStatus.FAILED);
         assertThat(failedException.lastMessage()).contains("compile exploded");
-        assertThat(errWriter.toString()).contains("compile exploded");
+        assertThat(errWriter.toString())
+            .contains("compile exploded")
+            .doesNotContain("ghp_1234567890abcdefghijklmnopqrstuvwxyz1234");
         verifyNoInteractions(worktreeService);
     }
 

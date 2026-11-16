@@ -100,6 +100,9 @@ public class GitWorktreeService {
     }
 
     public boolean commitChanges(Path worktreePath, String message) {
+        if (isNull(message) || message.isBlank()) {
+            throw new IllegalArgumentException("Commit message must not be null or blank");
+        }
         ProcessResult status = subprocessExecutor.execute(List.of("git", "status", "--porcelain"), worktreePath, GIT_TIMEOUT);
         if (!status.isSuccess()) {
             throw new WorkspaceException("Failed to inspect worktree git status: " + status.stdErr());
@@ -123,9 +126,13 @@ public class GitWorktreeService {
     }
 
     public void resetToBase(Path worktreePath, String baseCommit, String targetDir) {
-        ProcessResult reset = subprocessExecutor.execute(List.of("git", "reset", "--hard", baseCommit), worktreePath, GIT_TIMEOUT);
+        if (isNull(baseCommit) || baseCommit.isBlank() || baseCommit.trim().startsWith("-")) {
+            throw new SecurityException("Invalid or unsafe base commit ref: " + baseCommit);
+        }
+        String safeCommit = baseCommit.trim();
+        ProcessResult reset = subprocessExecutor.execute(List.of("git", "reset", "--hard", safeCommit), worktreePath, GIT_TIMEOUT);
         if (!reset.isSuccess()) {
-            throw new WorkspaceException("Failed to reset worktree to " + baseCommit + ": " + reset.stdErr());
+            throw new WorkspaceException("Failed to reset worktree to " + safeCommit + ": " + reset.stdErr());
         }
         String effectiveTarget = TargetDir.of(targetDir).value();
         ProcessResult clean = subprocessExecutor.execute(

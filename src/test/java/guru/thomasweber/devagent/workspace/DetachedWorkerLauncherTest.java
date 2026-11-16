@@ -51,6 +51,8 @@ class DetachedWorkerLauncherTest {
 
         assertThatThrownBy(() -> launcher.launchWorker(tempDir, "../bad", "story"))
             .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> launcher.buildWorkerCommand(tempDir, "../bad", "story"))
+            .isInstanceOf(SecurityException.class);
 
         Path logFile = tempDir.resolve("worker.log");
         assertThatThrownBy(() -> launcher.launchCommand(List.of("/nonexistent/binary/xyz-999"), tempDir, logFile))

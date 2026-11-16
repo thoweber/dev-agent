@@ -260,4 +260,27 @@ class LogsCommandTest {
         }
         assertThat(chunkOut.toString()).contains("line-chunk-0123456789", "[worker] truncated tail");
     }
+
+    @Test
+    @DisplayName("Given secret and multibyte UTF-8 crossing 8KB buffer boundary - when logs executed - then redacts secret and decodes UTF-8 intact")
+    void testLogsRedactsSecretAndDecodesUtf8AcrossBufferBoundary() throws IOException {
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed("TASK-BOUNDARY"));
+        Path boundaryLog = socketService.resolveWorkerLogFile(tempDir, "TASK-BOUNDARY");
+
+        String prefix = "A".repeat(8184) + " ";
+        String line = prefix + "ghp_1234567890abcdef1234567890abcdef1234 🚀 end\n";
+        Files.writeString(boundaryLog, line);
+
+        LogsCommand cmdObj = new LogsCommand(socketService);
+        CommandLine cmd = new CommandLine(cmdObj);
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+
+        assertThat(cmd.execute("--dir=" + tempDir, "TASK-BOUNDARY")).isZero();
+        assertThat(out.toString())
+            .contains("🚀", "***REDACTED_CREDENTIAL***")
+            .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234")
+            .doesNotContain("\uFFFD");
+    }
 }

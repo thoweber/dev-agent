@@ -1,5 +1,6 @@
 package guru.thomasweber.devagent.workspace;
 
+import guru.thomasweber.devagent.model.TaskId;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -47,6 +48,7 @@ public class DetachedWorkerLauncher {
     }
 
     public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction) {
+        String safeTaskId = TaskId.of(taskId).value();
         String effectiveInstruction = Objects.requireNonNullElse(instruction, "");
         List<String> command = new ArrayList<>();
         String currentExecutable = ProcessHandle.current().info().command().orElse("java");
@@ -71,7 +73,7 @@ public class DetachedWorkerLauncher {
         command.add(repoRoot.toAbsolutePath().normalize().toString());
         command.add("worker");
         command.add("--task-id");
-        command.add(taskId);
+        command.add(safeTaskId);
         command.add("--instruction=" + effectiveInstruction);
         return List.copyOf(command);
     }
