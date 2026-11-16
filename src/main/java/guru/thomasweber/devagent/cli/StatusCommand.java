@@ -8,6 +8,7 @@ import guru.thomasweber.devagent.model.StatusPayload;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.workspace.PathGuard;
+import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import guru.thomasweber.devagent.workspace.WorktreeLayout;
@@ -56,6 +57,7 @@ public class StatusCommand extends BaseAgentCommand {
     private final StateSocketService socketService;
     private final MarkdownParserService markdownParserService;
     private final ObjectMapper objectMapper;
+    private final SecretRedactionFilter secretFilter = new SecretRedactionFilter();
 
     @Inject
     public StatusCommand(
@@ -157,8 +159,8 @@ public class StatusCommand extends BaseAgentCommand {
                 return Optional.empty();
             }
             TaskStatus status = parseStatus(firstMeta(meta, "status"));
-            String phase = firstMeta(meta, "current_phase");
-            String branch = firstMeta(meta, "branch");
+            String phase = sanitizeMeta(firstMeta(meta, "current_phase"));
+            String branch = sanitizeMeta(firstMeta(meta, "branch"));
             String projectId = firstMeta(meta, "project_id");
             Instant updatedAt = parseInstant(firstMeta(meta, "updated_at"));
             return Optional.of(WorktreeState.builder()
@@ -173,6 +175,13 @@ public class StatusCommand extends BaseAgentCommand {
         } catch (IOException _) {
             return Optional.empty();
         }
+    }
+
+    private String sanitizeMeta(String raw) {
+        if (isNull(raw)) {
+            return null;
+        }
+        return secretFilter.sanitize(raw).value();
     }
 
     private String firstMeta(Map<String, List<String>> meta, String key) {
@@ -227,7 +236,15 @@ public class StatusCommand extends BaseAgentCommand {
         try {
             out.println(objectMapper.writeValueAsString(payload));
         } catch (JsonProcessingException e) {
-            out.println("{\"activeTasks\":[],\"message\":\"Serialization error: " + e.getMessage() + "\"}");
+            StatusPayload errorPayload = new StatusPayload(
+                List.of(),
+                "Serialization error: " + Objects.toString(e.getMessage(), "Unknown error")
+            );
+            try {
+                out.println(StateSocketService.createDefaultObjectMapper().writeValueAsString(errorPayload));
+            } catch (JsonProcessingException _) {
+                out.println("{\"activeTasks\":[],\"message\":\"Serialization error\"}");
+            }
         }
     }
 

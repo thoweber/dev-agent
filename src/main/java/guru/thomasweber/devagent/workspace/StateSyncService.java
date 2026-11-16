@@ -138,6 +138,10 @@ public class StateSyncService {
     }
 
     public void projectToMarkdown(TaskRun taskRun) {
+        projectToMarkdown(workspaceResolver.resolveRepoRoot(), taskRun);
+    }
+
+    public void projectToMarkdown(Path targetRepoRoot, TaskRun taskRun) {
         TaskId safeTaskId = TaskId.of(taskRun.taskId());
 
         String formattedUpdatedAt = "unknown";
@@ -188,7 +192,8 @@ public class StateSyncService {
         );
 
         try {
-            Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
+            Path resolvedRoot = Objects.requireNonNullElseGet(targetRepoRoot, workspaceResolver::resolveRepoRoot);
+            Path repoRoot = resolvedRoot.toRealPath();
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
             Files.createDirectories(runsDir.toPath());

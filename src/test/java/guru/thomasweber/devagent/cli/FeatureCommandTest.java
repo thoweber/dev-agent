@@ -6,6 +6,7 @@ import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
 import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
 import guru.thomasweber.devagent.workspace.BackendBuildService;
 import guru.thomasweber.devagent.workspace.DesktopAlertService;
@@ -173,6 +174,26 @@ class FeatureCommandTest {
                 assertThat(state.pid()).isEqualTo(77777L);
                 assertThat(state.status()).isEqualTo(TaskStatus.PLANNING);
             });
+
+        // Simulate fast child completing before launchWorker returns: parent must not clobber terminal COMPLETED status
+        when(launcher.launchWorker(eq(tempDir.toAbsolutePath().normalize()), anyString(), eq("Fast worker")))
+            .thenAnswer(inv -> {
+                String tid = inv.getArgument(1);
+                socketService.writeHeartbeat(tempDir, WorktreeStateMother.completed(tid));
+                return 99999L;
+            });
+        when(worktreeService.allocateWorktree(eq(tempDir.toAbsolutePath().normalize()), anyString(), eq("Fast worker"), any(), eq("target-agent")))
+            .thenAnswer(inv -> WorktreeAllocation.builder()
+                .taskId(inv.getArgument(1))
+                .branch("feature/" + inv.getArgument(1) + "-fast-worker")
+                .worktreePath(worktreeDir)
+                .baseCommit("abc123")
+                .hydrated(false)
+                .build());
+        assertThat(cmd.execute("--dir=" + tempDir, "--detach", "Fast worker")).isZero();
+        assertThat(socketService.readAllStates(tempDir))
+            .filteredOn(s -> "COMPLETED".equals(s.status().name()))
+            .hasSize(1);
     }
 
     @Test

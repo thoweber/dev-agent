@@ -26,6 +26,8 @@ import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -163,16 +165,23 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         WorktreeAllocation allocation,
         WorktreeState initialState
     ) {
+        taskExecutor.persistTaskRun(initialState, allocation, instruction);
         long childPid = workerLauncher.launchWorker(repoRoot, allocation.taskId(), instruction);
-        WorkerProcess childProcess = WorkerProcess.of(childPid);
-        WorktreeState detachedState = initialState.toBuilder()
-            .pid(childProcess.pid())
-            .pidStartedAt(childProcess.startedAt())
-            .updatedAt(Instant.now())
-            .lastMessage("Detached worker started (PID " + childPid + ")")
-            .build();
-        socketService.writeHeartbeat(repoRoot, detachedState);
-        taskExecutor.persistTaskRun(detachedState, allocation, instruction);
+        Optional<WorktreeState> currentSocket = socketService.readState(repoRoot, allocation.taskId());
+        boolean stillInitialPlanning = currentSocket
+            .map(state -> state.status() == TaskStatus.PLANNING && Objects.equals(state.pid(), initialState.pid()))
+            .orElse(true);
+        if (stillInitialPlanning) {
+            WorkerProcess childProcess = WorkerProcess.of(childPid);
+            WorktreeState detachedState = initialState.toBuilder()
+                .pid(childProcess.pid())
+                .pidStartedAt(childProcess.startedAt())
+                .updatedAt(Instant.now())
+                .lastMessage("Detached worker started (PID " + childPid + ")")
+                .build();
+            socketService.writeHeartbeat(repoRoot, detachedState);
+            taskExecutor.persistTaskRun(detachedState, allocation, instruction);
+        }
 
         out.printf(
             "[dev-agent] Detached worker started: task=%s branch=%s worktree=%s PID %d%n",

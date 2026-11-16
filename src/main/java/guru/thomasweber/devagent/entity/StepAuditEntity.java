@@ -15,6 +15,8 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import guru.thomasweber.devagent.workspace.SanitizedOutput;
 
+import static java.util.Objects.isNull;
+
 /**
  * Audit record of individual tool executions and code patches.
  */
@@ -50,10 +52,18 @@ public class StepAuditEntity extends PanacheEntityBase {
     public Instant createdAt;
 
     public void setSanitizedInput(SanitizedOutput input) {
-        this.sanitizedInput = input != null ? input.value() : null;
+        if (isNull(input)) {
+            this.sanitizedInput = null;
+            return;
+        }
+        this.sanitizedInput = input.value();
     }
 
     public void setOutputSummary(SanitizedOutput summary) {
-        this.outputSummary = summary != null ? summary.value() : null;
+        if (isNull(summary)) {
+            this.outputSummary = null;
+            return;
+        }
+        this.outputSummary = summary.value();
     }
 }

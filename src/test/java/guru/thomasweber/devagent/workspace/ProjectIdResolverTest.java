@@ -131,5 +131,15 @@ class ProjectIdResolverTest {
 
         String coordinate = resolver.resolveCoordinate(nonExistent);
         assertThat(coordinate).isEqualTo("local:" + nonExistent.toAbsolutePath().normalize());
+
+        // URL edge cases: password with '@', IPv6 host, uppercase .GIT, Windows path, null root
+        assertThat(resolver.normalizeRemote("https://user:p@ss@github.com/org/repo.git"))
+            .isEqualTo("github.com/org/repo");
+        assertThat(resolver.normalizeRemote("https://[::1]:8443/org/repo.GIT"))
+            .isEqualTo("[::1]/org/repo");
+        assertThat(resolver.normalizeRemote("C:\\repos\\myrepo"))
+            .doesNotStartWith("c/");
+        assertThat(resolver.resolveCoordinate(null)).isEqualTo("unknown");
+        assertThat(resolver.normalizeRemote("https://gitlab.example.com/team/service")).isEqualTo("gitlab.example.com/team/service");
     }
 }

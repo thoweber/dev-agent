@@ -87,7 +87,11 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
         socketService.resolveStateFile(repoRoot, taskId);
 
         Path worktreeDir = resolver.resolveWorktreeDir(taskId);
-        Path executionRoot = resolveExecutionRoot(repoRoot, worktreeDir);
+        if (!Files.isDirectory(worktreeDir)) {
+            err.println("[dev-agent] Worktree directory does not exist: " + worktreeDir);
+            return 1;
+        }
+        Path executionRoot = worktreeDir;
         String projectId = projectResolver.resolveForPath(repoRoot).idString();
         WorkerProcess currentProcess = WorkerProcess.current();
         Instant now = Instant.now();
@@ -135,13 +139,6 @@ public class WorkerCommand extends BaseAgentCommand implements Callable<Integer>
             return 0;
         }
         return 1;
-    }
-
-    private Path resolveExecutionRoot(Path repoRoot, Path worktreeDir) {
-        if (Files.isDirectory(worktreeDir)) {
-            return worktreeDir;
-        }
-        return repoRoot;
     }
 
     public String getTaskId() {

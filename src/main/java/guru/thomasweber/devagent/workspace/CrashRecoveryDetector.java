@@ -11,6 +11,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Detects orphaned or interrupted background tasks whose OS processes terminated unexpectedly.
  */
@@ -41,10 +44,10 @@ public class CrashRecoveryDetector {
     }
 
     public boolean isTaskResumable(TaskRun task) {
-        if (task == null || task.status() == null || task.status().isTerminal()) {
+        if (isNull(task) || isNull(task.status()) || task.status().isTerminal()) {
             return false;
         }
-        if (task.pid() != null && ProcessHandle.of(task.pid()).isPresent()) {
+        if (nonNull(task.pid()) && ProcessHandle.of(task.pid()).filter(ProcessHandle::isAlive).isPresent()) {
             return false;
         }
         Path worktreeDir = resolveWorktreeDir(task.taskId());

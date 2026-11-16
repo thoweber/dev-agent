@@ -4,10 +4,12 @@ import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeState;
+import guru.thomasweber.devagent.testutil.TaskRunMother;
 import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import guru.thomasweber.devagent.workspace.GitWorktreeService;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
+import guru.thomasweber.devagent.workspace.StateSyncService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,6 +19,7 @@ import picocli.CommandLine;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
@@ -128,7 +131,8 @@ class AbortCommandTest {
                 socketService,
                 worktreeService,
                 persistenceService,
-                new ProjectIdResolver(new WorkspaceContextResolver(tempDir))
+                new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+                new StateSyncService()
             );
             CommandLine cmd = new CommandLine(command);
             StringWriter out = new StringWriter();
@@ -145,6 +149,8 @@ class AbortCommandTest {
                 .get()
                 .extracting(WorktreeState::status)
                 .isEqualTo(TaskStatus.ABORTED);
+            assertThat(Files.readString(tempDir.resolve(".agents/runs/TASK-KILL-1.md")))
+                .contains("ABORTED");
         } finally {
             sleeper.destroyForcibly();
         }
@@ -165,7 +171,8 @@ class AbortCommandTest {
             socketService,
             worktreeService,
             persistenceService,
-            new ProjectIdResolver(new WorkspaceContextResolver(tempDir))
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService()
         );
         CommandLine cmd = new CommandLine(command);
         int exitCode = cmd.execute("--dir=" + tempDir, "--delete-branch", "TASK-DEL-1");
@@ -196,7 +203,8 @@ class AbortCommandTest {
                 socketService,
                 worktreeService,
                 persistenceService,
-                new ProjectIdResolver(new WorkspaceContextResolver(tempDir))
+                new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+                new StateSyncService()
             );
             CommandLine cmd = new CommandLine(command);
             int exitCode = cmd.execute("--dir=" + tempDir, "TASK-RECYCLED");
@@ -206,5 +214,33 @@ class AbortCommandTest {
         } finally {
             sleeper.destroyForcibly();
         }
+    }
+
+    @Test
+    @DisplayName("Given persisted task without socket - when abort executed - then persists ABORTED state and writes Markdown journal")
+    void testAbortPersistedTaskWithoutSocketWritesJournal() throws IOException {
+        TaskRun persisted = TaskRunMother.builder("TASK-PERSIST-ONLY")
+            .status(TaskStatus.GREEN_PATCH)
+            .branch("feature/TASK-PERSIST-ONLY-demo")
+            .pid(null)
+            .build();
+        GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+        TaskPersistenceService persistenceService = mock(TaskPersistenceService.class);
+        when(persistenceService.findByProjectAndTask(any(String.class), eq("TASK-PERSIST-ONLY")))
+            .thenReturn(Optional.of(persisted));
+        when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AbortCommand command = new AbortCommand(
+            new StateSocketService(),
+            worktreeService,
+            persistenceService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new StateSyncService()
+        );
+        int exitCode = new CommandLine(command).execute("--dir=" + tempDir, "TASK-PERSIST-ONLY");
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.readString(tempDir.resolve(".agents/runs/TASK-PERSIST-ONLY.md")))
+            .contains("ABORTED");
     }
 }

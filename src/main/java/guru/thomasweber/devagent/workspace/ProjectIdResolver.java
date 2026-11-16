@@ -12,6 +12,9 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Resolves a persistent, isolated project coordinate from Git remote configuration or workspace path.
  */
@@ -19,7 +22,9 @@ import java.util.regex.Pattern;
 public class ProjectIdResolver {
 
     private static final Pattern SCP_PATTERN = Pattern.compile("^(?:[\\w.-]+@)?([\\w.-]+):(.+)$");
-    private static final Pattern URL_PATTERN = Pattern.compile("^(?:[a-zA-Z][a-zA-Z0-9+-.]*://)?(?:[^@/]+@)?([^:/]+)(?::\\d+)?/(.+)$");
+    private static final Pattern URL_PATTERN = Pattern.compile(
+        "^(?:[a-zA-Z][a-zA-Z0-9+-.]*://)?(?:[^/]*@)?(\\[[0-9a-fA-F:]+\\]|[^:/]+)(?::\\d+)?/(.+)$"
+    );
 
     private final WorkspaceContextResolver workspaceResolver;
     private final SubprocessExecutor subprocessExecutor;
@@ -52,8 +57,11 @@ public class ProjectIdResolver {
     }
 
     public String resolveCoordinate(Path rootPath) {
+        if (isNull(rootPath)) {
+            return computeLocalFallback(null);
+        }
         String remote = probeGitRemote(rootPath);
-        if (remote != null && !remote.isBlank()) {
+        if (nonNull(remote) && !remote.isBlank()) {
             return normalizeRemote(remote);
         }
         return computeLocalFallback(rootPath);
@@ -77,6 +85,9 @@ public class ProjectIdResolver {
     private record HostAndPath(String host, String path) {}
 
     private HostAndPath parseHostAndPath(String clean) {
+        if (isWindowsDrivePath(clean)) {
+            return null;
+        }
         if (!clean.contains("://")) {
             Matcher scpMatcher = SCP_PATTERN.matcher(clean);
             if (scpMatcher.matches()) {
@@ -90,6 +101,10 @@ public class ProjectIdResolver {
         return null;
     }
 
+    private boolean isWindowsDrivePath(String path) {
+        return path.length() >= 2 && Character.isLetter(path.charAt(0)) && path.charAt(1) == ':';
+    }
+
     private String cleanPath(String rawPath) {
         String p = rawPath;
         while (p.startsWith("/")) {
@@ -98,7 +113,7 @@ public class ProjectIdResolver {
         while (p.endsWith("/")) {
             p = p.substring(0, p.length() - 1);
         }
-        if (p.endsWith(".git")) {
+        if (p.toLowerCase(Locale.ROOT).endsWith(".git")) {
             p = p.substring(0, p.length() - 4);
         }
         while (p.endsWith("/")) {
@@ -115,12 +130,18 @@ public class ProjectIdResolver {
         );
         if (result.isSuccess()) {
             String remote = result.stdOut().trim();
-            return remote.isBlank() ? null : remote;
+            if (remote.isBlank()) {
+                return null;
+            }
+            return remote;
         }
         return null;
     }
 
     private String computeLocalFallback(Path rootPath) {
+        if (isNull(rootPath)) {
+            return "unknown";
+        }
         Path targetPath;
         try {
             targetPath = rootPath.toRealPath();

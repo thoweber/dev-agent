@@ -9,7 +9,6 @@ import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.StepAudit;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStateChangeEvent;
-import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.workspace.SanitizedOutput;
 
 import java.time.Instant;
@@ -17,6 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 /**
  * Encapsulated persistence adapter and mapping sink for TaskRun and StepAudit entities.
@@ -46,11 +48,8 @@ public class TaskPersistenceService {
     @Transactional
     public List<TaskRun> findActiveCandidates(String projectId) {
         try {
-            List<TaskRunEntity> candidates = TaskRunEntity.list(
-                "projectId = ?1 and status not in (?2, ?3, ?4) order by updatedAt desc",
-                projectId, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.ABORTED
-            );
-            return candidates.stream().map(this::toDomain).toList();
+            List<TaskRunEntity> candidates = TaskRunEntity.findActiveByProject(projectId);
+            return candidates.stream().map(this::toDomainSummary).toList();
         } catch (IllegalStateException | NullPointerException _) {
             return List.of();
         }
@@ -83,7 +82,7 @@ public class TaskPersistenceService {
         } catch (IllegalStateException | NullPointerException e) {
             LOG.debugf(e, "Uninitialized persistence runtime fallback during recordStateChange: %s", e.getMessage());
         }
-        if (entity == null) {
+        if (isNull(entity)) {
             entity = new TaskRunEntity();
             entity.projectId = event.projectId();
             entity.taskId = event.taskId();
@@ -100,7 +99,7 @@ public class TaskPersistenceService {
 
         persistEntity(entity);
 
-        if (sanitizedSummary != null && !sanitizedSummary.isBlank()) {
+        if (nonNull(sanitizedSummary) && !sanitizedSummary.isBlank()) {
             StepAuditEntity step = new StepAuditEntity();
             step.taskRun = entity;
             step.toolName = event.phaseName();
@@ -109,7 +108,7 @@ public class TaskPersistenceService {
             step.durationMs = 0L;
             step.createdAt = event.timestamp();
             persistEntity(step);
-            if (entity.steps == null) {
+            if (isNull(entity.steps)) {
                 entity.steps = new ArrayList<>();
             }
             entity.steps.add(step);
@@ -126,7 +125,7 @@ public class TaskPersistenceService {
         } catch (IllegalStateException | NullPointerException e) {
             LOG.debugf(e, "Uninitialized persistence runtime fallback during saveTask: %s", e.getMessage());
         }
-        if (entity == null) {
+        if (isNull(entity)) {
             entity = new TaskRunEntity();
             entity.projectId = taskRun.projectId();
             entity.taskId = taskRun.taskId();
@@ -161,11 +160,11 @@ public class TaskPersistenceService {
     }
 
     public TaskRun toDomain(TaskRunEntity entity) {
-        if (entity == null) {
+        if (isNull(entity)) {
             return null;
         }
         List<StepAudit> stepAudits = new ArrayList<>();
-        if (entity.steps != null) {
+        if (nonNull(entity.steps)) {
             for (StepAuditEntity stepEntity : entity.steps) {
                 stepAudits.add(StepAudit.builder()
                     .id(stepEntity.id)
@@ -178,6 +177,14 @@ public class TaskPersistenceService {
                     .build());
             }
         }
+        return toDomain(entity, stepAudits);
+    }
+
+    private TaskRun toDomainSummary(TaskRunEntity entity) {
+        return toDomain(entity, List.of());
+    }
+
+    private TaskRun toDomain(TaskRunEntity entity, List<StepAudit> stepAudits) {
         return TaskRun.builder()
             .id(entity.id)
             .projectId(entity.projectId)

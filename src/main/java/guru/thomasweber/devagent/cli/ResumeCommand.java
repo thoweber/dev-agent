@@ -5,6 +5,7 @@ import jakarta.enterprise.context.Dependent;
 import jakarta.inject.Inject;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.ProjectId;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.WorkerProcess;
 import guru.thomasweber.devagent.model.WorktreeState;
@@ -13,6 +14,7 @@ import guru.thomasweber.devagent.workspace.DetachedWorkerLauncher;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorktreeLayout;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -106,7 +108,8 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
     }
 
     private Integer handleAutoResume(PrintWriter out) {
-        ProjectId projectId = projectResolver.resolveProjectId();
+        Path repoRoot = resolveEffectiveRepoRoot();
+        ProjectId projectId = resolveEffectiveProjectId(repoRoot);
         List<TaskRun> candidates = crashDetector.findAllResumableTasks(projectId);
 
         if (candidates.isEmpty()) {
@@ -182,7 +185,8 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
     }
 
     private Integer handleExplicitResume(PrintWriter out, PrintWriter err, String targetTaskId) {
-        ProjectId projectId = projectResolver.resolveProjectId();
+        Path repoRoot = resolveEffectiveRepoRoot();
+        ProjectId projectId = resolveEffectiveProjectId(repoRoot);
         Optional<TaskRun> taskOpt = persistenceService.findByProjectAndTask(projectId, targetTaskId);
 
         if (taskOpt.isEmpty()) {
@@ -191,14 +195,13 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
         }
 
         TaskRun task = taskOpt.get();
-        String validationError = validateTaskEligibility(task, targetTaskId);
+        String validationError = validateTaskEligibility(repoRoot, task, targetTaskId);
         if (nonNull(validationError)) {
             err.println(CANNOT_RESUME_PREFIX + targetTaskId + ": " + validationError);
             return 1;
         }
 
         if (detach) {
-            Path repoRoot = getWorkspaceRoot();
             String story = Objects.toString(task.userStory(), "");
             long pid = workerLauncher.launchWorker(repoRoot, targetTaskId, story);
             WorkerProcess workerProcess = WorkerProcess.of(pid);
@@ -212,7 +215,7 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
                     .pid(workerProcess.pid())
                     .pidStartedAt(workerProcess.startedAt())
                     .branch(task.branch())
-                    .worktreePath(workspaceResolver.resolveWorktreeDir(targetTaskId).toString())
+                    .worktreePath(resolveEffectiveWorktreeDir(repoRoot, targetTaskId).toString())
                     .startedAt(task.createdAt())
                     .updatedAt(Instant.now())
                     .lastMessage("Resumed detached worker")
@@ -227,17 +230,59 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
         return 0;
     }
 
-    private String validateTaskEligibility(TaskRun task, String targetTaskId) {
+    private String validateTaskEligibility(Path repoRoot, TaskRun task, String targetTaskId) {
         if (nonNull(task.status()) && task.status().isTerminal()) {
             return "Task has already completed with status " + task.status();
         }
-        if (nonNull(task.pid()) && ProcessHandle.of(task.pid()).isPresent()) {
+        if (isProcessStillRunning(repoRoot, targetTaskId, task.pid())) {
             return "Process (PID " + task.pid() + ") is still actively running.";
         }
-        Path worktreeDir = workspaceResolver.resolveWorktreeDir(targetTaskId);
+        Path worktreeDir = resolveEffectiveWorktreeDir(repoRoot, targetTaskId);
         if (Files.isDirectory(worktreeDir)) {
             return null;
         }
         return "Worktree directory .git/dev-agent-worktrees/" + targetTaskId + " is missing.";
+    }
+
+    private boolean isProcessStillRunning(Path repoRoot, String targetTaskId, Long pid) {
+        if (isNull(pid) || pid <= 0) {
+            return false;
+        }
+        Optional<WorktreeState> socketOpt = socketService.readState(repoRoot, targetTaskId);
+        if (socketOpt.isPresent() && nonNull(socketOpt.get().pidStartedAt())) {
+            return WorkerProcess.from(pid, socketOpt.get().pidStartedAt())
+                .map(WorkerProcess::isAlive)
+                .orElse(false);
+        }
+        return ProcessHandle.of(pid).filter(ProcessHandle::isAlive).isPresent();
+    }
+
+    private boolean hasExplicitDirOverride() {
+        boolean localOverride = nonNull(dir) && !".".equals(dir.trim());
+        boolean parentOverride = nonNull(parentCommand)
+            && nonNull(parentCommand.getDir())
+            && !".".equals(parentCommand.getDir().trim());
+        return localOverride || parentOverride;
+    }
+
+    private Path resolveEffectiveRepoRoot() {
+        if (hasExplicitDirOverride()) {
+            return getWorkspaceRoot();
+        }
+        return workspaceResolver.resolveRepoRoot();
+    }
+
+    private ProjectId resolveEffectiveProjectId(Path repoRoot) {
+        if (hasExplicitDirOverride()) {
+            return projectResolver.resolveForPath(repoRoot);
+        }
+        return projectResolver.resolveProjectId();
+    }
+
+    private Path resolveEffectiveWorktreeDir(Path repoRoot, String targetTaskId) {
+        if (hasExplicitDirOverride()) {
+            return WorktreeLayout.forRoot(repoRoot).worktreeDir(TaskId.of(targetTaskId));
+        }
+        return workspaceResolver.resolveWorktreeDir(targetTaskId);
     }
 }

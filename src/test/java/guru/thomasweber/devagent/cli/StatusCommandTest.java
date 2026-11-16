@@ -198,6 +198,7 @@ class StatusCommandTest {
             ---
             task_id: "TASK-UNK"
             status: "NOT_A_REAL_STATUS"
+            branch: "feature/ghp_1234567890abcdef1234567890abcdef1234"
             updated_at: "unknown"
             ---
             Unknown values
@@ -212,11 +213,12 @@ class StatusCommandTest {
 
         assertThat(exitCode).isZero();
         assertThat(out.toString())
-            .contains("TASK-Q1", "QUEUED", "$0", "unassigned", "TASK-UNK", "COMPLETED");
+            .contains("TASK-Q1", "QUEUED", "$0", "unassigned", "TASK-UNK", "COMPLETED", "***REDACTED_CREDENTIAL***")
+            .doesNotContain("ghp_1234567890abcdef1234567890abcdef1234");
 
         ObjectMapper failingMapper = mock(ObjectMapper.class);
         when(failingMapper.writeValueAsString(any(StatusPayload.class)))
-            .thenThrow(new JsonProcessingException("mock serialization boom") {});
+            .thenThrow(new JsonProcessingException("mock \"quoted\"\nserialization boom") {});
         StatusCommand failingCommand = new StatusCommand(socketService, new MarkdownParserService(), failingMapper);
         CommandLine failingCmd = new CommandLine(failingCommand);
         StringWriter errJsonOut = new StringWriter();
@@ -224,6 +226,7 @@ class StatusCommandTest {
 
         int jsonExit = failingCmd.execute("--dir=" + tempDir, "--json");
         assertThat(jsonExit).isZero();
-        assertThat(errJsonOut.toString()).contains("Serialization error: mock serialization boom");
+        StatusPayload fallback = new ObjectMapper().readValue(errJsonOut.toString(), StatusPayload.class);
+        assertThat(fallback.message()).contains("Serialization error: mock \"quoted\"");
     }
 }

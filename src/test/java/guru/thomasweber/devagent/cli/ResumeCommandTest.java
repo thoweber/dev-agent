@@ -9,6 +9,7 @@ import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.testutil.TaskRunMother;
+import guru.thomasweber.devagent.testutil.WorktreeStateMother;
 import guru.thomasweber.devagent.testutil.WorktreeTestFixture;
 import guru.thomasweber.devagent.workspace.CrashRecoveryDetector;
 import guru.thomasweber.devagent.workspace.DetachedWorkerLauncher;
@@ -22,7 +23,9 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -437,5 +440,51 @@ class ResumeCommandTest {
             .get()
             .extracting(WorktreeState::pid)
             .isEqualTo(88888L);
+    }
+
+    @Test
+    @DisplayName("Given recycled PID whose pidStartedAt mismatches socket - when resume --detach executed with --dir - then allows resume in target --dir repo")
+    void testRecycledPidMismatchAndDirOverrideAllowed() throws IOException {
+        Path otherRepo = Files.createDirectories(tempDir.resolve("other-repo"));
+        WorktreeTestFixture.createWorktree(otherRepo, "TASK-REC-RES");
+
+        long currentPid = ProcessHandle.current().pid();
+        StateSocketService socketService = new StateSocketService();
+        socketService.writeHeartbeat(otherRepo, WorktreeStateMother.active("TASK-REC-RES", currentPid).toBuilder()
+            .pidStartedAt(Instant.now().minusSeconds(7200))
+            .build());
+
+        TaskRun staleRun = TaskRunMother.builder("TASK-REC-RES")
+            .status(TaskStatus.GREEN_PATCH)
+            .pid(currentPid)
+            .build();
+        TaskPersistenceService mockPersistence = mock(TaskPersistenceService.class);
+        when(mockPersistence.findByProjectAndTask(any(ProjectId.class), eq("TASK-REC-RES")))
+            .thenReturn(Optional.of(staleRun));
+        when(mockPersistence.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DetachedWorkerLauncher launcher = mock(DetachedWorkerLauncher.class);
+        when(launcher.launchWorker(otherRepo.toAbsolutePath().normalize(), "TASK-REC-RES", ""))
+            .thenReturn(77778L);
+
+        // Injected resolver points to tempDir, but CLI specifies --dir=otherRepo
+        WorkspaceContextResolver injectedResolver = new WorkspaceContextResolver(tempDir);
+        ResumeCommand cmd = new ResumeCommand(
+            new CrashRecoveryDetector(),
+            new ProjectIdResolver(injectedResolver),
+            mockPersistence,
+            injectedResolver,
+            launcher,
+            socketService
+        );
+        StringWriter out = new StringWriter();
+        CommandLine cl = new CommandLine(cmd);
+        cl.setOut(new PrintWriter(out));
+
+        int exitCode = cl.execute("--dir=" + otherRepo, "--detach", "TASK-REC-RES");
+        assertThatCli(exitCode, out.toString())
+            .isSuccess()
+            .containsAnsiFree("PID 77778");
+        assertThat(cl.execute("--dir=" + otherRepo)).isZero();
     }
 }

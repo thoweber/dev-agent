@@ -240,4 +240,32 @@ class WorkerCommandTest {
         assertThat(cmd.execute("--dir=" + tempDir, "--task-id=TASK-805", "--instruction=Updated story")).isZero();
         verify(worktreeService).removeWorktree(tempDir.toRealPath(), "TASK-805", false, "feature/TASK-805-keep");
     }
+
+    @Test
+    @DisplayName("Given missing worktree directory - when WorkerCommand executed - then refuses execution on primary repo and returns exit code 1")
+    void givenMissingWorktree_whenWorkerExecuted_thenReturnsFailure() {
+        StateSocketService socketService = new StateSocketService();
+        WorkerCommand command = new WorkerCommand(
+            socketService,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new DevAgentConfigLoader(),
+            new WorktreeTaskExecutor(
+                socketService,
+                mock(StateSyncService.class),
+                mock(BackendBuildService.class),
+                mock(DesktopAlertService.class),
+                mock(TaskPersistenceService.class),
+                mock(GitWorktreeService.class)
+            )
+        );
+        CommandLine cmd = new CommandLine(command);
+        StringWriter err = new StringWriter();
+        cmd.setErr(new PrintWriter(err));
+
+        int exitCode = cmd.execute("--dir=" + tempDir, "--task-id=TASK-MISSING");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(err.toString()).contains("Worktree directory does not exist");
+        assertThat(socketService.readState(tempDir, "TASK-MISSING")).isEmpty();
+    }
 }

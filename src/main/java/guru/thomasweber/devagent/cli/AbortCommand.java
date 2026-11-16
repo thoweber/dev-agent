@@ -9,6 +9,7 @@ import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.workspace.GitWorktreeService;
 import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
+import guru.thomasweber.devagent.workspace.StateSyncService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import io.quarkus.arc.Unremovable;
 import jakarta.enterprise.context.Dependent;
@@ -24,6 +25,7 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 
 import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
 
 @Dependent
 @Unremovable
@@ -41,22 +43,31 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
     private final GitWorktreeService worktreeService;
     private final TaskPersistenceService persistenceService;
     private final ProjectIdResolver projectResolver;
+    private final StateSyncService stateSyncService;
 
     @Inject
     public AbortCommand(
         StateSocketService socketService,
         GitWorktreeService worktreeService,
         TaskPersistenceService persistenceService,
-        ProjectIdResolver projectResolver
+        ProjectIdResolver projectResolver,
+        StateSyncService stateSyncService
     ) {
         this.socketService = socketService;
         this.worktreeService = worktreeService;
         this.persistenceService = persistenceService;
         this.projectResolver = projectResolver;
+        this.stateSyncService = stateSyncService;
     }
 
     public AbortCommand() {
-        this(new StateSocketService(), new GitWorktreeService(), new TaskPersistenceService(), new ProjectIdResolver());
+        this(
+            new StateSocketService(),
+            new GitWorktreeService(),
+            new TaskPersistenceService(),
+            new ProjectIdResolver(),
+            new StateSyncService()
+        );
     }
 
     @Override
@@ -102,10 +113,45 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
             socketService.writeHeartbeat(repoRoot, aborted);
         }
 
-        persistedOpt.ifPresent(run -> saveAbortedTaskSafely(run));
+        TaskRun abortedRun = buildAbortedRun(projectId, trimmedId, persistedOpt, socketOpt, pid, branch);
+        persistedOpt.ifPresent(_ -> saveAbortedTaskSafely(abortedRun));
+        if (nonNull(abortedRun)) {
+            syncAbortJournalSafely(repoRoot, abortedRun);
+        }
         worktreeService.removeWorktree(repoRoot, trimmedId, deleteBranch, branch);
 
         return 0;
+    }
+
+    private TaskRun buildAbortedRun(
+        ProjectId projectId,
+        String trimmedId,
+        Optional<TaskRun> persistedOpt,
+        Optional<WorktreeState> socketOpt,
+        Long pid,
+        String branch
+    ) {
+        Instant now = Instant.now();
+        if (persistedOpt.isPresent()) {
+            return persistedOpt.get().toBuilder()
+                .status(TaskStatus.ABORTED)
+                .currentPhase(TaskStatus.ABORTED.name())
+                .updatedAt(now)
+                .build();
+        }
+        if (socketOpt.isPresent()) {
+            return TaskRun.builder()
+                .projectId(projectId.idString())
+                .taskId(trimmedId)
+                .status(TaskStatus.ABORTED)
+                .currentPhase(TaskStatus.ABORTED.name())
+                .branch(branch)
+                .pid(pid)
+                .createdAt(socketOpt.get().startedAt())
+                .updatedAt(now)
+                .build();
+        }
+        return null;
     }
 
     private Optional<TaskRun> findPersistedSafely(String projectId, String targetTaskId) {
@@ -116,15 +162,19 @@ public class AbortCommand extends BaseTaskCommand implements Callable<Integer> {
         }
     }
 
-    private void saveAbortedTaskSafely(TaskRun run) {
+    private void saveAbortedTaskSafely(TaskRun abortedRun) {
         try {
-            persistenceService.saveTask(run.toBuilder()
-                .status(TaskStatus.ABORTED)
-                .currentPhase(TaskStatus.ABORTED.name())
-                .updatedAt(Instant.now())
-                .build());
+            persistenceService.saveTask(abortedRun);
         } catch (RuntimeException _) {
             // Persistence fallback when DB runtime is inactive
+        }
+    }
+
+    private void syncAbortJournalSafely(Path repoRoot, TaskRun abortedRun) {
+        try {
+            stateSyncService.projectToMarkdown(repoRoot, abortedRun);
+        } catch (RuntimeException _) {
+            // Best-effort Markdown journal projection on abort
         }
     }
 
