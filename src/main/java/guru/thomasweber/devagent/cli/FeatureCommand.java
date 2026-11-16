@@ -30,6 +30,8 @@ import picocli.CommandLine.Parameters;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Locale;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 
 import static java.util.Objects.isNull;
@@ -135,7 +137,7 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
             return 0;
         }
 
-        TaskId generatedTaskId = TaskId.random();
+        TaskId generatedTaskId = generateTaskId();
         String taskId = generatedTaskId.value();
         String targetDir = config.build().backend().targetDir();
         WorktreeAllocation allocation = worktreeService.allocateWorktree(
@@ -256,6 +258,11 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
             return 0;
         }
         return 1;
+    }
+
+    private static TaskId generateTaskId() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
+        return TaskId.of("TASK-" + suffix);
     }
 
     private void saveTaskRunSafely(WorktreeState state, WorktreeAllocation allocation) {

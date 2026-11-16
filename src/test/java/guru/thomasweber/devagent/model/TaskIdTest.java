@@ -17,9 +17,6 @@ class TaskIdTest {
         assertThat(id.idString()).isEqualTo("TASK-401.rc_1");
         assertThat(id.toString()).isEqualTo("TASK-401.rc_1");
 
-        TaskId generated = TaskId.random();
-        assertThat(generated.value()).startsWith("TASK-").hasSize(13);
-
         ObjectMapper mapper = new ObjectMapper();
         String json = mapper.writeValueAsString(id);
         assertThat(json).isEqualTo("\"TASK-401.rc_1\"");

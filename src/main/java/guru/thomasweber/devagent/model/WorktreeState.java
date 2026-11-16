@@ -6,6 +6,7 @@ import lombok.Builder;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 /**
@@ -32,12 +33,8 @@ public record WorktreeState(
         if (nonNull(taskId)) {
             TaskId.of(taskId);
         }
-        if (cost == null) {
+        if (isNull(cost)) {
             cost = BigDecimal.ZERO;
         }
-    }
-
-    public TaskId typedTaskId() {
-        return TaskId.of(taskId);
     }
 }

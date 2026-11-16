@@ -19,6 +19,9 @@ import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
 
+import static java.util.Objects.isNull;
+import static java.util.Objects.nonNull;
+
 /**
  * Two-tier bounded buffer resource that buffers in memory up to a threshold (e.g. 1 MB),
  * overflows to a disk temporary file up to a maximum capacity (e.g. 10 MB) using Java NIO
@@ -72,7 +75,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             throw new IOException("Buffer is closed");
         }
         sink.flush();
-        if (diskTempFile != null) {
+        if (nonNull(diskTempFile)) {
             return Files.newInputStream(diskTempFile);
         }
         return new ByteArrayInputStream(memoryBuffer.toByteArray());
@@ -92,7 +95,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     }
 
     public synchronized boolean isOverflowedToDisk() {
-        return diskTempFile != null;
+        return nonNull(diskTempFile);
     }
 
     public synchronized boolean isTruncated() {
@@ -107,7 +110,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
     public synchronized void close() throws IOException {
         closed = true;
         IOException failure = null;
-        if (fileChannel != null) {
+        if (nonNull(fileChannel)) {
             try {
                 fileChannel.close();
             } catch (IOException e) {
@@ -116,24 +119,20 @@ public class BoundedOverflowBuffer implements AutoCloseable {
                 fileChannel = null;
             }
         }
-        if (diskTempFile != null) {
+        if (nonNull(diskTempFile)) {
             try {
                 Files.deleteIfExists(diskTempFile);
                 diskTempFile = null;
             } catch (IOException e) {
-                if (failure == null) {
+                if (isNull(failure)) {
                     failure = e;
                 }
             }
         }
         memoryBuffer = null;
-        if (failure != null) {
+        if (nonNull(failure)) {
             throw failure;
         }
-    }
-
-    Path createTempFileWithPermissions(Path parent, FileAttribute<?> attr) throws IOException {
-        return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
     }
 
     private Path createSecureTempFile() throws IOException {
@@ -142,26 +141,22 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(
                 EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
             );
-            return createTempFileWithPermissions(parent, attr);
+            return Files.createTempFile(parent, "dev-agent-proc-", ".tmp", attr);
         } catch (UnsupportedOperationException _) {
             return Files.createTempFile(parent, "dev-agent-proc-", ".tmp");
         }
     }
 
-    FileChannel openSpillChannel(Path tempFile) throws IOException {
-        return FileChannel.open(
-            tempFile,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.WRITE,
-            StandardOpenOption.READ
-        );
-    }
-
     private void checkOverflow(int incoming) throws IOException {
-        if (diskTempFile == null && totalBytesWritten + incoming > memoryThreshold) {
+        if (isNull(diskTempFile) && totalBytesWritten + incoming > memoryThreshold) {
             Path tempFile = createSecureTempFile();
             try {
-                this.fileChannel = openSpillChannel(tempFile);
+                this.fileChannel = FileChannel.open(
+                    tempFile,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.READ
+                );
                 byte[] inMemoryBytes = memoryBuffer.toByteArray();
                 ByteBuffer nioBuffer = ByteBuffer.wrap(inMemoryBytes);
                 while (nioBuffer.hasRemaining()) {
@@ -170,7 +165,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
                 this.diskTempFile = tempFile;
                 this.memoryBuffer = null;
             } catch (Exception e) {
-                if (fileChannel != null) {
+                if (nonNull(fileChannel)) {
                     try {
                         fileChannel.close();
                     } catch (IOException _) {
@@ -194,7 +189,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             return;
         }
         checkOverflow(1);
-        if (fileChannel != null) {
+        if (nonNull(fileChannel)) {
             ByteBuffer single = ByteBuffer.wrap(new byte[]{(byte) b});
             fileChannel.write(single);
         } else {
@@ -221,7 +216,7 @@ public class BoundedOverflowBuffer implements AutoCloseable {
             truncated = true;
         }
         checkOverflow(toWrite);
-        if (fileChannel != null) {
+        if (nonNull(fileChannel)) {
             ByteBuffer buf = ByteBuffer.wrap(b, off, toWrite);
             while (buf.hasRemaining()) {
                 fileChannel.write(buf);

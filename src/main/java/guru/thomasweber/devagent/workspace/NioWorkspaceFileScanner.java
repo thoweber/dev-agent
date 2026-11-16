@@ -133,7 +133,7 @@ public class NioWorkspaceFileScanner implements WorkspaceFileScanner {
         walkAndCollect(rootPath, searchRoot, matchers, ignorePrefixes, fileFilter, uniqueFiles);
     }
 
-    static List<String> expandZeroLevelDoubleStarPatterns(String pattern) {
+    private static List<String> expandZeroLevelDoubleStarPatterns(String pattern) {
         List<String> results = new ArrayList<>();
         results.add(pattern);
         int idx = pattern.indexOf("**/");

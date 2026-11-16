@@ -208,10 +208,6 @@ public class StateSocketService {
         }
     }
 
-    public static String validateTaskId(String taskId) {
-        return TaskId.of(taskId).value();
-    }
-
     public static ObjectMapper createDefaultObjectMapper() {
         return new ObjectMapper()
             .registerModule(new JavaTimeModule())

@@ -4,8 +4,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
-import java.util.Locale;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 import static java.util.Objects.isNull;
@@ -32,11 +30,6 @@ public record TaskId(@JsonValue String value) {
     @JsonCreator
     public static TaskId of(String raw) {
         return new TaskId(raw);
-    }
-
-    public static TaskId random() {
-        String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
-        return new TaskId("TASK-" + suffix);
     }
 
     public String idString() {

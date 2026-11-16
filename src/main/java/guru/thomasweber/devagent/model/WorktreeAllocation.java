@@ -25,8 +25,4 @@ public record WorktreeAllocation(
             TaskId.of(taskId);
         }
     }
-
-    public TaskId typedTaskId() {
-        return TaskId.of(taskId);
-    }
 }
