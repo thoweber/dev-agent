@@ -15,6 +15,7 @@ import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.StateSyncService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorktreeTaskExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -54,13 +55,9 @@ class WorkerCommandTest {
 
         WorkerCommand command = new WorkerCommand(
             socketService,
-            syncService,
-            buildService,
-            alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
             new DevAgentConfigLoader(),
-            mock(GitWorktreeService.class)
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, mock(GitWorktreeService.class))
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter out = new StringWriter();
@@ -93,13 +90,9 @@ class WorkerCommandTest {
 
         WorkerCommand command = new WorkerCommand(
             socketService,
-            syncService,
-            buildService,
-            alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
             new DevAgentConfigLoader(),
-            mock(GitWorktreeService.class)
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, mock(GitWorktreeService.class))
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter err = new StringWriter();
@@ -139,13 +132,9 @@ class WorkerCommandTest {
 
         WorkerCommand command = new WorkerCommand(
             socketService,
-            syncService,
-            buildService,
-            alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
             new DevAgentConfigLoader(),
-            mock(GitWorktreeService.class)
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, mock(GitWorktreeService.class))
         );
         CommandLine cmd = new CommandLine(command);
         cmd.setOut(new PrintWriter(new StringWriter()));
@@ -177,13 +166,9 @@ class WorkerCommandTest {
 
         WorkerCommand command = new WorkerCommand(
             socketService,
-            syncService,
-            buildService,
-            alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
             new DevAgentConfigLoader(),
-            mock(GitWorktreeService.class)
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, mock(GitWorktreeService.class))
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter err = new StringWriter();
@@ -226,13 +211,9 @@ class WorkerCommandTest {
 
         WorkerCommand command = new WorkerCommand(
             socketService,
-            syncService,
-            buildService,
-            alertService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
             new DevAgentConfigLoader(),
-            worktreeService
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, worktreeService)
         );
         CommandLine cmd = new CommandLine(command);
         cmd.setOut(new PrintWriter(new StringWriter()));

@@ -16,6 +16,7 @@ import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.StateSyncService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
+import guru.thomasweber.devagent.workspace.WorktreeTaskExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -153,12 +154,9 @@ class FeatureCommandTest {
             socketService,
             new LocalWorkerLimiter(socketService, new DevAgentConfigLoader()),
             launcher,
-            alertService,
-            buildService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
-            syncService,
-            new DevAgentConfigLoader()
+            new DevAgentConfigLoader(),
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, worktreeService)
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter out = new StringWriter();
@@ -205,12 +203,9 @@ class FeatureCommandTest {
             socketService,
             new LocalWorkerLimiter(socketService, new DevAgentConfigLoader()),
             launcher,
-            alertService,
-            buildService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
-            syncService,
-            new DevAgentConfigLoader()
+            new DevAgentConfigLoader(),
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, worktreeService)
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter out = new StringWriter();
@@ -259,12 +254,9 @@ class FeatureCommandTest {
             socketService,
             new LocalWorkerLimiter(socketService, new DevAgentConfigLoader()),
             launcher,
-            alertService,
-            buildService,
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            persistenceService,
-            syncService,
-            new DevAgentConfigLoader()
+            new DevAgentConfigLoader(),
+            new WorktreeTaskExecutor(socketService, syncService, buildService, alertService, persistenceService, worktreeService)
         );
         CommandLine cmd = new CommandLine(command);
         cmd.setOut(new PrintWriter(new StringWriter()));
@@ -294,12 +286,16 @@ class FeatureCommandTest {
             new StateSocketService(),
             new LocalWorkerLimiter(),
             mock(DetachedWorkerLauncher.class),
-            mock(DesktopAlertService.class),
-            mock(BackendBuildService.class),
             new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
-            mock(TaskPersistenceService.class),
-            mock(StateSyncService.class),
-            new DevAgentConfigLoader()
+            new DevAgentConfigLoader(),
+            new WorktreeTaskExecutor(
+                new StateSocketService(),
+                mock(StateSyncService.class),
+                mock(BackendBuildService.class),
+                mock(DesktopAlertService.class),
+                mock(TaskPersistenceService.class),
+                worktreeService
+            )
         );
         CommandLine cmd = new CommandLine(command);
         StringWriter out = new StringWriter();
