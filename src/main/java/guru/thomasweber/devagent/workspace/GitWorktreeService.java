@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.workspace;
 
 import guru.thomasweber.devagent.config.DevAgentConfig;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -59,12 +60,22 @@ public class GitWorktreeService {
         DevAgentConfig.IsolationConfig isolation,
         String targetDir
     ) {
-        validateTaskId(taskId);
+        return allocateWorktree(repoRoot, TaskId.of(taskId), storySlug, isolation, targetDir);
+    }
+
+    public WorktreeAllocation allocateWorktree(
+        Path repoRoot,
+        TaskId taskId,
+        String storySlug,
+        DevAgentConfig.IsolationConfig isolation,
+        String targetDir
+    ) {
+        String safeTaskId = taskId.value();
         Path canonicalRoot = resolveCanonicalRoot(repoRoot);
         gitExcludeManager.ensureExcluded(canonicalRoot, targetDir);
 
         Path worktreesRoot = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees");
-        Path worktreeDir = worktreesRoot.resolve(taskId);
+        Path worktreeDir = worktreesRoot.resolve(safeTaskId);
         StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
 
         String baseCommit = resolveHeadCommit(canonicalRoot);
@@ -72,7 +83,7 @@ public class GitWorktreeService {
         if (nonNull(isolation)) {
             template = isolation.branchTemplate();
         }
-        String branchName = renderBranchName(template, taskId, storySlug);
+        String branchName = renderBranchName(template, safeTaskId, storySlug);
 
         createOrAttachWorktree(canonicalRoot, worktreeDir, branchName, baseCommit);
 
@@ -82,12 +93,12 @@ public class GitWorktreeService {
         }
 
         return WorktreeAllocation.builder()
-            .taskId(taskId)
+            .taskId(safeTaskId)
             .branch(branchName)
             .worktreePath(worktreeDir)
             .baseCommit(baseCommit)
             .checkpointStash(checkpointStash)
-            .hydrated(checkpointStash != null)
+            .hydrated(nonNull(checkpointStash))
             .build();
     }
 
@@ -134,9 +145,12 @@ public class GitWorktreeService {
     }
 
     public void removeWorktree(Path repoRoot, String taskId, boolean deleteBranch, String branchName) {
-        validateTaskId(taskId);
+        removeWorktree(repoRoot, TaskId.of(taskId), deleteBranch, branchName);
+    }
+
+    public void removeWorktree(Path repoRoot, TaskId taskId, boolean deleteBranch, String branchName) {
         Path canonicalRoot = resolveCanonicalRoot(repoRoot);
-        Path worktreeDir = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
+        Path worktreeDir = canonicalRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskId.value());
         StateSocketService.validateWorktreePathSymlinks(canonicalRoot, worktreeDir);
 
         if (Files.exists(worktreeDir)) {
@@ -252,10 +266,6 @@ public class GitWorktreeService {
         } catch (IOException _) {
             return repoRoot.toAbsolutePath().normalize();
         }
-    }
-
-    private void validateTaskId(String taskId) {
-        StateSocketService.validateTaskId(taskId);
     }
 
     private String renderBranchName(String template, String taskId, String storySlug) {

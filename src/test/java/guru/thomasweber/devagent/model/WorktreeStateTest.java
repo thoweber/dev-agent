@@ -30,6 +30,8 @@ class WorktreeStateTest {
             .build();
 
         assertThat(state.taskId()).isEqualTo("TASK-401");
+        assertThat(state.typedTaskId()).isEqualTo(TaskId.of("TASK-401"));
+        assertThat(WorktreeState.builder().taskId(null).build().taskId()).isNull();
         assertThat(state.cost()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(state.status()).isEqualTo(TaskStatus.PLANNING);
         assertThat(state.tokens()).isEqualTo(1500L);

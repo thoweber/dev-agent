@@ -4,6 +4,7 @@ import guru.thomasweber.devagent.cognitive.MarkdownParserService;
 import guru.thomasweber.devagent.cognitive.MarkdownParserService.ParsedMarkdown;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.StepAudit;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStateChangeEvent;
 import guru.thomasweber.devagent.model.WorktreeState;
@@ -138,7 +139,7 @@ public class StateSyncService {
     }
 
     public void projectToMarkdown(TaskRun taskRun) {
-        validateTaskId(taskRun.taskId());
+        TaskId safeTaskId = TaskId.of(taskRun.taskId());
 
         String formattedUpdatedAt = "unknown";
         if (nonNull(taskRun.updatedAt())) {
@@ -192,7 +193,7 @@ public class StateSyncService {
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
             Files.createDirectories(runsDir.toPath());
-            RepoPath journalFile = runsDir.resolve(taskRun.taskId() + ".md");
+            RepoPath journalFile = runsDir.resolve(safeTaskId.value() + ".md");
 
             Files.writeString(
                 journalFile.toPath(),
@@ -241,12 +242,12 @@ public class StateSyncService {
      * @return parsed markdown containing YAML frontmatter and structural sections, or empty if not found
      */
     public Optional<ParsedMarkdown> readTaskJournal(String taskId) {
-        validateTaskId(taskId);
+        TaskId safeTaskId = TaskId.of(taskId);
         try {
             Path repoRoot = workspaceResolver.resolveRepoRoot().toRealPath();
             Path targetRunsDir = repoRoot.resolve(".agents/runs");
             RepoPath runsDir = RepoPath.of(targetRunsDir, repoRoot);
-            RepoPath journalFile = runsDir.resolve(taskId + ".md");
+            RepoPath journalFile = runsDir.resolve(safeTaskId.value() + ".md");
             if (!Files.isRegularFile(journalFile.toPath())) {
                 return Optional.empty();
             }
@@ -276,9 +277,5 @@ public class StateSyncService {
             ));
         }
         return sb.toString();
-    }
-
-    private void validateTaskId(String taskId) {
-        StateSocketService.validateTaskId(taskId);
     }
 }

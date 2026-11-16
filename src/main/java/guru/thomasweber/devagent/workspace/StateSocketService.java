@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.workspace;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.WorktreeState;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -20,7 +21,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
@@ -38,7 +38,6 @@ public class StateSocketService {
     private static final String STATE_FILE_NAME = "state.json";
     private static final String STATE_TMP_FILE_NAME = "state.json.tmp";
     private static final String WORKER_LOG_FILE_NAME = "worker.log";
-    private static final Pattern SAFE_TASK_ID_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
     private static final long PID_START_TOLERANCE_SECONDS = 2L;
 
     private final ObjectMapper objectMapper;
@@ -64,12 +63,22 @@ public class StateSocketService {
         this(createDefaultObjectMapper(), new SecretRedactionFilter(), new WorkspaceContextResolver());
     }
 
+    public Path resolveStateFile(Path repoRoot, TaskId taskId) {
+        Objects.requireNonNull(taskId, "taskId must not be null");
+        return resolveWorktreeFile(repoRoot, taskId.value(), STATE_FILE_NAME);
+    }
+
     public Path resolveStateFile(Path repoRoot, String taskId) {
-        return resolveWorktreeFile(repoRoot, taskId, STATE_FILE_NAME);
+        return resolveStateFile(repoRoot, TaskId.of(taskId));
+    }
+
+    public Path resolveWorkerLogFile(Path repoRoot, TaskId taskId) {
+        Objects.requireNonNull(taskId, "taskId must not be null");
+        return resolveWorktreeFile(repoRoot, taskId.value(), WORKER_LOG_FILE_NAME);
     }
 
     public Path resolveWorkerLogFile(Path repoRoot, String taskId) {
-        return resolveWorktreeFile(repoRoot, taskId, WORKER_LOG_FILE_NAME);
+        return resolveWorkerLogFile(repoRoot, TaskId.of(taskId));
     }
 
     public void writeHeartbeat(Path repoRoot, WorktreeState state) {
@@ -91,9 +100,13 @@ public class StateSocketService {
         }
     }
 
-    public Optional<WorktreeState> readState(Path repoRoot, String taskId) {
+    public Optional<WorktreeState> readState(Path repoRoot, TaskId taskId) {
         Path stateFile = resolveStateFile(repoRoot, taskId);
         return readStateFile(stateFile);
+    }
+
+    public Optional<WorktreeState> readState(Path repoRoot, String taskId) {
+        return readState(repoRoot, TaskId.of(taskId));
     }
 
     public List<WorktreeState> readAllStates(Path repoRoot) {
@@ -222,13 +235,7 @@ public class StateSocketService {
     }
 
     public static String validateTaskId(String taskId) {
-        if (isNull(taskId)
-            || taskId.isBlank()
-            || taskId.contains("..")
-            || !SAFE_TASK_ID_PATTERN.matcher(taskId).matches()) {
-            throw new SecurityException("Jailbreak attempt: invalid task ID: " + taskId);
-        }
-        return taskId;
+        return TaskId.of(taskId).value();
     }
 
     private static void validateNoSymlink(Path path) {

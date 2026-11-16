@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.cli;
 import guru.thomasweber.devagent.config.DevAgentConfig;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
+import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
@@ -29,7 +30,6 @@ import picocli.CommandLine.Parameters;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.UUID;
 import java.util.concurrent.Callable;
 
 import static java.util.Objects.isNull;
@@ -135,7 +135,8 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
             return 0;
         }
 
-        String taskId = "TASK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        TaskId generatedTaskId = TaskId.random();
+        String taskId = generatedTaskId.value();
         String targetDir = config.build().backend().targetDir();
         WorktreeAllocation allocation = worktreeService.allocateWorktree(
             repoRoot,

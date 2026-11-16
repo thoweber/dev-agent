@@ -23,6 +23,8 @@ class WorktreeAllocationTest {
             .build();
 
         assertThat(allocation.taskId()).isEqualTo("TASK-402");
+        assertThat(allocation.typedTaskId()).isEqualTo(TaskId.of("TASK-402"));
+        assertThat(WorktreeAllocation.builder().taskId(null).build().taskId()).isNull();
         assertThat(allocation.branch()).isEqualTo("feature/TASK-402-cache");
         assertThat(allocation.worktreePath()).isEqualTo(worktreePath);
         assertThat(allocation.baseCommit()).isEqualTo("abc123def456");

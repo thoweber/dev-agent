@@ -6,6 +6,8 @@ import lombok.Builder;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+import static java.util.Objects.nonNull;
+
 /**
  * Ephemeral heartbeat state serialized atomically into {@code .git/dev-agent-worktrees/<task-id>/state.json}.
  */
@@ -27,8 +29,15 @@ public record WorktreeState(
     String lastMessage
 ) {
     public WorktreeState {
+        if (nonNull(taskId)) {
+            TaskId.of(taskId);
+        }
         if (cost == null) {
             cost = BigDecimal.ZERO;
         }
+    }
+
+    public TaskId typedTaskId() {
+        return TaskId.of(taskId);
     }
 }
