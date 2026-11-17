@@ -1,5 +1,7 @@
 # Cycle 4.5 Implementation Plan: Opt-In Per-Session Logging & Redacted Diagnostics
 
+> **Status:** **DONE** (Implemented via strict TDD on `feature/TASK-010-cycle45-logging-plan`)
+
 ## Goal Description
 
 Implement **Cycle 4.5 (Opt-In Per-Session Logging & Redacted Diagnostics)** as a focused pre-Cycle-5 observability foundation specified in [ARCHITECTURE.md](../../ARCHITECTURE.md). Normal CLI executions remain silent on framework and diagnostic logs by default—keeping terminal UI and `--json` outputs clean—while enabling structured, secret-scrubbed file-first diagnostics whenever opted in via `-v`..`-vvvv` (`--verbose`) or `.agents/dev-agent.yaml`.

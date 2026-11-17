@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.cli;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import guru.thomasweber.devagent.DevAgentCommand;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.ProjectId;
 import guru.thomasweber.devagent.model.TaskRun;
@@ -17,6 +18,7 @@ import guru.thomasweber.devagent.workspace.ProjectIdResolver;
 import guru.thomasweber.devagent.workspace.StateSocketService;
 import guru.thomasweber.devagent.workspace.WorkspaceContextResolver;
 import picocli.CommandLine;
+import picocli.CommandLine.IFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -34,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ResumeCommandTest {
@@ -500,5 +503,50 @@ class ResumeCommandTest {
             .thenReturn(77779L);
         int fallbackExit = cl.execute("--dir=" + otherRepo, "--detach", "TASK-NO-SOCK");
         assertThatCli(fallbackExit, out.toString()).isSuccess().containsAnsiFree("PID 77779");
+    }
+
+    @Test
+    @DisplayName("Given -vv with resume --detach - when executed - then propagates verbosityCount=2 to DetachedWorkerLauncher")
+    void testResumeDetachPropagatesVerbosity() throws IOException {
+        Path repo = tempDir.resolve("repo-verb");
+        Files.createDirectories(repo);
+        WorktreeTestFixture.createWorktree(repo, "TASK-VERB-RES");
+        TaskPersistenceService mockPersistence = mock(TaskPersistenceService.class);
+        when(mockPersistence.findByProjectAndTask(any(ProjectId.class), eq("TASK-VERB-RES")))
+            .thenReturn(Optional.of(TaskRunMother.builder("TASK-VERB-RES").status(TaskStatus.GREEN_PATCH).pid(null).build()));
+
+        DetachedWorkerLauncher launcher = mock(DetachedWorkerLauncher.class);
+        when(launcher.launchWorker(repo.toAbsolutePath().normalize(), "TASK-VERB-RES", "", 2))
+            .thenReturn(77780L);
+
+        WorkspaceContextResolver resolver = new WorkspaceContextResolver(repo);
+        ResumeCommand resumeCmd = new ResumeCommand(
+            new CrashRecoveryDetector(),
+            new ProjectIdResolver(resolver),
+            mockPersistence,
+            resolver,
+            launcher,
+            new StateSocketService()
+        );
+        CommandLine rootCl = new CommandLine(
+            new DevAgentCommand(),
+            new IFactory() {
+                @Override
+                @SuppressWarnings("unchecked")
+                public <K> K create(Class<K> cls) throws Exception {
+                    if (cls == ResumeCommand.class) {
+                        return (K) resumeCmd;
+                    }
+                    return CommandLine.defaultFactory().create(cls);
+                }
+            }
+        );
+        StringWriter out = new StringWriter();
+        rootCl.setOut(new PrintWriter(out));
+
+        int exitCode = rootCl.execute("-vv", "--dir=" + repo, "resume", "--detach", "TASK-VERB-RES");
+
+        assertThatCli(exitCode, out.toString()).isSuccess().containsAnsiFree("PID 77780");
+        verify(launcher).launchWorker(repo.toAbsolutePath().normalize(), "TASK-VERB-RES", "", 2);
     }
 }

@@ -39,6 +39,8 @@ public interface DevAgentConfig {
 
     NotificationsConfig notifications();
 
+    LoggingConfig logging();
+
     interface WorkspaceConfig {
         @WithDefault(".")
         @WithName("backend-root")
@@ -282,5 +284,30 @@ public interface DevAgentConfig {
         @WithDefault("true")
         @WithName("on-failure")
         boolean onFailure();
+    }
+
+    interface LoggingConfig {
+        @WithDefault("false")
+        @WithName("enabled")
+        boolean enabled();
+
+        @WithDefault("WARN")
+        @WithName("level")
+        String level();
+
+        @WithDefault("true")
+        @WithName("file-enabled")
+        boolean fileEnabled();
+
+        @WithDefault("false")
+        @WithName("console-enabled")
+        boolean consoleEnabled();
+
+        @WithName("dir")
+        Optional<String> dir();
+
+        @WithDefault("50")
+        @WithName("max-files")
+        int maxFiles();
     }
 }

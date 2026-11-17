@@ -32,8 +32,9 @@ dev-agent/
     │   ├── build/                     # Axis 1: BackendBuildSystem, FrontendBuildSystem, SanitizedLog
     │   └── framework/                 # Axis 2: BackendFrameworkConvention, FrontendFrameworkConvention
     ├── workspace/                     # WorkspaceContextResolver, WorkspaceJailValidator, GitWorktreeService, GitExcludeManager, StateSocketService, LocalWorkerLimiter, DetachedWorkerLauncher, DesktopAlertService, WorktreeExecutionContext, SubprocessExecutor
+    ├── logging/                       # Opt-In Per-Session Logging (SessionLoggingService, SessionLoggingLifecycle, SecretRedactingFormatter)
     ├── cognitive/                     # AiServices, HierarchicalMemoryStore, BM25 Inverted Index RAG, Caffeine Decision Cache
-    ├── model/                         # Reflection-Registered Immutable Records (ProjectId, TaskRun, StepAudit, GateVerdict, WorktreeState, WorktreeAllocation, StatusPayload)
+    ├── model/                         # Reflection-Registered Immutable Records (ProjectId, TaskRun, StepAudit, GateVerdict, WorktreeState, WorktreeAllocation, StatusPayload, LogVerbosity, SessionLoggingRequest, SessionLoggingHandle)
     ├── remote/                        # Declarative GitHub, SonarCloud, and CodeRabbit API Clients
     └── gui/                           # Embedded Vert.x HTTP Review Server (:9999)
 ```

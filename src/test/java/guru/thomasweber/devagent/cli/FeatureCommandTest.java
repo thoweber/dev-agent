@@ -1,5 +1,7 @@
 package guru.thomasweber.devagent.cli;
 
+import guru.thomasweber.devagent.DevAgentCommand;
+import guru.thomasweber.devagent.config.DevAgentConfig.IsolationConfig;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskRun;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
+import picocli.CommandLine.IFactory;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -327,5 +330,62 @@ class FeatureCommandTest {
 
         assertThat(exitCode).isZero();
         assertThat(out.toString()).contains("skipping worktree allocation");
+    }
+
+    @Test
+    @DisplayName("Given -vvv with feature --detach - when launched - then propagates verbosityCount=3 to DetachedWorkerLauncher")
+    void testFeatureDetachPropagatesVerbosityToDetachedWorker() {
+        GitWorktreeService worktreeService = mock(GitWorktreeService.class);
+        Path normalizedRoot = tempDir.toAbsolutePath().normalize();
+        when(worktreeService.isGitRepository(normalizedRoot)).thenReturn(true);
+        when(worktreeService.allocateWorktree(eq(normalizedRoot), anyString(), eq("Verbose feature"), any(IsolationConfig.class), eq("target-agent")))
+            .thenAnswer(invocation -> WorktreeAllocation.builder()
+                .taskId(invocation.getArgument(1))
+                .branch("feature/task-verbose")
+                .worktreePath(normalizedRoot.resolve(".git/dev-agent-worktrees/TASK-V"))
+                .baseCommit("abc123")
+                .build());
+
+        DetachedWorkerLauncher launcher = mock(DetachedWorkerLauncher.class);
+        when(launcher.launchWorker(eq(normalizedRoot), anyString(), eq("Verbose feature"), eq(3)))
+            .thenReturn(88888L);
+
+        FeatureCommand featureCommand = new FeatureCommand(
+            worktreeService,
+            new StateSocketService(),
+            new LocalWorkerLimiter(),
+            launcher,
+            new ProjectIdResolver(new WorkspaceContextResolver(tempDir)),
+            new DevAgentConfigLoader(),
+            new WorktreeTaskExecutor(
+                new StateSocketService(),
+                mock(StateSyncService.class),
+                mock(BackendBuildService.class),
+                mock(DesktopAlertService.class),
+                mock(TaskPersistenceService.class),
+                worktreeService
+            )
+        );
+        CommandLine cmd = new CommandLine(
+            new DevAgentCommand(),
+            new IFactory() {
+                @Override
+                @SuppressWarnings("unchecked")
+                public <K> K create(Class<K> cls) throws Exception {
+                    if (cls == FeatureCommand.class) {
+                        return (K) featureCommand;
+                    }
+                    return CommandLine.defaultFactory().create(cls);
+                }
+            }
+        );
+        StringWriter out = new StringWriter();
+        cmd.setOut(new PrintWriter(out));
+
+        int exitCode = cmd.execute("-vvv", "--dir=" + tempDir, "feature", "--detach", "Verbose feature");
+
+        assertThat(exitCode).isZero();
+        assertThat(out.toString()).contains("PID 88888");
+        verify(launcher).launchWorker(eq(normalizedRoot), anyString(), eq("Verbose feature"), eq(3));
     }
 }

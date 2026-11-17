@@ -36,6 +36,12 @@ class DevAgentConfigLoaderTest {
         assertThat(config1.notifications().desktopEnabled()).isTrue();
         assertThat(config1.notifications().onSuccess()).isTrue();
         assertThat(config1.notifications().onFailure()).isTrue();
+        assertThat(config1.logging().enabled()).isFalse();
+        assertThat(config1.logging().level()).isEqualTo("WARN");
+        assertThat(config1.logging().fileEnabled()).isTrue();
+        assertThat(config1.logging().consoleEnabled()).isFalse();
+        assertThat(config1.logging().dir()).isEmpty();
+        assertThat(config1.logging().maxFiles()).isEqualTo(50);
         assertThat(config1.budget().maxTaskCostUsd()).isEqualTo(2.00);
 
         assertThat(config2).isNotNull();
@@ -302,7 +308,21 @@ class DevAgentConfigLoaderTest {
         Files.writeString(tempDir.resolve(".agents/dev-agent.yaml"), """
             agent:
               max-concurrent-workers: 5
+              logging:
+                enabled: true
+                level: DEBUG
+                file-enabled: true
+                console-enabled: true
+                dir: ".agents/logs"
+                max-files: 25
             """);
-        assertThat(loader.loadForWorkspace(tempDir).maxConcurrentWorkers()).isEqualTo(5);
+        DevAgentConfig customConfig = loader.loadForWorkspace(tempDir);
+        assertThat(customConfig.maxConcurrentWorkers()).isEqualTo(5);
+        assertThat(customConfig.logging().enabled()).isTrue();
+        assertThat(customConfig.logging().level()).isEqualTo("DEBUG");
+        assertThat(customConfig.logging().fileEnabled()).isTrue();
+        assertThat(customConfig.logging().consoleEnabled()).isTrue();
+        assertThat(customConfig.logging().dir()).contains(".agents/logs");
+        assertThat(customConfig.logging().maxFiles()).isEqualTo(25);
     }
 }

@@ -3,6 +3,7 @@ package guru.thomasweber.devagent.workspace;
 import guru.thomasweber.devagent.model.TaskId;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +23,8 @@ import static java.util.Objects.nonNull;
 @ApplicationScoped
 public class DetachedWorkerLauncher {
 
+    private static final Logger LOG = Logger.getLogger(DetachedWorkerLauncher.class);
+
     private final StateSocketService socketService;
 
     @Inject
@@ -34,6 +37,10 @@ public class DetachedWorkerLauncher {
     }
 
     public long launchWorker(Path repoRoot, String taskId, String instruction) {
+        return launchWorker(repoRoot, taskId, instruction, 0);
+    }
+
+    public long launchWorker(Path repoRoot, String taskId, String instruction, int verbosityCount) {
         if (isNull(repoRoot)) {
             throw new IllegalArgumentException("repoRoot must not be null");
         }
@@ -43,11 +50,17 @@ public class DetachedWorkerLauncher {
         if (nonNull(worktreeDir) && Files.isDirectory(worktreeDir)) {
             workingDir = worktreeDir;
         }
-        List<String> command = buildWorkerCommand(repoRoot, taskId, instruction);
+        List<String> command = verbosityCount > 0
+            ? buildWorkerCommand(repoRoot, taskId, instruction, verbosityCount)
+            : buildWorkerCommand(repoRoot, taskId, instruction);
         return launchCommand(command, workingDir, logFile);
     }
 
     public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction) {
+        return buildWorkerCommand(repoRoot, taskId, instruction, 0);
+    }
+
+    public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction, int verbosityCount) {
         String safeTaskId = TaskId.of(taskId).value();
         String effectiveInstruction = Objects.requireNonNullElse(instruction, "");
         List<String> command = new ArrayList<>();
@@ -71,6 +84,9 @@ public class DetachedWorkerLauncher {
 
         command.add("--dir");
         command.add(repoRoot.toAbsolutePath().normalize().toString());
+        if (verbosityCount > 0) {
+            command.add("-" + "v".repeat(Math.min(verbosityCount, 4)));
+        }
         command.add("worker");
         command.add("--task-id");
         command.add(safeTaskId);
@@ -96,6 +112,7 @@ public class DetachedWorkerLauncher {
             }
             Process process = pb.start();
             closeChildStdin(process);
+            LOG.debugf("Spawned detached process pid=%d workDir=%s logFile=%s", process.pid(), workingDir, logFile);
             return process.pid();
         } catch (IOException e) {
             throw new WorkspaceException("Failed to launch detached worker process", e);
