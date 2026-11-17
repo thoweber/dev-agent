@@ -125,15 +125,19 @@ class SessionLoggingLifecycleTest {
         SimpleFormatter formatter = new SimpleFormatter();
         Handler captureHandler = new Handler() {
             @Override
-            public void publish(LogRecord record) {
-                capturedWarnings.add(formatter.formatMessage(record));
+            public void publish(LogRecord logRecord) {
+                capturedWarnings.add(formatter.formatMessage(logRecord));
             }
 
             @Override
-            public void flush() {}
+            public void flush() {
+                // No-op: captured warnings are stored synchronously in memory
+            }
 
             @Override
-            public void close() {}
+            public void close() {
+                // No-op: no underlying stream or resource to release
+            }
         };
         lifecycleJulLogger.addHandler(captureHandler);
         try {
