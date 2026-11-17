@@ -260,15 +260,15 @@ class SessionLoggingServiceTest {
                 dir: "../../outside-logs"
             """).logging();
 
-        assertThatThrownBy(() -> service.configureSession(
-            SessionLoggingRequest.builder()
-                .workspaceRoot(tempDir)
-                .cliVerbosityCount(1)
-                .loggingConfig(traversalConfig)
-                .sessionId(SessionId.of("sess-ok"))
-                .commandName("status")
-                .build()
-        )).isInstanceOf(SecurityException.class);
+        SessionLoggingRequest traversalRequest = SessionLoggingRequest.builder()
+            .workspaceRoot(tempDir)
+            .cliVerbosityCount(1)
+            .loggingConfig(traversalConfig)
+            .sessionId(SessionId.of("sess-ok"))
+            .commandName("status")
+            .build();
+        assertThatThrownBy(() -> service.configureSession(traversalRequest))
+            .isInstanceOf(SecurityException.class);
 
         Path targetOutside = tempDir.resolve("target-outside");
         Files.createDirectories(targetOutside);
@@ -280,25 +280,25 @@ class SessionLoggingServiceTest {
                 dir: "sym-logs"
             """).logging();
 
-        assertThatThrownBy(() -> service.configureSession(
-            SessionLoggingRequest.builder()
-                .workspaceRoot(tempDir)
-                .cliVerbosityCount(1)
-                .loggingConfig(symlinkConfig)
-                .sessionId(SessionId.of("sess-ok"))
-                .commandName("status")
-                .build()
-        )).isInstanceOf(SecurityException.class);
+        SessionLoggingRequest symlinkRequest = SessionLoggingRequest.builder()
+            .workspaceRoot(tempDir)
+            .cliVerbosityCount(1)
+            .loggingConfig(symlinkConfig)
+            .sessionId(SessionId.of("sess-ok"))
+            .commandName("status")
+            .build();
+        assertThatThrownBy(() -> service.configureSession(symlinkRequest))
+            .isInstanceOf(SecurityException.class);
 
-        assertThatThrownBy(() -> service.configureSession(
-            SessionLoggingRequest.builder()
-                .workspaceRoot(tempDir)
-                .cliVerbosityCount(1)
-                .loggingConfig(configLoader.loadFromYaml("").logging())
-                .sessionId(SessionId.of("../evil"))
-                .commandName("status")
-                .build()
-        )).isInstanceOf(SecurityException.class);
+        SessionLoggingRequest unsafeSessionRequest = SessionLoggingRequest.builder()
+            .workspaceRoot(tempDir)
+            .cliVerbosityCount(1)
+            .loggingConfig(configLoader.loadFromYaml("").logging())
+            .sessionId(SessionId.of("../evil"))
+            .commandName("status")
+            .build();
+        assertThatThrownBy(() -> service.configureSession(unsafeSessionRequest))
+            .isInstanceOf(SecurityException.class);
         assertThat(symlinkDir).isSymbolicLink();
     }
 
@@ -343,7 +343,7 @@ class SessionLoggingServiceTest {
                 .sessionId(SessionId.of("abs-1"))
                 .build()
         );
-        assertThat(absHandle.sessionLogFile().getParent()).isEqualTo(absDir);
+        assertThat(absHandle.sessionLogFile()).hasParentRaw(absDir);
 
         SessionLoggingHandle noSinksHandle = service.configureSession(
             SessionLoggingRequest.builder()
@@ -370,7 +370,7 @@ class SessionLoggingServiceTest {
                     .sessionId(SessionId.of("tilde-1"))
                     .build()
             );
-            assertThat(tildeHandle.sessionLogFile().getParent()).isEqualTo(fakeHome.resolve("tilde-logs"));
+            assertThat(tildeHandle.sessionLogFile()).hasParentRaw(fakeHome.resolve("tilde-logs"));
 
             SessionLoggingHandle tildeRootHandle = service.configureSession(
                 SessionLoggingRequest.builder()
@@ -379,7 +379,7 @@ class SessionLoggingServiceTest {
                     .sessionId(SessionId.of("tilde-root"))
                     .build()
             );
-            assertThat(tildeRootHandle.sessionLogFile().getParent()).isEqualTo(fakeHome);
+            assertThat(tildeRootHandle.sessionLogFile()).hasParentRaw(fakeHome);
 
             SessionLoggingHandle thirdCollision = service.configureSession(
                 SessionLoggingRequest.builder()
@@ -400,25 +400,25 @@ class SessionLoggingServiceTest {
 
             Path symTildeTarget = Files.createDirectories(tempDir.resolve("sym-tilde-target"));
             Files.createSymbolicLink(fakeHome.resolve("bad-link"), symTildeTarget);
-            assertThatThrownBy(() -> service.configureSession(
-                SessionLoggingRequest.builder()
-                    .cliVerbosityCount(1)
-                    .loggingConfig(configLoader.loadFromYaml("agent:\n  logging:\n    dir: '~/bad-link'\n").logging())
-                    .build()
-            )).isInstanceOf(SecurityException.class);
+            SessionLoggingRequest badTildeRequest = SessionLoggingRequest.builder()
+                .cliVerbosityCount(1)
+                .loggingConfig(configLoader.loadFromYaml("agent:\n  logging:\n    dir: '~/bad-link'\n").logging())
+                .build();
+            assertThatThrownBy(() -> service.configureSession(badTildeRequest))
+                .isInstanceOf(SecurityException.class);
         } finally {
             System.setProperty("user.home", originalUserHome);
         }
 
         Path regularFileAsDir = Files.writeString(tempDir.resolve("not-a-dir"), "blocking");
-        assertThatThrownBy(() -> service.configureSession(
-            SessionLoggingRequest.builder()
-                .workspaceRoot(tempDir)
-                .cliVerbosityCount(1)
-                .loggingConfig(
-                    configLoader.loadFromYaml("agent:\n  logging:\n    dir: '" + regularFileAsDir + "'\n").logging()
-                )
-                .build()
-        )).isInstanceOf(WorkspaceException.class);
+        SessionLoggingRequest blockedDirRequest = SessionLoggingRequest.builder()
+            .workspaceRoot(tempDir)
+            .cliVerbosityCount(1)
+            .loggingConfig(
+                configLoader.loadFromYaml("agent:\n  logging:\n    dir: '" + regularFileAsDir + "'\n").logging()
+            )
+            .build();
+        assertThatThrownBy(() -> service.configureSession(blockedDirRequest))
+            .isInstanceOf(WorkspaceException.class);
     }
 }

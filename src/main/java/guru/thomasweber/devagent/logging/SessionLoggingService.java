@@ -43,6 +43,8 @@ import java.util.stream.Stream;
 
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
+import static java.util.logging.Level.ALL;
+import static java.util.logging.Level.OFF;
 
 /**
  * Manages opt-in, secret-redacted per-session file and optional stderr logging handlers.
@@ -184,8 +186,8 @@ public class SessionLoggingService implements AutoCloseable {
             }
         }
         activeHandlers.clear();
-        rootLogger.setLevel(Level.OFF);
-        logContext.getLogger(DEV_AGENT_PACKAGE).setLevel(Level.OFF);
+        rootLogger.setLevel(OFF);
+        logContext.getLogger(DEV_AGENT_PACKAGE).setLevel(OFF);
         activeHandle = null;
     }
 
@@ -270,7 +272,7 @@ public class SessionLoggingService implements AutoCloseable {
 
             FileHandler fileHandler = new FileHandler(formatter, sessionFile.toFile(), true);
             fileHandler.setEncoding(StandardCharsets.UTF_8.name());
-            fileHandler.setLevel(Level.ALL);
+            fileHandler.setLevel(ALL);
             rootLogger.addHandler(fileHandler);
             activeHandlers.add(fileHandler);
             return sessionFile;
@@ -339,7 +341,7 @@ public class SessionLoggingService implements AutoCloseable {
         } catch (UnsupportedEncodingException _) {
             // Keep platform default encoding if UTF-8 encoding name is unsupported
         }
-        consoleHandler.setLevel(Level.ALL);
+        consoleHandler.setLevel(ALL);
         rootLogger.addHandler(consoleHandler);
         activeHandlers.add(consoleHandler);
     }

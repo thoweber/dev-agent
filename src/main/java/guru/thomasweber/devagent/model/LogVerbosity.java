@@ -2,9 +2,10 @@ package guru.thomasweber.devagent.model;
 
 import guru.thomasweber.devagent.config.DevAgentConfig.LoggingConfig;
 import io.quarkus.runtime.annotations.RegisterForReflection;
-import org.jboss.logmanager.Level;
+import org.jboss.logmanager.LogContext;
 
 import java.util.Locale;
+import java.util.logging.Level;
 
 import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
@@ -16,26 +17,30 @@ import static java.util.Objects.nonNull;
 public enum LogVerbosity {
 
     OFF(Level.OFF, Level.OFF, 0),
-    WARN(Level.WARN, Level.WARN, 1),
-    INFO(Level.INFO, Level.INFO, 2),
-    DEBUG(Level.DEBUG, Level.INFO, 3),
-    ALL(Level.ALL, Level.DEBUG, 4);
+    WARN(jbossLevel("WARN"), jbossLevel("WARN"), 1),
+    INFO(jbossLevel("INFO"), jbossLevel("INFO"), 2),
+    DEBUG(jbossLevel("DEBUG"), jbossLevel("INFO"), 3),
+    ALL(Level.ALL, jbossLevel("DEBUG"), 4);
 
-    private final java.util.logging.Level devAgentLevel;
-    private final java.util.logging.Level rootLevel;
+    private final Level devAgentLevel;
+    private final Level rootLevel;
     private final int verbosityCount;
 
-    LogVerbosity(java.util.logging.Level devAgentLevel, java.util.logging.Level rootLevel, int verbosityCount) {
+    LogVerbosity(Level devAgentLevel, Level rootLevel, int verbosityCount) {
         this.devAgentLevel = devAgentLevel;
         this.rootLevel = rootLevel;
         this.verbosityCount = verbosityCount;
     }
 
-    public java.util.logging.Level devAgentLevel() {
+    private static Level jbossLevel(String name) {
+        return LogContext.getSystemLogContext().getLevelForName(name);
+    }
+
+    public Level devAgentLevel() {
         return devAgentLevel;
     }
 
-    public java.util.logging.Level rootLevel() {
+    public Level rootLevel() {
         return rootLevel;
     }
 

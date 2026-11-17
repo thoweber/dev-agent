@@ -34,11 +34,11 @@ public class SecretRedactingFormatter extends ExtFormatter {
     }
 
     @Override
-    public String format(ExtLogRecord record) {
-        if (isNull(record)) {
+    public String format(ExtLogRecord logRecord) {
+        if (isNull(logRecord)) {
             return "";
         }
-        String formatted = delegate.format(record);
+        String formatted = delegate.format(logRecord);
         return secretFilter.scrub(formatted);
     }
 

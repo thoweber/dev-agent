@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static java.util.logging.Level.ALL;
+import static java.util.logging.Level.OFF;
 
 class LogVerbosityTest {
 
@@ -23,8 +25,8 @@ class LogVerbosityTest {
         assertThat(LogVerbosity.fromVerbosityCount(7)).isEqualTo(LogVerbosity.ALL);
 
         assertThat(LogVerbosity.OFF.isEnabled()).isFalse();
-        assertThat(LogVerbosity.OFF.devAgentLevel()).isEqualTo(Level.OFF);
-        assertThat(LogVerbosity.OFF.rootLevel()).isEqualTo(Level.OFF);
+        assertThat(LogVerbosity.OFF.devAgentLevel()).isEqualTo(OFF);
+        assertThat(LogVerbosity.OFF.rootLevel()).isEqualTo(OFF);
         assertThat(LogVerbosity.OFF.verbosityCount()).isZero();
 
         assertThat(LogVerbosity.WARN.isEnabled()).isTrue();
@@ -40,7 +42,7 @@ class LogVerbosityTest {
         assertThat(LogVerbosity.DEBUG.rootLevel()).isEqualTo(Level.INFO);
         assertThat(LogVerbosity.DEBUG.verbosityCount()).isEqualTo(3);
 
-        assertThat(LogVerbosity.ALL.devAgentLevel()).isEqualTo(Level.ALL);
+        assertThat(LogVerbosity.ALL.devAgentLevel()).isEqualTo(ALL);
         assertThat(LogVerbosity.ALL.rootLevel()).isEqualTo(Level.DEBUG);
         assertThat(LogVerbosity.ALL.verbosityCount()).isEqualTo(4);
     }

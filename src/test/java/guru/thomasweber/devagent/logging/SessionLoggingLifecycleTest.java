@@ -57,7 +57,7 @@ class SessionLoggingLifecycleTest {
 
     @Test
     @DisplayName("Given -vvv on subcommand parse result - when onParseResult triggered - then opens per-session log and closes on shutdown")
-    void givenVerboseSubcommandParseResult_whenOnParseResultAndShutdown_thenActivatesAndClosesCleanly() throws IOException {
+    void givenVerboseSubcommandParseResult_whenOnParseResultAndShutdown_thenActivatesAndClosesCleanly() {
         DevAgentCommand root = new DevAgentCommand();
         CommandLine cmd = new CommandLine(root);
         ParseResult parseResult = cmd.parseArgs("--dir=" + tempDir.toString(), "status", "-vvv");
@@ -97,7 +97,8 @@ class SessionLoggingLifecycleTest {
         assertThat(handle).isNotNull();
         assertThat(handle.verbosity()).isEqualTo(LogVerbosity.INFO);
         assertThat(handle.sessionLogFile()).isNotNull();
-        assertThat(handle.sessionLogFile().getParent()).isEqualTo(tempDir.toRealPath().resolve(".agents/session-logs"));
+        Path expectedLogsDir = tempDir.toRealPath().resolve(".agents/session-logs");
+        assertThat(handle.sessionLogFile()).hasParentRaw(expectedLogsDir);
     }
 
     @Test
