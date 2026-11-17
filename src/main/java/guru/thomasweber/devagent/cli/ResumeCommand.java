@@ -203,7 +203,10 @@ public class ResumeCommand extends BaseTaskCommand implements Callable<Integer> 
 
         if (detach) {
             String story = Objects.toString(task.userStory(), "");
-            long pid = workerLauncher.launchWorker(repoRoot, targetTaskId, story);
+            int verbosityCount = getVerbosityCount();
+            long pid = verbosityCount > 0
+                ? workerLauncher.launchWorker(repoRoot, targetTaskId, story, verbosityCount)
+                : workerLauncher.launchWorker(repoRoot, targetTaskId, story);
             WorkerProcess workerProcess = WorkerProcess.of(pid);
             WorktreeState resumedState = socketService.readState(repoRoot, targetTaskId)
                 .map(existing -> existing.toBuilder().pid(workerProcess.pid()).pidStartedAt(workerProcess.startedAt()).updatedAt(Instant.now()).lastMessage("Resumed detached worker").build())

@@ -6,6 +6,7 @@ import guru.thomasweber.devagent.workspace.SecretRedactionFilter;
 import io.quarkus.cache.CacheResult;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.Objects;
@@ -20,6 +21,7 @@ import static java.util.Objects.nonNull;
 @ApplicationScoped
 public class ArchitectGatekeeper {
 
+    private static final Logger LOG = Logger.getLogger(ArchitectGatekeeper.class);
     private static final Pattern DELIMITER_TAG_PATTERN = Pattern.compile("(?i)</?(target_content|evaluation_data)>");
 
     private final UniversalArchitectGatekeeperAiService gatekeeperAiService;
@@ -42,6 +44,7 @@ public class ArchitectGatekeeper {
     public GateVerdict evaluate(String targetContent, String retrievedAdrs) {
         String safeTarget = sanitizePromptData(targetContent);
         String safeAdrs = sanitizePromptData(retrievedAdrs);
+        LOG.debugf("Evaluating gatekeeper invariants (targetChars=%d, adrChars=%d)", safeTarget.length(), safeAdrs.length());
         return gatekeeperAiService.evaluate(safeTarget, safeAdrs);
     }
 
@@ -49,6 +52,7 @@ public class ArchitectGatekeeper {
     public GateVerdict evaluate(String targetContent, List<ArchitecturalRecord> records) {
         String safeTarget = sanitizePromptData(targetContent);
         String safeAdrs = sanitizePromptData(formatRecords(records));
+        LOG.debugf("Evaluating gatekeeper invariants (targetChars=%d, recordCount=%d)", safeTarget.length(), isNull(records) ? 0 : records.size());
         return gatekeeperAiService.evaluate(safeTarget, safeAdrs);
     }
 

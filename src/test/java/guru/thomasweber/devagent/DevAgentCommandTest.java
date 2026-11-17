@@ -129,4 +129,29 @@ class DevAgentCommandTest {
         FeatureCommand feature = cmd.getSubcommands().get("feature").getCommand();
         assertThat(feature.getDir()).isEqualTo(tempDir.toString());
     }
+
+    @Test
+    @DisplayName("Given repeatable -v flags before or after subcommand - when executed - then resolves exact verbosity count")
+    void testVerbosityTiersBeforeAndAfterSubcommands() {
+        DevAgentCommand rootBefore = new DevAgentCommand();
+        CommandLine cmdBefore = new CommandLine(rootBefore);
+        cmdBefore.execute("-vvv", "--dir=" + tempDir.toString(), "status");
+        StatusCommand statusBefore = cmdBefore.getSubcommands().get("status").getCommand();
+        assertThat(rootBefore.getVerbosityCount()).isEqualTo(3);
+        assertThat(statusBefore.getVerbosityCount()).isEqualTo(3);
+        assertThat(rootBefore.isVerbose()).isTrue();
+
+        DevAgentCommand rootAfter = new DevAgentCommand();
+        CommandLine cmdAfter = new CommandLine(rootAfter);
+        cmdAfter.execute("--dir=" + tempDir.toString(), "status", "-vvvv");
+        StatusCommand statusAfter = cmdAfter.getSubcommands().get("status").getCommand();
+        assertThat(rootAfter.getVerbosityCount()).isEqualTo(4);
+        assertThat(statusAfter.getVerbosityCount()).isEqualTo(4);
+
+        DevAgentCommand rootDefault = new DevAgentCommand();
+        CommandLine cmdDefault = new CommandLine(rootDefault);
+        cmdDefault.execute("--dir=" + tempDir.toString(), "status");
+        assertThat(rootDefault.getVerbosityCount()).isZero();
+        assertThat(rootDefault.isVerbose()).isFalse();
+    }
 }

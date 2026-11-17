@@ -166,7 +166,10 @@ public class FeatureCommand extends BaseAgentCommand implements Callable<Integer
         WorktreeState initialState
     ) {
         taskExecutor.persistTaskRun(initialState, allocation, instruction);
-        long childPid = workerLauncher.launchWorker(repoRoot, allocation.taskId(), instruction);
+        int verbosityCount = getVerbosityCount();
+        long childPid = verbosityCount > 0
+            ? workerLauncher.launchWorker(repoRoot, allocation.taskId(), instruction, verbosityCount)
+            : workerLauncher.launchWorker(repoRoot, allocation.taskId(), instruction);
         Optional<WorktreeState> currentSocket = socketService.readState(repoRoot, allocation.taskId());
         boolean stillInitialPlanning = currentSocket
             .map(state -> state.status() == TaskStatus.PLANNING && Objects.equals(state.pid(), initialState.pid()))

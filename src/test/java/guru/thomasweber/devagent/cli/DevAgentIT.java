@@ -5,6 +5,13 @@ import io.quarkus.test.junit.main.QuarkusMainLauncher;
 import io.quarkus.test.junit.main.QuarkusMainTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static guru.thomasweber.devagent.testutil.CliOutputAssert.assertThatCli;
@@ -65,5 +72,33 @@ class DevAgentIT {
     void testUnknownSubcommand(QuarkusMainLauncher launcher) {
         LaunchResult result = launcher.launch("unrecognized-subcommand-xyz");
         assertThat(result.exitCode()).isNotZero();
+    }
+
+    @Test
+    @DisplayName("Given silent default status --json and opt-in -vvv run - when launched - then keeps JSON stdout clean and writes per-session log file")
+    void testOptInPerSessionLoggingInQuarkusRuntime(QuarkusMainLauncher launcher, @TempDir Path tempDir) throws IOException {
+        Path agentsDir = Files.createDirectories(tempDir.resolve(".agents"));
+        Path logsDir = agentsDir.resolve("session-logs");
+        Files.writeString(agentsDir.resolve("dev-agent.yaml"), """
+            agent:
+              logging:
+                enabled: false
+                dir: ".agents/session-logs"
+            """);
+
+        LaunchResult silentJson = launcher.launch("--dir=" + tempDir, "status", "--json");
+        assertThat(silentJson.exitCode()).isZero();
+        assertThat(silentJson.getOutput().trim()).startsWith("{").endsWith("}");
+        assertThat(Files.exists(logsDir)).isFalse();
+
+        LaunchResult verboseRun = launcher.launch("--dir=" + tempDir, "status", "-vvv");
+        assertThat(verboseRun.exitCode()).isZero();
+        assertThat(Files.isDirectory(logsDir)).isTrue();
+        try (Stream<Path> files = Files.list(logsDir)) {
+            List<Path> logFiles = files.toList();
+            assertThat(logFiles).hasSize(1);
+            String logContent = Files.readString(logFiles.get(0));
+            assertThat(logContent).contains("INFO", "DEBUG", "Starting dev-agent session", "command=status", "verbosity=DEBUG");
+        }
     }
 }

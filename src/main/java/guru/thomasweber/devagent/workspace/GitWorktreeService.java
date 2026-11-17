@@ -6,6 +6,7 @@ import guru.thomasweber.devagent.model.TaskId;
 import guru.thomasweber.devagent.model.WorktreeAllocation;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,6 +26,7 @@ import static java.util.Objects.nonNull;
 @ApplicationScoped
 public class GitWorktreeService {
 
+    private static final Logger LOG = Logger.getLogger(GitWorktreeService.class);
     private static final Duration GIT_TIMEOUT = Duration.ofSeconds(30);
     private static final String SUBCOMMAND_WORKTREE = "worktree";
 
@@ -90,6 +92,13 @@ public class GitWorktreeService {
             checkpointStash = hydrateUncommittedChanges(canonicalRoot, worktreeDir);
         }
 
+        LOG.debugf(
+            "Allocated worktree taskId=%s branch=%s baseCommit=%s hydrated=%s",
+            taskId.value(),
+            branchName,
+            baseCommit,
+            nonNull(checkpointStash)
+        );
         return WorktreeAllocation.builder()
             .taskId(taskId.value())
             .branch(branchName)

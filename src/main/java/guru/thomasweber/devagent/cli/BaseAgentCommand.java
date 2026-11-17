@@ -79,4 +79,8 @@ public abstract class BaseAgentCommand implements Runnable {
     public WorkspaceContextResolver getWorkspaceContextResolver() {
         return new WorkspaceContextResolver(getWorkspaceRoot());
     }
+
+    public int getVerbosityCount() {
+        return nonNull(parentCommand) ? parentCommand.getVerbosityCount() : 0;
+    }
 }

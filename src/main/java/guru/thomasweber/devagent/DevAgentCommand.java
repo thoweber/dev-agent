@@ -3,6 +3,7 @@ package guru.thomasweber.devagent;
 import io.quarkus.picocli.runtime.annotations.TopCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ScopeType;
 import guru.thomasweber.devagent.cli.InitCommand;
 import guru.thomasweber.devagent.cli.PlanCommand;
 import guru.thomasweber.devagent.cli.FeatureCommand;
@@ -12,6 +13,8 @@ import guru.thomasweber.devagent.cli.ResumeCommand;
 import guru.thomasweber.devagent.cli.AbortCommand;
 import guru.thomasweber.devagent.cli.MetricsCommand;
 import guru.thomasweber.devagent.cli.WorkerCommand;
+
+import static java.util.Objects.nonNull;
 
 /**
  * Top-level CLI entry point for dev-agent.
@@ -40,8 +43,12 @@ public class DevAgentCommand implements Runnable {
     @Option(names = {"-d", "--dir", "--workspace"}, description = "Target repository workspace root", defaultValue = ".")
     private String dir = ".";
 
-    @Option(names = {"-v", "--verbose"}, description = "Enable verbose debug telemetry")
-    private boolean verbose;
+    @Option(
+        names = {"-v", "--verbose"},
+        scope = ScopeType.INHERIT,
+        description = "Enable per-session file logging (-v: WARN, -vv: INFO, -vvv: DEBUG, -vvvv: ALL)"
+    )
+    private boolean[] verbosity = new boolean[0];
 
     @Override
     @SuppressWarnings("java:S106")
@@ -50,7 +57,11 @@ public class DevAgentCommand implements Runnable {
     }
 
     public boolean isVerbose() {
-        return verbose;
+        return getVerbosityCount() > 0;
+    }
+
+    public int getVerbosityCount() {
+        return nonNull(verbosity) ? verbosity.length : 0;
     }
 
     public String getDir() {

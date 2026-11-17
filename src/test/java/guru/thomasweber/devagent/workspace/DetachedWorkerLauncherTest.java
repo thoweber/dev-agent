@@ -136,4 +136,35 @@ class DetachedWorkerLauncherTest {
             assertThat(Files.readString(logFile).trim()).isEqualTo(expectedWorktree.toString())
         );
     }
+
+    @Test
+    @DisplayName("Given verbosity counts 0 through 5 - when buildWorkerCommand called - then propagates clamped -v flags before worker")
+    void givenVerbosityCount_whenBuildWorkerCommand_thenPropagatesClampedFlags() {
+        DetachedWorkerLauncher launcher = new DetachedWorkerLauncher();
+
+        List<String> silentCmd = launcher.buildWorkerCommand(tempDir, "TASK-V0", "story", 0);
+        assertThat(silentCmd).noneMatch(arg -> arg.startsWith("-v"));
+
+        List<String> warnCmd = launcher.buildWorkerCommand(tempDir, "TASK-V1", "story", 1);
+        assertThat(warnCmd).containsSequence("-v", "worker");
+
+        List<String> debugCmd = launcher.buildWorkerCommand(tempDir, "TASK-V3", "story", 3);
+        assertThat(debugCmd).containsSequence("-vvv", "worker");
+
+        List<String> allCmd = launcher.buildWorkerCommand(tempDir, "TASK-V9", "story", 9);
+        assertThat(allCmd).containsSequence("-vvvv", "worker");
+
+        DetachedWorkerLauncher verboseSpy = new DetachedWorkerLauncher() {
+            @Override
+            public List<String> buildWorkerCommand(Path repoRoot, String taskId, String instruction, int verbosityCount) {
+                return List.of("sh", "-c", "echo v=" + verbosityCount);
+            }
+        };
+        long pid = verboseSpy.launchWorker(tempDir, "TASK-V-RUN", "story", 3);
+        assertThat(pid).isPositive();
+        Path logFile = new StateSocketService().resolveWorkerLogFile(tempDir, "TASK-V-RUN");
+        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+            assertThat(Files.readString(logFile).trim()).isEqualTo("v=3")
+        );
+    }
 }
