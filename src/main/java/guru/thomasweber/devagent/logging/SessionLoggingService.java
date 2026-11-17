@@ -333,10 +333,10 @@ public class SessionLoggingService implements AutoCloseable {
         }
     }
 
-    private void applyPosixPermissions(Path path, Set<PosixFilePermission> permissions) {
+    private void applyPosixPermissions(Path path, Set<PosixFilePermission> permissions) throws IOException {
         try {
             Files.setPosixFilePermissions(path, permissions);
-        } catch (UnsupportedOperationException | IOException _) {
+        } catch (UnsupportedOperationException _) {
             // Non-POSIX filesystem; ignore gracefully
         }
     }
