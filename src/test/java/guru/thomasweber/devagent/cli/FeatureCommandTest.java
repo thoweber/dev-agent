@@ -6,9 +6,9 @@ import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.entity.TaskPersistenceService;
 import guru.thomasweber.devagent.model.TaskRun;
 import guru.thomasweber.devagent.model.TaskStatus;
-import guru.thomasweber.devagent.model.WorktreeAllocation;
 import guru.thomasweber.devagent.model.WorktreeState;
 import guru.thomasweber.devagent.testutil.WorktreeStateMother;
+import guru.thomasweber.devagent.testutil.WorktreeTestFixture;
 import guru.thomasweber.devagent.spi.build.SanitizedLog;
 import guru.thomasweber.devagent.workspace.BackendBuildService;
 import guru.thomasweber.devagent.workspace.DesktopAlertService;
@@ -142,13 +142,12 @@ class FeatureCommandTest {
 
         when(worktreeService.isGitRepository(tempDir.toAbsolutePath().normalize())).thenReturn(true);
         when(worktreeService.allocateWorktree(eq(tempDir.toAbsolutePath().normalize()), anyString(), eq("Add health check"), any(), eq("target-agent")))
-            .thenAnswer(inv -> WorktreeAllocation.builder()
-                .taskId(inv.getArgument(1))
-                .branch("feature/" + inv.getArgument(1) + "-add-health-check")
-                .worktreePath(worktreeDir)
-                .baseCommit("abc123")
-                .hydrated(false)
-                .build());
+            .thenAnswer(inv -> WorktreeTestFixture.allocation(
+                inv.getArgument(1),
+                "feature/" + inv.getArgument(1) + "-add-health-check",
+                worktreeDir,
+                "abc123"
+            ));
         when(launcher.launchWorker(eq(tempDir.toAbsolutePath().normalize()), anyString(), eq("Add health check")))
             .thenReturn(77777L);
         when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -186,13 +185,12 @@ class FeatureCommandTest {
                 return 99999L;
             });
         when(worktreeService.allocateWorktree(eq(tempDir.toAbsolutePath().normalize()), anyString(), eq("Fast worker"), any(), eq("target-agent")))
-            .thenAnswer(inv -> WorktreeAllocation.builder()
-                .taskId(inv.getArgument(1))
-                .branch("feature/" + inv.getArgument(1) + "-fast-worker")
-                .worktreePath(worktreeDir)
-                .baseCommit("abc123")
-                .hydrated(false)
-                .build());
+            .thenAnswer(inv -> WorktreeTestFixture.allocation(
+                inv.getArgument(1),
+                "feature/" + inv.getArgument(1) + "-fast-worker",
+                worktreeDir,
+                "abc123"
+            ));
         assertThat(cmd.execute("--dir=" + tempDir, "--detach", "Fast worker")).isZero();
         assertThat(socketService.readAllStates(tempDir))
             .filteredOn(s -> "COMPLETED".equals(s.status().name()))
@@ -213,13 +211,13 @@ class FeatureCommandTest {
 
         when(worktreeService.isGitRepository(tempDir.toAbsolutePath().normalize())).thenReturn(true);
         when(worktreeService.allocateWorktree(eq(tempDir.toAbsolutePath().normalize()), anyString(), eq("Foreground feature"), any(), eq("target-agent")))
-            .thenAnswer(inv -> WorktreeAllocation.builder()
-                .taskId(inv.getArgument(1))
-                .branch("feature/" + inv.getArgument(1) + "-foreground-feature")
-                .worktreePath(worktreeDir)
-                .baseCommit("abc123")
-                .hydrated(true)
-                .build());
+            .thenAnswer(inv -> WorktreeTestFixture.allocation(
+                inv.getArgument(1),
+                "feature/" + inv.getArgument(1) + "-foreground-feature",
+                worktreeDir,
+                "abc123",
+                true
+            ));
         when(persistenceService.saveTask(any(TaskRun.class))).thenAnswer(inv -> inv.getArgument(0));
 
         FeatureCommand command = new FeatureCommand(
@@ -260,13 +258,12 @@ class FeatureCommandTest {
 
         when(worktreeService.isGitRepository(tempDir.toAbsolutePath().normalize())).thenReturn(true);
         when(worktreeService.allocateWorktree(any(), anyString(), anyString(), any(), anyString()))
-            .thenAnswer(inv -> WorktreeAllocation.builder()
-                .taskId(inv.getArgument(1))
-                .branch("feature/" + inv.getArgument(1) + "-test")
-                .worktreePath(wtOk)
-                .baseCommit("abc123")
-                .hydrated(false)
-                .build());
+            .thenAnswer(inv -> WorktreeTestFixture.allocation(
+                inv.getArgument(1),
+                "feature/" + inv.getArgument(1) + "-test",
+                wtOk,
+                "abc123"
+            ));
         when(buildService.hasApplicableBuildSystem(wtOk)).thenReturn(true);
         when(buildService.compile(wtOk, null, "target-agent"))
             .thenReturn(SanitizedLog.builder().exitCode(0).errorCount(0).build())
@@ -339,12 +336,12 @@ class FeatureCommandTest {
         Path normalizedRoot = tempDir.toAbsolutePath().normalize();
         when(worktreeService.isGitRepository(normalizedRoot)).thenReturn(true);
         when(worktreeService.allocateWorktree(eq(normalizedRoot), anyString(), eq("Verbose feature"), any(IsolationConfig.class), eq("target-agent")))
-            .thenAnswer(invocation -> WorktreeAllocation.builder()
-                .taskId(invocation.getArgument(1))
-                .branch("feature/task-verbose")
-                .worktreePath(normalizedRoot.resolve(".git/dev-agent-worktrees/TASK-V"))
-                .baseCommit("abc123")
-                .build());
+            .thenAnswer(invocation -> WorktreeTestFixture.allocation(
+                invocation.getArgument(1),
+                "feature/task-verbose",
+                normalizedRoot.resolve(".git/dev-agent-worktrees/TASK-V"),
+                "abc123"
+            ));
 
         DetachedWorkerLauncher launcher = mock(DetachedWorkerLauncher.class);
         when(launcher.launchWorker(eq(normalizedRoot), anyString(), eq("Verbose feature"), eq(3)))

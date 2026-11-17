@@ -106,7 +106,7 @@ public class SessionLoggingLifecycle {
         } catch (SecurityException e) {
             throw e;
         } catch (RuntimeException e) {
-            return new LoadOutcome(configLoader.loadFromYaml(""), e.getMessage());
+            return new LoadOutcome(configLoader.loadFromYaml(""), e.getClass().getSimpleName());
         }
     }
 

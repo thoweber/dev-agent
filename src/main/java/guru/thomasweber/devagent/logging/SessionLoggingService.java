@@ -55,6 +55,7 @@ public class SessionLoggingService implements AutoCloseable {
     public static final String DEV_AGENT_PACKAGE = "guru.thomasweber.devagent";
     private static final String LOG_DIR_NAME = ".config/dev-agent/logs";
     private static final Pattern SAFE_SESSION_ID = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+    private static final Pattern SESSION_LOG_FILE = Pattern.compile("^\\d{8}-\\d{9}-[A-Za-z0-9][A-Za-z0-9._-]*\\.log$");
     private static final DateTimeFormatter FILE_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSSS");
     private static final Set<PosixFilePermission> OWNER_FILE_PERMS = EnumSet.of(
         PosixFilePermission.OWNER_READ,
@@ -204,8 +205,7 @@ public class SessionLoggingService implements AutoCloseable {
 
     private Path resolveAndValidateLogDir(Path workspaceRoot, LoggingConfig loggingConfig) {
         if (isNull(loggingConfig) || loggingConfig.dir().isEmpty() || loggingConfig.dir().get().isBlank()) {
-            assertNoSymlinks(defaultLogDir.getParent(), defaultLogDir);
-            return defaultLogDir;
+            return assertParentAndTargetNoSymlinks(defaultLogDir);
         }
         String rawDir = loggingConfig.dir().get().strip();
         if (rawDir.equals("~") || rawDir.startsWith("~/") || rawDir.startsWith("~\\")) {
@@ -219,9 +219,7 @@ public class SessionLoggingService implements AutoCloseable {
 
         Path candidate = Path.of(rawDir);
         if (candidate.isAbsolute()) {
-            Path normalized = candidate.normalize();
-            assertNoSymlinks(normalized.getParent(), normalized);
-            return normalized;
+            return assertParentAndTargetNoSymlinks(candidate.normalize());
         }
 
         Path effectiveRoot = nonNull(workspaceRoot)
@@ -233,6 +231,15 @@ public class SessionLoggingService implements AutoCloseable {
         }
         assertNoSymlinks(effectiveRoot, resolved);
         return resolved;
+    }
+
+    private Path assertParentAndTargetNoSymlinks(Path target) {
+        Path parent = target.getParent();
+        if (nonNull(parent)) {
+            rejectIfSymbolicLink(parent);
+        }
+        assertNoSymlinks(parent, target);
+        return target;
     }
 
     private void assertNoSymlinks(Path boundary, Path target) {
@@ -305,7 +312,7 @@ public class SessionLoggingService implements AutoCloseable {
         try (Stream<Path> entries = Files.list(logDir)) {
             logFiles = entries
                 .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
-                .filter(path -> path.getFileName().toString().endsWith(".log"))
+                .filter(path -> SESSION_LOG_FILE.matcher(path.getFileName().toString()).matches())
                 .sorted(
                     Comparator.comparing(this::readModifiedTimeSafe)
                         .thenComparing(path -> path.getFileName().toString())

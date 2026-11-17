@@ -214,12 +214,14 @@ class SessionLoggingServiceTest {
     }
 
     @Test
-    @DisplayName("Given max-files limit and workspace-relative dir - when multiple sessions created - then prunes oldest session logs")
+    @DisplayName("Given max-files limit and workspace-relative dir - when multiple sessions created - then prunes oldest session logs and preserves unrelated logs")
     void givenMaxFilesLimit_whenSessionsCreated_thenPrunesOldestLogs() throws IOException {
         Path workspaceLogs = tempDir.resolve(".agents/logs");
         Files.createDirectories(workspaceLogs);
         Path old1 = Files.writeString(workspaceLogs.resolve("20261116-000001000-old1.log"), "old1");
         Path old2 = Files.writeString(workspaceLogs.resolve("20261116-000002000-old2.log"), "old2");
+        Path unrelatedAppLog = Files.writeString(workspaceLogs.resolve("application.log"), "unrelated");
+        Path unrelatedWorkerLog = Files.writeString(workspaceLogs.resolve("worker.log"), "worker");
 
         LoggingConfig yamlConfig = configLoader.loadFromYaml("""
             agent:
@@ -243,10 +245,12 @@ class SessionLoggingServiceTest {
 
         assertThat(Files.exists(old1)).isFalse();
         assertThat(Files.exists(old2)).isTrue();
+        assertThat(Files.exists(unrelatedAppLog)).isTrue();
+        assertThat(Files.exists(unrelatedWorkerLog)).isTrue();
         assertThat(Files.exists(handle.sessionLogFile())).isTrue();
         try (Stream<Path> files = Files.list(workspaceLogs)) {
             List<Path> remaining = files.toList();
-            assertThat(remaining).hasSize(2);
+            assertThat(remaining).hasSize(4);
         }
     }
 
@@ -300,6 +304,38 @@ class SessionLoggingServiceTest {
         assertThatThrownBy(() -> service.configureSession(unsafeSessionRequest))
             .isInstanceOf(SecurityException.class);
         assertThat(symlinkDir).isSymbolicLink();
+
+        Path symlinkParent = Files.createSymbolicLink(tempDir.resolve("sym-parent"), targetOutside);
+        SessionLoggingRequest absSymlinkParentRequest = SessionLoggingRequest.builder()
+            .workspaceRoot(tempDir)
+            .cliVerbosityCount(1)
+            .loggingConfig(
+                configLoader.loadFromYaml(
+                    "agent:\n  logging:\n    enabled: true\n    dir: '" + symlinkParent.resolve("logs") + "'\n"
+                ).logging()
+            )
+            .sessionId(SessionId.of("sess-abs-sym"))
+            .commandName("status")
+            .build();
+        assertThatThrownBy(() -> service.configureSession(absSymlinkParentRequest))
+            .isInstanceOf(SecurityException.class);
+
+        try (SessionLoggingService symlinkDefaultService = new SessionLoggingService(
+            logContext,
+            new SecretRedactionFilter(),
+            symlinkParent.resolve("logs"),
+            Clock.systemUTC()
+        )) {
+            SessionLoggingRequest defaultSymlinkParentRequest = SessionLoggingRequest.builder()
+                .workspaceRoot(tempDir)
+                .cliVerbosityCount(1)
+                .loggingConfig(configLoader.loadFromYaml("").logging())
+                .sessionId(SessionId.of("sess-def-sym"))
+                .commandName("status")
+                .build();
+            assertThatThrownBy(() -> symlinkDefaultService.configureSession(defaultSymlinkParentRequest))
+                .isInstanceOf(SecurityException.class);
+        }
     }
 
     @Test

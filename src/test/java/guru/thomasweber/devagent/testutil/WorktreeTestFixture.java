@@ -1,5 +1,7 @@
 package guru.thomasweber.devagent.testutil;
 
+import guru.thomasweber.devagent.model.WorktreeAllocation;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +21,26 @@ public final class WorktreeTestFixture {
 
     public static Path resolveWorktree(Path repoRoot, String taskId) {
         return repoRoot.resolve(".git").resolve("dev-agent-worktrees").resolve(taskId);
+    }
+
+    public static WorktreeAllocation allocation(String taskId, String branch, Path worktreePath, String baseCommit) {
+        return allocation(taskId, branch, worktreePath, baseCommit, false);
+    }
+
+    public static WorktreeAllocation allocation(
+        String taskId,
+        String branch,
+        Path worktreePath,
+        String baseCommit,
+        boolean hydrated
+    ) {
+        return WorktreeAllocation.builder()
+            .taskId(taskId)
+            .branch(branch)
+            .worktreePath(worktreePath)
+            .baseCommit(baseCommit)
+            .hydrated(hydrated)
+            .build();
     }
 
     public static Path createWorktree(Path repoRoot, String taskId) throws IOException {

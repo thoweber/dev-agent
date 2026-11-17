@@ -17,10 +17,20 @@ import static java.util.Objects.nonNull;
 public enum LogVerbosity {
 
     OFF(Level.OFF, Level.OFF, 0),
-    WARN(jbossLevel("WARN"), jbossLevel("WARN"), 1),
-    INFO(jbossLevel("INFO"), jbossLevel("INFO"), 2),
-    DEBUG(jbossLevel("DEBUG"), jbossLevel("INFO"), 3),
-    ALL(Level.ALL, jbossLevel("DEBUG"), 4);
+    WARN(jbossLevel(LevelNames.WARN), jbossLevel(LevelNames.WARN), 1),
+    INFO(jbossLevel(LevelNames.INFO), jbossLevel(LevelNames.INFO), 2),
+    DEBUG(jbossLevel(LevelNames.DEBUG), jbossLevel(LevelNames.INFO), 3),
+    ALL(Level.ALL, jbossLevel(LevelNames.DEBUG), 4);
+
+    private static final class LevelNames {
+        private static final String OFF = "OFF";
+        private static final String WARN = "WARN";
+        private static final String INFO = "INFO";
+        private static final String DEBUG = "DEBUG";
+        private static final String ALL = "ALL";
+
+        private LevelNames() {}
+    }
 
     private final Level devAgentLevel;
     private final Level rootLevel;
@@ -70,11 +80,11 @@ public enum LogVerbosity {
         }
         String normalized = rawLevel.strip().toUpperCase(Locale.ROOT);
         return switch (normalized) {
-            case "OFF" -> OFF;
-            case "ERROR", "WARN" -> WARN;
-            case "INFO" -> INFO;
-            case "DEBUG" -> DEBUG;
-            case "TRACE", "ALL" -> ALL;
+            case LevelNames.OFF -> OFF;
+            case "ERROR", LevelNames.WARN -> WARN;
+            case LevelNames.INFO -> INFO;
+            case LevelNames.DEBUG -> DEBUG;
+            case "TRACE", LevelNames.ALL -> ALL;
             default -> throw new IllegalArgumentException("Unsupported log verbosity level: " + rawLevel);
         };
     }

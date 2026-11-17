@@ -1,6 +1,7 @@
 package guru.thomasweber.devagent.logging;
 
 import guru.thomasweber.devagent.DevAgentCommand;
+import guru.thomasweber.devagent.config.DevAgentConfig;
 import guru.thomasweber.devagent.config.DevAgentConfigLoader;
 import guru.thomasweber.devagent.model.LogVerbosity;
 import guru.thomasweber.devagent.model.SessionLoggingHandle;
@@ -22,9 +23,18 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class SessionLoggingLifecycleTest {
 
@@ -102,21 +112,51 @@ class SessionLoggingLifecycleTest {
     }
 
     @Test
-    @DisplayName("Given malformed dev-agent.yaml and -v flag - when onParseResult triggered - then falls back cleanly to CLI verbosity")
+    @DisplayName("Given malformed dev-agent.yaml and -v flag - when onParseResult triggered - then falls back cleanly to CLI verbosity without leaking parser message")
     void givenMalformedYamlAndCliVerbose_whenOnParseResult_thenFallsBackCleanly() throws IOException {
         Files.createDirectories(tempDir.resolve(".agents"));
-        Files.writeString(tempDir.resolve(".agents/dev-agent.yaml"), "agent:\n  logging:\n    enabled: [unclosed");
+        Files.writeString(
+            tempDir.resolve(".agents/dev-agent.yaml"),
+            "agent:\n  token: \"unterminated-secret-value\n  logging:\n    enabled: [unclosed"
+        );
 
-        DevAgentCommand root = new DevAgentCommand();
-        CommandLine cmd = new CommandLine(root);
-        ParseResult parseResult = cmd.parseArgs("-v", "--dir=" + tempDir.toString());
+        Logger lifecycleJulLogger = Logger.getLogger(SessionLoggingLifecycle.class.getName());
+        List<String> capturedWarnings = new ArrayList<>();
+        SimpleFormatter formatter = new SimpleFormatter();
+        Handler captureHandler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                capturedWarnings.add(formatter.formatMessage(record));
+            }
 
-        lifecycle.onParseResult(parseResult);
+            @Override
+            public void flush() {}
 
-        SessionLoggingHandle handle = loggingService.currentHandle();
-        assertThat(handle).isNotNull();
-        assertThat(handle.verbosity()).isEqualTo(LogVerbosity.WARN);
-        assertThat(handle.sessionLogFile()).isNotNull();
+            @Override
+            public void close() {}
+        };
+        lifecycleJulLogger.addHandler(captureHandler);
+        try {
+            DevAgentCommand root = new DevAgentCommand();
+            CommandLine cmd = new CommandLine(root);
+            ParseResult parseResult = cmd.parseArgs("-v", "--dir=" + tempDir.toString());
+
+            lifecycle.onParseResult(parseResult);
+
+            SessionLoggingHandle handle = loggingService.currentHandle();
+            assertThat(handle).isNotNull();
+            assertThat(handle.verbosity()).isEqualTo(LogVerbosity.WARN);
+            assertThat(handle.sessionLogFile()).isNotNull();
+        } finally {
+            lifecycleJulLogger.removeHandler(captureHandler);
+        }
+
+        assertThat(capturedWarnings)
+            .singleElement()
+            .satisfies(warning -> {
+                assertThat(warning).contains("Using default configuration due to invalid .agents/dev-agent.yaml:");
+                assertThat(warning).doesNotContain("unterminated-secret-value", "unclosed");
+            });
     }
 
     @Test
@@ -127,8 +167,13 @@ class SessionLoggingLifecycleTest {
         lifecycle.onParseResult(null);
         assertThat(loggingService.currentHandle()).isNull();
 
+        DevAgentConfig defaultConfig = new DevAgentConfigLoader().loadFromYaml("");
+        DevAgentConfigLoader isolatedLoader = mock(DevAgentConfigLoader.class);
+        when(isolatedLoader.loadForWorkspace(any())).thenReturn(defaultConfig);
+        SessionLoggingLifecycle isolatedLifecycle = new SessionLoggingLifecycle(loggingService, isolatedLoader);
+
         ParseResult standalone = new CommandLine(new StandaloneCmd()).parseArgs();
-        lifecycle.onParseResult(standalone);
+        isolatedLifecycle.onParseResult(standalone);
         assertThat(loggingService.currentHandle()).isNotNull();
         assertThat(loggingService.currentHandle().verbosity()).isEqualTo(LogVerbosity.OFF);
 
